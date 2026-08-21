@@ -1,0 +1,7 @@
+data/
+*.sqlite
+*.pdf
+__pycache__/
+.venv/
+*.egg-info/
+.playwright-mcp/
