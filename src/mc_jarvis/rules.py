@@ -36,7 +36,8 @@ def show(conn, term: str) -> dict:
     """
     register(conn)
     row = conn.execute(
-        "SELECT id, term, body, page, source_doc, entry_addressable "
+        "SELECT id, term, body, page, source_doc, entry_addressable, "
+        "searchable "
         "FROM rules_entries WHERE lower(term) = lower(?) "
         "ORDER BY entry_addressable DESC LIMIT 1", (term,)).fetchone()
 
@@ -47,7 +48,8 @@ def show(conn, term: str) -> dict:
         # on the term with both stripped. Still an exact match, just
         # tolerant of what is printed on the page.
         row = conn.execute(
-            "SELECT id, term, body, page, source_doc, entry_addressable "
+            "SELECT id, term, body, page, source_doc, entry_addressable, "
+        "searchable "
             "FROM rules_entries WHERE _plain_term(term) = _plain_term(?) "
             "ORDER BY entry_addressable DESC LIMIT 1", (term,)).fetchone()
 
@@ -68,6 +70,7 @@ def show(conn, term: str) -> dict:
     return {"term": row["term"], "body": row["body"], "page": row["page"],
             "source_doc": row["source_doc"],
             "entry_addressable": bool(row["entry_addressable"]),
+            "searchable": bool(row["searchable"]),
             "see_also": see_also, "cards": cards}
 
 
@@ -76,11 +79,12 @@ def search(conn, text: str, *, limit: int = 10) -> list[dict]:
     if not expr:
         return []
     rows = conn.execute(
-        "SELECT e.term, e.body, e.page, e.source_doc, e.entry_addressable "
+        "SELECT e.term, e.body, e.page, e.source_doc, e.entry_addressable, "
+        "e.searchable "
         "FROM rules_fts f JOIN rules_entries e ON e.id = f.rowid "
         "WHERE rules_fts MATCH ? ORDER BY rank LIMIT ?", (expr, limit))
-    return [{**dict(r), "entry_addressable": bool(r["entry_addressable"])}
-            for r in rows]
+    return [{**dict(r), "entry_addressable": bool(r["entry_addressable"]),
+             "searchable": bool(r["searchable"])} for r in rows]
 
 
 def build_links(conn: sqlite3.Connection) -> int:
@@ -111,8 +115,17 @@ def explain(conn, code: str) -> list[dict]:
 
 
 def _cite(row: dict) -> str:
+    """A page-chunked hit is a whole page of a rulebook, not a glossary
+    entry, and an unresolved index line is neither. Both are
+    non-addressable, so labelling off `entry_addressable` alone called
+    every Learn to Play page a "page pointer"."""
     page = f"p.{row['page']}" if row.get("page") else "no page"
-    suffix = "" if row.get("entry_addressable", True) else "  (page pointer)"
+    if row.get("entry_addressable", True):
+        suffix = ""
+    elif row.get("searchable", 1):
+        suffix = "  (page of a rulebook, not a glossary entry)"
+    else:
+        suffix = "  (page pointer)"
     return f"[{row['source_doc']} {page}]{suffix}"
 
 

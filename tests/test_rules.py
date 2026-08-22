@@ -13,10 +13,17 @@ _ENTRIES = [
     rules_chunk.Entry("Cost Arrow Icon ( →)", "A cost arrow icon "
                       "distinguishes a cost from an effect.", 14,
                       "rules-reference"),
+    # An unresolved index line: a citation with no rules text. Neither
+    # addressable nor searchable.
     rules_chunk.Entry("Card Anatomy", "Listed in the index at page 52.",
-                      52, "rules-reference", entry_addressable=False),
+                      52, "rules-reference",
+                      entry_addressable=False, searchable=False),
+    # A page-chunked rulebook page: not addressable by entry name, but
+    # searchable (spec §9). The fixture has to say which it is - the two
+    # were one flag until 2026-08-22, and that is what broke search.
     rules_chunk.Entry("Setup", "Follow these steps in order.", 3,
-                      "learn-to-play", entry_addressable=False),
+                      "learn-to-play",
+                      entry_addressable=False, searchable=True),
 ]
 
 
@@ -96,8 +103,12 @@ def test_search_results_all_carry_a_citation(conn):
 
 
 def test_pointers_do_not_appear_in_search(conn):
-    """A citation with no rules text is not an answer."""
-    assert all(h["entry_addressable"] for h in rules.search(conn, "index"))
+    """A citation with no rules text is not an answer. Page-chunked
+    rulebook pages are a different thing and must still be found - see
+    `test_page_chunked_content_is_searchable`."""
+    assert all(h["searchable"] for h in rules.search(conn, "index"))
+    assert not any(h["term"] == "Card Anatomy"
+                   for h in rules.search(conn, "listed index page"))
 
 
 def test_search_handles_punctuation_without_a_syntax_error(conn):
@@ -140,10 +151,14 @@ def test_real_cards_link_to_their_keywords(real_index):
 
 @pytest.mark.integration
 def test_every_real_search_hit_can_be_cited(real_index):
+    """Every hit needs a page. It does not need to be a glossary entry -
+    a page-chunked rulebook page cites fine and must be findable. This
+    asserted `entry_addressable` and passed only because Learn to Play
+    was missing from the development index entirely."""
     for q in ("villain attack", "confused", "boost icon"):
         for hit in rules.search(real_index, q):
             assert hit["page"] is not None, (q, hit["term"])
-            assert hit["entry_addressable"], (q, hit["term"])
+            assert hit["searchable"], (q, hit["term"])
 
 
 def test_plain_term_strips_printed_decoration():
@@ -162,3 +177,66 @@ def test_a_keyword_with_a_numeric_placeholder_is_found(tmp_path):
         38, "rr")])
     assert rules.show(conn, "Retaliate")["page"] == 38
     assert rules.show(conn, "retaliate x")["page"] == 38
+
+
+def test_page_chunked_content_is_searchable(tmp_path):
+    """spec §9: a rulebook without an alphabetical index is "searchable,
+    just not addressable by entry". Filling the FTS table off
+    `entry_addressable` instead of `searchable` silently cost Learn to
+    Play all 24 of its pages - the rows were stored, and `MATCH` found
+    none of them."""
+    from mc_jarvis import index, rules, rules_chunk
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    rules_chunk.store(conn, rules_chunk.chunk_pages(
+        ["COVER", "The villain activates after every player turn."],
+        source_doc="learn-to-play"))
+    hits = rules.search(conn, "villain activates")
+    assert [h["source_doc"] for h in hits] == ["learn-to-play"]
+    assert hits[0]["entry_addressable"] is False
+    assert hits[0]["searchable"] is True
+
+
+def test_an_unresolved_pointer_stays_out_of_search(tmp_path):
+    """The other half of the same distinction: a pointer carries a
+    citation and no rules text, so it must not surface as a hit."""
+    from mc_jarvis import index, rules, rules_chunk
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    rules_chunk.store(conn, [rules_chunk.Entry(
+        "Card Anatomy", "Listed in the index at page 52.", 52,
+        "marvel-champions-rules-reference",
+        entry_addressable=False, searchable=False)])
+    assert rules.search(conn, "listed index page") == []
+
+
+def test_a_rulebook_page_is_not_labelled_a_page_pointer():
+    """Both are non-addressable, and labelling off `entry_addressable`
+    alone called every Learn to Play page a "page pointer"."""
+    page = rules._cite({"page": 6, "source_doc": "learn-to-play",
+                        "entry_addressable": False, "searchable": True})
+    pointer = rules._cite({"page": 52, "source_doc": "rr",
+                           "entry_addressable": False, "searchable": False})
+    entry = rules._cite({"page": 31, "source_doc": "rr",
+                         "entry_addressable": True, "searchable": True})
+    assert "page pointer" not in page and "rulebook" in page
+    assert "page pointer" in pointer
+    assert entry == "[rr p.31]"
+
+
+@pytest.mark.integration
+def test_every_page_chunked_row_in_the_real_index_is_searchable(real_index):
+    """Guards the regression at the level it actually happened: whatever
+    rulebooks the index holds, none of their page-chunked rows may be
+    stored-but-unfindable."""
+    rows = real_index.execute(
+        "SELECT source_doc, COUNT(*) n FROM rules_entries "
+        "WHERE entry_addressable = 0 AND searchable = 1 "
+        "GROUP BY source_doc").fetchall()
+    for r in rows:
+        found = real_index.execute(
+            "SELECT COUNT(*) FROM rules_fts f "
+            "JOIN rules_entries e ON e.id = f.rowid "
+            "WHERE rules_fts MATCH 'the OR a OR of' "
+            "  AND e.source_doc = ?", (r["source_doc"],)).fetchone()[0]
+        assert found > 0, f"{r['source_doc']}: {r['n']} rows, 0 searchable"

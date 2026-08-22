@@ -6471,20 +6471,31 @@ The ordering comes from the RR's own Simultaneous Timing Priority chart
 Three things worth stating whenever they come up, because all three
 surprise people:
 
-- **When Defeated and When Completed are Forced Interrupts. When Revealed
-  is not.** The RR states that equivalence for the first two only; the
-  chart puts When Revealed a full tier later, on rung 3 alongside Boost.
-- **Constant abilities, delayed effects and lasting effects sit above
-  every trigger**, and status-card Forced Interrupts outrank ordinary ones.
-- **Forced beats optional at the same tier**, and the first player breaks
-  every remaining tie — including between abilities they do not control.
+**Never state a rung from memory. Run the command.** Trigger ordering is
+one of the few things in this game that has *changed between Rules
+Reference versions*, and the tool answers from the edition the player
+actually has:
+
+- In **v1.7**, "When Defeated" sits on rung 5 beside Boost and When
+  Revealed. In **v1.8** it is a Forced Interrupt, two full tiers earlier.
+  Anything you remember about trigger order is a coin flip on which
+  edition it came from.
+- `mc-jarvis timing` refuses to answer when its chart does not match the
+  indexed rulebook, rather than guessing. If it refuses, say so and fall
+  back to `mc-jarvis rules show Ability`, which prints the chart as the
+  player's own rulebook prints it. Do not fill the gap from memory.
+- `mc-jarvis status` reports `rr_version`. Quote it when a timing answer
+  matters.
+
+Two things worth stating whenever they come up, because both hold across
+editions and both surprise people:
+
 - **A trigger in quotation marks is a reference, not a trigger.** A card
   reading `"Boost"` is talking about Boost abilities; it does not have
-  one. `mc-jarvis timing` says so when it applies.
-
-Actions, Resources, Special and Setup are not on the chart at all — they
-are not tied to a triggering condition. `mc-jarvis timing "Hero Action"`
-cites the entry that governs them instead.
+  one.
+- **Actions, Resources, Special and Setup are not on the chart at all** —
+  they are not tied to a triggering condition. `mc-jarvis timing "Hero
+  Action"` cites the entry that governs them instead.
 ```
 
 - [x] **Step 11: Commit**

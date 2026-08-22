@@ -135,6 +135,10 @@ CREATE TABLE IF NOT EXISTS rules_entries (
     page              INTEGER,
     source_doc        TEXT NOT NULL,
     entry_addressable INTEGER NOT NULL DEFAULT 1,
+    -- Distinct from entry_addressable: page-chunked content is
+    -- searchable but not addressable by name; an unresolved index
+    -- pointer is neither.
+    searchable        INTEGER NOT NULL DEFAULT 1,
     UNIQUE (source_doc, term, page)
 );
 CREATE INDEX IF NOT EXISTS idx_rules_term ON rules_entries(lower(term));

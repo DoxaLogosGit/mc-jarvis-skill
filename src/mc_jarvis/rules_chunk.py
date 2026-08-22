@@ -97,6 +97,11 @@ class Entry:
     page: int | None
     source_doc: str
     entry_addressable: bool = True
+    # Two different properties, and conflating them cost Learn to Play its
+    # entire full-text index: a page-chunked document is not addressable
+    # by entry name but must still be searchable (spec §9), while an
+    # unresolved index pointer is neither.
+    searchable: bool = True
     see_also: list[str] = field(default_factory=list)
 
 
@@ -269,7 +274,7 @@ def chunk_entries(pages: list[str], index: IndexResult, *,
                       f"{page}, outside the glossary text this index "
                       f"covers. Consult the rulebook at that page."),
                 page=page, source_doc=source_doc,
-                entry_addressable=False))
+                entry_addressable=False, searchable=False))
             continue
 
         see_also: list[str] = []
@@ -300,7 +305,7 @@ def chunk_pages(pages: list[str], *, source_doc: str) -> list[Entry]:
         first = next((l.strip() for l in body.split("\n") if l.strip()), "")
         out.append(Entry(term=f"{source_doc} p.{n}: {first[:60]}",
                          body=body, page=n, source_doc=source_doc,
-                         entry_addressable=False))
+                         entry_addressable=False, searchable=True))
     return out
 
 
@@ -364,10 +369,10 @@ def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
 
     conn.executemany(
         "INSERT OR REPLACE INTO rules_entries "
-        "(term, body, page, source_doc, entry_addressable) "
-        "VALUES (?, ?, ?, ?, ?)",
-        [(e.term, e.body, e.page, e.source_doc, int(e.entry_addressable))
-         for e in entries])
+        "(term, body, page, source_doc, entry_addressable, searchable) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [(e.term, e.body, e.page, e.source_doc, int(e.entry_addressable),
+          int(e.searchable)) for e in entries])
     conn.executemany(
         "INSERT OR IGNORE INTO rules_see_also (term, target, source_doc) "
         "VALUES (?, ?, ?)",
@@ -376,10 +381,13 @@ def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
     conn.execute("INSERT INTO rules_fts(rules_fts) VALUES('delete-all')")
     # Redirects carry no page, and a search hit with no page would break
     # the citation guarantee. They stay reachable by name through
-    # `rules show`, but out of the full-text index.
+    # `rules show`, but out of the full-text index. Filtering on
+    # `entry_addressable` instead of `searchable` here is what silently
+    # cost Learn to Play all 24 of its pages: page-chunked content is not
+    # addressable by name, which is not the same as not being searchable.
     conn.execute(
         "INSERT INTO rules_fts(rowid, term, body) "
         "SELECT id, term, body FROM rules_entries "
-        "WHERE page IS NOT NULL AND entry_addressable = 1")
+        "WHERE page IS NOT NULL AND searchable = 1")
     conn.commit()
     return conn.execute("SELECT COUNT(*) FROM rules_entries").fetchone()[0]

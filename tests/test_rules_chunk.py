@@ -154,14 +154,27 @@ def test_a_mislabelled_rules_reference_is_refused():
 
 @pytest.mark.integration
 def test_real_extraction_resolves_almost_every_entry(rules_pdf):
-    """The Task 13 gate. Measured 2026-08-22: 215 of 217 at 0.86
-    coverage, the two exceptions classified in the plan."""
+    """The Task 13 gate.
+
+    `resolved` is the one that governs lookups, and it is stable across
+    editions: 216 of 217 on both v1.7 and v1.8, the exception being
+    `Card Anatomy`, which is a diagram and is stored as a labelled
+    pointer.
+
+    `coverage` is the share of the document's text captured into entries,
+    so it moves with how much of the book is glossary: 0.887 on v1.8 (71
+    pages) and 0.862 on v1.7 (68 pages). The original 0.88 floor was
+    measured on v1.8 alone and failed v1.7 - which reads as a lookup
+    defect and is not one. The floor now sits below both measurements and
+    names them.
+    """
     from mc_jarvis import pdf
     pages = pdf.extract_pages(rules_pdf, backend="pypdf")
     idx = rules_chunk.parse_index(pages)
     rep = rules_chunk.extraction_report(pages, idx)
-    assert rep["resolved"] >= 215, rep["unresolved"]
-    assert rep["coverage"] >= 0.88, rep["coverage"]
+    assert rep["resolved"] >= 216, rep["unresolved"]
+    assert len(idx.entries) - rep["resolved"] <= 1, rep["unresolved"]
+    assert rep["coverage"] >= 0.85, rep["coverage"]
 
 
 @pytest.mark.integration
