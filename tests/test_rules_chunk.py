@@ -160,8 +160,8 @@ def test_real_extraction_resolves_almost_every_entry(rules_pdf):
     pages = pdf.extract_pages(rules_pdf, backend="pypdf")
     idx = rules_chunk.parse_index(pages)
     rep = rules_chunk.extraction_report(pages, idx)
-    assert rep["resolved"] >= 205, rep["unresolved"]
-    assert rep["coverage"] >= 0.84, rep["coverage"]
+    assert rep["resolved"] >= 215, rep["unresolved"]
+    assert rep["coverage"] >= 0.88, rep["coverage"]
 
 
 @pytest.mark.integration
@@ -193,3 +193,69 @@ def test_the_shipped_glyph_config_covers_the_real_document(rules_pdf):
     mapping = rules_chunk.load_glyphs()
     _, unmapped = rules_chunk.apply_glyphs("".join(pages), mapping)
     assert unmapped == set(), sorted(f"U+{ord(c):04X}" for c in unmapped)
+
+
+# --- what happens to entries the chunker cannot resolve ---
+
+MERGED_PAGES = [
+    "COVER",
+    "INDEXINDEX\nVariable Warding ....................4\n"
+    "Card Anatomy ....................52\n",
+    "",
+    "GLOSSARYGLOSSARY\nWARDING\nWarding prevents the next point of damage.\n",
+]
+
+
+def test_a_merged_index_line_is_recovered_not_lost():
+    """Two-column index lines weld a stray fragment onto a real entry:
+    "Variable You, Your" is the p.49 entry "You, Your" with debris."""
+    idx = rules_chunk.parse_index(MERGED_PAGES, scan_pages=2)
+    entries = {e.term: e for e in rules_chunk.chunk_entries(
+        MERGED_PAGES, idx, source_doc="rr")}
+    assert "Warding" in entries
+    assert "prevents the next point" in entries["Warding"].body
+    assert entries["Warding"].entry_addressable is True
+
+
+def test_an_unresolvable_entry_becomes_a_labelled_pointer():
+    """Never a blank. A citation with no text still helps; an empty body
+    presented as a rules entry reads as an answer."""
+    idx = rules_chunk.parse_index(MERGED_PAGES, scan_pages=2)
+    entries = {e.term: e for e in rules_chunk.chunk_entries(
+        MERGED_PAGES, idx, source_doc="rr")}
+    anatomy = entries["Card Anatomy"]
+    assert anatomy.entry_addressable is False
+    assert anatomy.page == 52
+    assert anatomy.body                       # never empty
+    assert "52" in anatomy.body
+
+
+def test_pointers_are_excluded_from_full_text_search(tmp_path):
+    idx = rules_chunk.parse_index(MERGED_PAGES, scan_pages=2)
+    conn = index.connect(tmp_path / "mc.sqlite")
+    rules_chunk.store(conn, rules_chunk.chunk_entries(
+        MERGED_PAGES, idx, source_doc="rr"))
+    hits = [r["term"] for r in conn.execute(
+        "SELECT e.term FROM rules_fts f JOIN rules_entries e "
+        "ON e.id = f.rowid WHERE rules_fts MATCH ?", ('"Anatomy"',))]
+    assert hits == []
+
+
+def test_storing_a_blank_addressable_entry_fails_loudly(tmp_path):
+    conn = index.connect(tmp_path / "mc.sqlite")
+    with pytest.raises(rules_chunk.EmptyEntry, match="no body"):
+        rules_chunk.store(conn, [rules_chunk.Entry(
+            "Ghost", "", 12, "rr", entry_addressable=True)])
+
+
+@pytest.mark.integration
+def test_no_real_entry_is_stored_blank(rules_pdf, tmp_path):
+    from mc_jarvis import pdf
+    pages = pdf.extract_pages(rules_pdf, backend="pypdf")
+    idx = rules_chunk.parse_index(pages)
+    conn = index.connect(tmp_path / "mc.sqlite")
+    rules_chunk.store(conn, rules_chunk.chunk_entries(
+        pages, idx, source_doc="rr"))          # raises if any is blank
+    assert conn.execute(
+        "SELECT COUNT(*) FROM rules_entries WHERE body = ''"
+    ).fetchone()[0] == 0

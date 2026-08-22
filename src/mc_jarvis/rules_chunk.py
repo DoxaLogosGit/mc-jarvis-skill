@@ -236,10 +236,42 @@ def chunk_entries(pages: list[str], index: IndexResult, *,
             return None          # genuinely ambiguous; do not guess
         return candidates[0][1]
 
+    def recover_merged(term: str):
+        """Two-column index lines can weld a stray fragment onto the front
+        of a real entry: "Variable You, Your" is the p.49 entry
+        "You, Your" with debris attached. Try the longest suffix that
+        resolves, so the entry is recovered rather than lost."""
+        words = term.split()
+        for start in range(1, len(words)):
+            suffix = " ".join(words[start:])
+            found = resolve(suffix)
+            if found and found[1]:
+                return suffix, found
+        return None, None
+
     entries = []
     for term, page in index.entries:
         found = resolve(term)
+        if found is None or not found[1]:
+            recovered, alt = recover_merged(term)
+            if alt is not None:
+                term, found = recovered, alt
         body = found[1] if found else ""
+
+        if not body:
+            # Never store an addressable entry with an empty body: a
+            # blank reads as an answer. Keep the citation, say plainly
+            # that the text was not extracted, and mark it non-
+            # addressable so the CLI labels it and search skips it.
+            entries.append(Entry(
+                term=term,
+                body=(f"Listed in the Rules Reference index at page "
+                      f"{page}, outside the glossary text this index "
+                      f"covers. Consult the rulebook at that page."),
+                page=page, source_doc=source_doc,
+                entry_addressable=False))
+            continue
+
         see_also: list[str] = []
         m = SEE_ALSO_RE.search(body)
         if m:
@@ -280,7 +312,7 @@ def extraction_report(pages: list[str], index: IndexResult) -> dict:
     """
     entries = chunk_entries(pages, index, source_doc="_audit")
     unresolved = [e.term for e in entries
-                  if e.entry_addressable and e.page is not None and not e.body]
+                  if e.page is not None and not e.entry_addressable]
     glossary = re.sub(r"\s+", "", "".join(pages[3:49]))
     captured = re.sub(r"\s+", "", "".join(
         e.body for e in entries if e.page is not None))
@@ -313,7 +345,19 @@ def apply_glyphs(text: str, mapping: dict[str, str]) -> tuple[str, set[str]]:
     return text, unmapped
 
 
+class EmptyEntry(RuntimeError):
+    """An addressable entry has no body. A blank answer reads as an
+    answer, so this fails the build rather than reaching a player."""
+
+
 def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
+    blank = [e.term for e in entries if e.entry_addressable and not e.body]
+    if blank:
+        raise EmptyEntry(
+            f"{len(blank)} addressable rules entries have no body: "
+            f"{blank[:5]}. Store them as non-addressable pointers instead, "
+            f"so the citation survives without a blank posing as a ruling.")
+
     for doc in {e.source_doc for e in entries}:
         conn.execute("DELETE FROM rules_entries WHERE source_doc = ?", (doc,))
         conn.execute("DELETE FROM rules_see_also WHERE source_doc = ?", (doc,))
@@ -335,6 +379,7 @@ def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
     # `rules show`, but out of the full-text index.
     conn.execute(
         "INSERT INTO rules_fts(rowid, term, body) "
-        "SELECT id, term, body FROM rules_entries WHERE page IS NOT NULL")
+        "SELECT id, term, body FROM rules_entries "
+        "WHERE page IS NOT NULL AND entry_addressable = 1")
     conn.commit()
     return conn.execute("SELECT COUNT(*) FROM rules_entries").fetchone()[0]

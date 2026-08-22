@@ -4349,20 +4349,23 @@ print(json.dumps(rep, indent=2, ensure_ascii=False))
 
 **Acceptance gate — all four must hold:**
 
-| Check | Threshold | Measured 2026-08-21 |
+| Check | Threshold | Measured 2026-08-22 |
 |---|---|---|
-| `resolved` / `index_entries` | ≥ 205 of 216 | 207 |
-| `coverage` | ≥ 0.88 | 0.91 |
+| `resolved` / `index_entries` | >= 215 of 217 | 216 |
+| `coverage` | >= 0.88 | 0.887 |
 | Body overlap | impossible by construction | partition |
-| Every `unresolved` term explained in writing | no exceptions | 9, all classified below |
+| Addressable entries with an empty body | **zero** | 0 |
 
-The nine unresolved entries measured on 2026-08-21, and why each is acceptable:
+**An entry the chunker cannot resolve is never stored blank.** That is the important half of this gate, and an earlier version got it wrong: unresolved entries were written with `body = ''`, marked addressable, and indexed for search — so `rules show "Card Anatomy"` returned an empty answer that read as an answer. Two mechanisms now:
 
-- `Card Anatomy` — points into Appendix III (p.52), outside the glossary span. Not a glossary entry.
-- `Golden Rules`, `Grim Rule`, `In Play`, `Play Restrictions and Permissions` — the index term and the body header are worded differently. `match_key` already strips a leading "the"; extend it if you can do so without collapsing two distinct entries onto one key.
-- `Limit …`, `2 Ru l e s R e f eR e n c e Max, Maximum`, `Variable You, Your`, `Activation) Unique Icon` — two-column merge artifacts in `parse_index`, where adjacent index lines joined. Fix in `parse_index`, not here.
+- **Merged index lines are recovered.** Two-column capture welds a stray fragment onto a real entry — `Variable You, Your` is the p.49 entry `You, Your` with debris attached, and there is no `VARIABLE` header at all. `chunk_entries` retries the longest suffix that resolves, recovering the entry rather than losing it.
+- **Whatever remains becomes a labelled pointer.** Its body states the page and says the text was not extracted, `entry_addressable` is 0 so the CLI labels it, and it is excluded from FTS. The citation survives; the blank does not.
 
-**If your run produces a different list, do not widen the thresholds.** Read each entry, classify it, and either fix the matcher or write down why it is acceptable. Commit the classification alongside the code — the next person needs to know these were examined rather than tolerated.
+`store` raises `EmptyEntry` if an addressable entry has no body, so this cannot regress silently.
+
+The one remaining pointer is `Card Anatomy`, a genuine index entry pointing into Appendix III at p.52 — a diagram outside the glossary prose, so there is nothing to extract, and citing the page is the correct answer.
+
+**If your run leaves more than one pointer, do not widen the thresholds.** Read each one, decide whether it is recoverable, and record why if it is not.
 
 - [ ] **Step 9: Persist the audit so it stays visible**
 
