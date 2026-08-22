@@ -482,7 +482,7 @@ Implements §6. Requirements are checked at runtime because this runs under agen
   - `doctor.run_checks(*, network: bool = True) -> list[Check]`
   - `doctor.pdf_backend() -> str` — returns `"pdftotext"`, `"pypdf"`, or `"none"`
   - `doctor.has_fts5() -> bool`
-  - `doctor.handle(args) -> int` — 0 when all hard checks pass, 1 otherwise
+  - `doctor.handle(args) -> int` — 0 when all hard checks pass, 1 otherwise. Reads `args.network` (default True) so tests and offline machines exercise the same path without reaching the network.
 
 - [ ] **Step 1: Write the failing test**
 
