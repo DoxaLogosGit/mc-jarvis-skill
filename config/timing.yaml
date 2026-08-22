@@ -116,6 +116,24 @@ compounds:
   "When Revealed/Defeated":
     parts: ["When Revealed", "When Defeated"]
     seen_on: ["59042"]            # Hecate
+  # 21147 Hela's Crown prints `<b>Forced Response<b>:` - an opening tag
+  # where a closing one belongs. The bold span therefore runs to the next
+  # `</b>`, swallowing the ability text AND the card's Boost trigger. The
+  # only malformed bold span in the corpus, so it is corrected by name
+  # rather than by a rule about colons inside bold text.
+  "Forced Response: After Hela schemes, give her a facedown boost card. [star] Boost":
+    parts: ["Forced Response", "Boost"]
+    seen_on: ["21147"]            # Hela's Crown
+
+# A bold span longer than this is prose bolded for emphasis on a villain
+# or scheme card ("If Odin leaves play, the players lose the game."), not
+# a timing trigger. Measured 2026-08-22 across all 4,379 cards: the
+# longest span that classifies is 29 characters ("When Revealed (Norman
+# Osborn)") and the shortest bolded sentence is 41 ("Threat cannot be
+# removed from Gjallerbru."), so the cutoff sits in an 11-character empty
+# band rather than on top of anything. `compounds` keys are exempt.
+# `test_the_prefix_cutoff_sits_in_measured_empty_space` re-measures.
+max_prefix_chars: 40
 
 # Bold text that is not a triggered ability at all.
 # `Boost` is NOT in this list - the chart makes it rung 3.
@@ -130,11 +148,12 @@ not_triggers:
   - bold                        # 27153 Induced Panic
   - the players win the game    # 50103a/b M.O.D.O.K.
 
-# Shapes that are not triggers. A pattern is allowed here only when no
-# printed timing trigger could match it - `test_no_trigger_matches_a_
-# not_trigger_pattern` asserts exactly that against every key in
-# `triggers`, `outside_chart` and `aliases`. That is what separates a
-# named rule from the wildcard the plan forbids.
+# Shapes that are not triggers. A pattern is allowed here only when it
+# matches no trigger this reference currently knows, and none of the
+# prefixes that actually classify in the real corpus - the two tests named
+# `..._not_trigger_pattern` assert both. That is what separates a named
+# rule from the wildcard the plan forbids. It cannot speak for a trigger
+# FFG has not printed yet; the corpus check is what would catch one.
 not_trigger_patterns:
   # "Give to the Tony Stark player." and ~45 siblings, including the four
   # printed without "the" or without the full stop, and two that print

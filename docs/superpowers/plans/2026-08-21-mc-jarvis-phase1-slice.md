@@ -5548,6 +5548,25 @@ Two bugs outside this task, both found by the second `update`:
   cannot leave the reset half-done — the one state that function exists
   to prevent.
 
+**Two more found by re-reading the gates rather than the code.** The
+`len(prefix) > 40` cutoff dropped bold spans without classifying them and
+without counting them — the same shape of unmeasured filter as the dead
+`See also` regex. Measured: 113 rows sit above it, 112 of them prose
+bolded for emphasis on villain and scheme cards, and **one a real
+trigger** — 21147 Hela's Crown prints `<b>Forced Response<b>:`, an opening
+tag where a closing one belongs, so the span runs on and swallows the
+card's `Boost` trigger with it. Both are recovered through `compounds`,
+which is exempt from the cutoff. The cutoff itself is now config, with the
+measurement recorded: the longest span that classifies is 29 characters
+and the shortest bolded sentence is 41, so it sits in an 11-character
+empty band, and an integration test re-measures both ends.
+
+And `status` reported `rules_entries: 263` with no resolved count, which
+reads as "263 terms you can look up" when 46 are redirects and one is a
+page pointer. It now also carries `rules_resolved`, taken from the build's
+own count rather than recomputed — two different numbers under one name is
+the confusion, not the cure.
+
 Also dropped: `parse_chart`'s `len(...) < 90` line-wrap repair. It never
 fires on the real chart, so it was untested logic guarding a case
 `verify_chart` already reports by name.

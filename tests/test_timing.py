@@ -478,7 +478,66 @@ def test_real_round_structure(real_index):
 
 @pytest.mark.integration
 def test_real_quoted_triggers_are_marked_as_references(real_index):
-    """14 printings quote a trigger. None of them has that ability."""
+    """15 rows across 13 cards quote a trigger; none has that ability.
+
+    An exact count, not `> 0`: a regression that caught only one quote
+    form would leave `> 0` green, and so would a release adding a
+    sixteenth."""
     n = real_index.execute(
         "SELECT COUNT(*) FROM timing_triggers WHERE quoted = 1").fetchone()[0]
-    assert n > 0
+    assert n == 15
+    cards = real_index.execute(
+        "SELECT COUNT(DISTINCT code) FROM timing_triggers "
+        "WHERE quoted = 1").fetchone()[0]
+    assert cards == 13
+
+
+@pytest.mark.integration
+def test_the_prefix_cutoff_sits_in_measured_empty_space(real_index):
+    """`max_prefix_chars` drops bold spans without classifying them, which
+    is exactly the shape of filter that hid the blank rules entries. It is
+    allowed only while nothing lives near it: the longest span that
+    classifies is 29 characters and the shortest that does not is 41."""
+    from mc_jarvis.cardtext import BOLD_RE
+    longest_ok, shortest_prose = 0, 10_000
+    for row in real_index.execute(
+            "SELECT text FROM cards WHERE text IS NOT NULL"):
+        for raw in BOLD_RE.findall(row["text"] or ""):
+            prefix = timing._norm(timing.TAG_RE.sub("", raw))
+            # Compound keys are exempt from the cutoff by design, so they
+            # say nothing about where it may sit.
+            if (not prefix or timing.is_known_non_trigger(prefix)
+                    or prefix in timing.load_config()["compounds"]):
+                continue
+            if timing.classify_all(prefix):
+                longest_ok = max(longest_ok, len(prefix))
+            else:
+                shortest_prose = min(shortest_prose, len(prefix))
+    assert longest_ok == 29
+    assert shortest_prose == 41
+    assert longest_ok < timing.load_config()["max_prefix_chars"] < shortest_prose
+
+
+@pytest.mark.integration
+def test_malformed_markup_still_yields_its_triggers(real_index):
+    """21147 Hela's Crown prints `<b>Forced Response<b>:`, so the bold span
+    runs on and swallows the card's Boost trigger too. Both are recovered."""
+    rows = real_index.execute(
+        "SELECT canonical FROM timing_triggers WHERE code = '21147' "
+        "ORDER BY ordinal").fetchall()
+    assert [r["canonical"] for r in rows] == ["Forced Response", "Boost"]
+
+
+@pytest.mark.integration
+def test_no_not_trigger_pattern_swallows_a_real_prefix(real_index):
+    """The config-key check cannot speak for a prefix FFG prints later.
+    This one checks the patterns against every prefix that classifies in
+    the corpus as it actually stands."""
+    config = timing.load_config()
+    patterns = [re.compile(p) for p in config["not_trigger_patterns"]]
+    for row in real_index.execute(
+            "SELECT DISTINCT raw_prefix FROM timing_triggers "
+            "WHERE canonical IS NOT NULL"):
+        for rx in patterns:
+            assert not rx.match(row["raw_prefix"]), \
+                f"{rx.pattern!r} swallows {row['raw_prefix']!r}"

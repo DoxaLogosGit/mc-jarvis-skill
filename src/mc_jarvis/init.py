@@ -65,6 +65,7 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
         "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
         [("built_at", _dt.datetime.now(_dt.timezone.utc).isoformat()),
          ("card_count", str(counts["cards"])),
+         ("rules_resolved", str(counts.get("rules_resolved", 0))),
          ("timing_broken", json.dumps(broken))])
     conn.commit()
     return counts

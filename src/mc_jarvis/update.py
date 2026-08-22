@@ -69,7 +69,13 @@ def status(args) -> int:
         "stale": age > STALE_DAYS,
         "cards": count("cards"),
         "identities": count("identities"),
+        # 263 rows, but 46 are redirects and one is a page pointer.
+        # Reporting only the total reads as "263 terms you can look up",
+        # which is not true. `rules_resolved` is the build's own count of
+        # index entries that resolved to text - the number that means
+        # something - not a second figure recomputed from the table.
         "rules_entries": count("rules_entries"),
+        "rules_resolved": int(meta.get("rules_resolved") or 0),
         "unmapped_glyphs": meta.get("unmapped_glyphs", ""),
         "timing_triggers": count("timing_triggers"),
         "timing_broken": json.loads(meta.get("timing_broken") or "[]"),

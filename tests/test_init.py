@@ -207,3 +207,28 @@ def test_the_real_rules_reference_carries_enough_index_to_be_addressable():
     entries = rules_chunk.parse_index(pdf.extract_pages(rr)).entries
     assert len(entries) > init.INDEX_MIN_ENTRIES
     assert 200 < len(entries) < 260
+
+
+def test_status_reports_resolved_entries_not_just_rows(
+        tmp_path, monkeypatch, capsys):
+    """263 rows, 216 of them answerable. Printing only the total reads as
+    "263 terms you can look up", which is the same "reads as an answer"
+    problem the blank entries had, one layer up."""
+    from types import SimpleNamespace
+
+    from mc_jarvis import index, paths, update
+
+    db = tmp_path / "mc.sqlite"
+    conn = index.connect(db)
+    conn.executemany(
+        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+        [("built_at", "2026-08-22T00:00:00+00:00"), ("card_count", "4379"),
+         ("rules_resolved", "216")])
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(paths, "db_path", lambda: db)
+    assert update.status(SimpleNamespace(json=True)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["rules_resolved"] == 216
+    assert "rules_entries" in payload

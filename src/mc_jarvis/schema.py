@@ -176,6 +176,8 @@ CREATE TABLE IF NOT EXISTS timing_triggers (
     -- truncates `cards` and rebuilds downstream, and a reference here
     -- makes the second `update` fail with an integrity error.
     code       TEXT NOT NULL,
+    -- Counts triggers, not bold spans: one prefix can carry two
+    -- abilities, so 59042 Hecate has two rows sharing a raw_prefix.
     ordinal    INTEGER NOT NULL,
     raw_prefix TEXT NOT NULL,   -- exactly as printed, markup stripped
     qualifier  TEXT,            -- Hero, Alter-Ego, an identity name, ...

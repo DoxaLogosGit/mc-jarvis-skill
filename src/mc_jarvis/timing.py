@@ -254,6 +254,20 @@ def classify_all(prefix: str) -> list[Trigger]:
     return [t] if t is not None else []
 
 
+def is_bolded_prose(prefix: str) -> bool:
+    """A bold span too long to be a trigger.
+
+    Villain and scheme cards bold whole sentences for emphasis. The cutoff
+    is measured, not assumed - see `max_prefix_chars` in timing.yaml.
+    `compounds` keys are exempt: 21147 Hela's Crown's malformed markup
+    produces an 81-character span that really does carry two triggers.
+    """
+    config = load_config()
+    raw = _norm(TAG_RE.sub("", prefix or ""))
+    return (len(raw) > config["max_prefix_chars"]
+            and raw not in config["compounds"])
+
+
 def is_known_non_trigger(prefix: str) -> bool:
     """Bold text this reference has decided is not a trigger. Distinct from
     "did not classify", which is a gap the real-data gate reports."""
@@ -366,7 +380,8 @@ def build(conn: sqlite3.Connection) -> int:
         ordinal = 0
         for prefix in BOLD_RE.findall(card["text"] or ""):
             norm = _norm(TAG_RE.sub("", prefix))
-            if not norm or len(norm) > 40 or is_known_non_trigger(norm):
+            if (not norm or is_known_non_trigger(norm)
+                    or is_bolded_prose(norm)):
                 continue
             # An unclassifiable prefix is still recorded, with a NULL
             # canonical, so the real-data gate can name it. Silence here
