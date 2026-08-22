@@ -210,9 +210,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mc_jarvis"]
+
 # The skill and config ship inside the wheel so `uv tool install` users,
-# who have no checkout, can still run `install-skill` (spec §7).
-artifacts = ["src/mc_jarvis/_bundled/**"]
+# who have no checkout, can still run `install-skill` (spec §7). In a
+# checkout these paths are symlinks to the repo-root sources (Step 8);
+# force-include resolves them to real files at build time.
+[tool.hatch.build.targets.wheel.force-include]
+"config/legality.yaml" = "src/mc_jarvis/_bundled/legality.yaml"
+"config/glyphs.yaml"   = "src/mc_jarvis/_bundled/glyphs.yaml"
+"skill"                = "src/mc_jarvis/_bundled/skill"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -416,16 +422,7 @@ ln -sfn ../../../skill                src/mc_jarvis/_bundled/skill
 printf '*\n!.gitignore\n' > src/mc_jarvis/_bundled/.gitignore
 ```
 
-The links are gitignored; the wheel gets real files instead. Replace the `artifacts` line in `pyproject.toml` with a `force-include` mapping, which resolves the real sources at build time:
-
-```toml
-[tool.hatch.build.targets.wheel.force-include]
-"config/legality.yaml" = "src/mc_jarvis/_bundled/legality.yaml"
-"config/glyphs.yaml"   = "src/mc_jarvis/_bundled/glyphs.yaml"
-"skill"                = "src/mc_jarvis/_bundled/skill"
-```
-
-Add the test:
+The links are gitignored; the `force-include` block already written in Step 3 gives the wheel real files instead. Add the test:
 
 ```python
 # tests/test_bundled.py
