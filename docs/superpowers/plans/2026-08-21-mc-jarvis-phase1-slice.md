@@ -3217,6 +3217,18 @@ Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regar
 >
 > The drafted `_Collector` read them from the text *following* the anchor and would have returned `None` for all three — silently disabling `diff`, and with it every revision check. `tests/fixtures/ffg_support.html` now mirrors this structure with invented titles.
 >
+> **Correction, and an unhandled content type.** An earlier note here dismissed third-party mirrors as "re-hosted copies of old versions". That was wrong, reached by grepping PDF links and reading the alphabetically-first hits. Hall of Heroes hosts **v1.8 — the current Rules Reference** — alongside a complete 1.0→1.8 archive, so it is *more* current than the archive.org capture, which still carries v1.7.
+>
+> More importantly it carries something FFG's site does not: **dated designer rulings that post-date the Rules Reference**, 31 on one page covering Dec 2025 – Mar 2026, each attributed and dated. One of them reads:
+>
+> > "No, Sam Wilson would not take any excess damage from Overkill, though **we will need to update the Overkill rules to reflect this**."
+>
+> That is a designer stating the RR is currently wrong on Overkill. An assistant that cites the RR and does not know this answers confidently and incorrectly — the exact failure this tool exists to prevent. §9's "every rules answer cites the entry name and page" is necessary but not sufficient: a citation to superseded text is still wrong.
+>
+> The structure is parseable — `<h2>` month heading, `<blockquote>` question, following `<p>` answer, and an attribution line of the form `-Alex – March 6, 2026`.
+>
+> **Not built in this plan, and the reasons are worth stating.** It is a third-party curation of official rulings, which raises questions the PDF pipeline does not: reliance on one community site staying up and keeping its markup, attribution, and the distribution principle (fetch at init, never ship — same as everything else). It also needs a different chunker and a supersession model that can say "the RR says X, but a later ruling says Y". That is a feature, not a parser tweak. It belongs in the rules-pipeline plan as a designed task with the user's call on scope, not as a silent addition here.
+>
 > **archive.org rate-limits.** A burst of requests times out, and a bare failure reads as "no snapshot exists" — the wrong diagnosis, sending the user to find a browser they do not need. `_get` retries with backoff.
 
 **Files:**
