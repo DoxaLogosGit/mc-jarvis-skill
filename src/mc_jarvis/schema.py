@@ -128,6 +128,28 @@ CREATE TABLE IF NOT EXISTS play_limits (
     PRIMARY KEY (code, kind, scope, phrase)
 );
 
+CREATE TABLE IF NOT EXISTS rules_entries (
+    id                INTEGER PRIMARY KEY,
+    term              TEXT NOT NULL,
+    body              TEXT NOT NULL,
+    page              INTEGER,
+    source_doc        TEXT NOT NULL,
+    entry_addressable INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (source_doc, term, page)
+);
+CREATE INDEX IF NOT EXISTS idx_rules_term ON rules_entries(lower(term));
+
+CREATE TABLE IF NOT EXISTS rules_see_also (
+    term       TEXT NOT NULL,
+    target     TEXT NOT NULL,
+    source_doc TEXT NOT NULL,
+    PRIMARY KEY (source_doc, term, target)
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS rules_fts USING fts5(
+    term, body, content='rules_entries', content_rowid='id'
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'

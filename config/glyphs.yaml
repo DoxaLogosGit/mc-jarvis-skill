@@ -1,4 +1,26 @@
 # Private-use icon codepoints -> readable tokens (spec §9).
-# Derived from the Rules Reference index in Task 13, then reviewed.
+#
+# DERIVED from the Rules Reference's own index, which names every icon in
+# entries of the form "Amplify Icon (<glyph>)", then reviewed by hand.
+# Regenerate after an RR revision with `rules_chunk.parse_index(...).glyphs`
+# rather than editing codepoints you have not seen in that output.
+#
+# Verified 2026-08-22 against RR v1.8: 13 codepoints appear in the body
+# and the index names all 13. The range is U+F520-U+F531, not U+F520-F530
+# as spec §9 and §16 state; U+F523 and U+F529-U+F52C are unused.
 version: 1
-glyphs: {}
+glyphs:
+  "U+F520": "boost"
+  "U+F521": "amplify"
+  "U+F522": "consequential-damage"
+  "U+F524": "per-player"
+  "U+F525": "wild"
+  "U+F526": "physical"
+  "U+F527": "mental"
+  "U+F528": "energy"
+  "U+F52D": "star"
+  "U+F52E": "crisis"
+  "U+F52F": "hazard"
+  "U+F530": "acceleration"
+  "U+F531": "unique"      # index text reads "Activation) Unique Icon";
+                          # the leading fragment is two-column bleed
