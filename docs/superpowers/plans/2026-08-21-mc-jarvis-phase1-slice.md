@@ -29,6 +29,8 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 - **Every subcommand takes an explicit verb.** No parent command takes a bare positional (`card show Vision` must not parse `show` as a query).
 - **Every rules answer cites the entry name and page.**
 - **Test fixtures are hand-invented and contain no FFG text.** Tests that need the real corpus are integration tests, skipped when the index is absent.
+- **Shape every fixture from observed data, never from an assumption about it.** Before writing a fixture that mimics an external format, look at the real thing and copy its shape. This rule exists because it was broken: the Task 13 `See also` fixture used `See also:` while the Rules Reference prints `See also :` with a space. The test passed and the feature had never worked — a fixture built to match the assumption cannot fail the assumption.
+- **A task's real-data check is a gate, not a closing flourish.** Every task whose fixture encodes an assumption about external data ends by running against the real source, with a numeric threshold. "Expected: a small number" is not a threshold. If a check has no number you can fail, it is not checking anything.
 
 ## Verified findings this plan adds to the spec
 
@@ -3117,6 +3119,10 @@ git commit -m "feat: encounter set and villain lookup"
 ## Task 11: The rules manifest
 
 Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regardless of headers, so **`--from-html` is the default path**, not a fallback: it is the only one that works on an agent with no browser capability at all.
+
+> **This is the least-verified component in the plan.** Every other data-shaped task was checked against real data while planning; the FFG page was not, because it returns 403 to plain HTTP clients and no saved copy was available. `tests/fixtures/ffg_page.html` is therefore built from an *assumption* about the page's markup — precisely the shape that produced the `See also` failure in Task 13.
+>
+> **Do Step 6 before Step 1.** Save the real page first, look at how the title, size, and date actually sit relative to the anchor, and shape the fixture from what you see. If `_Collector` as written does not fit that markup, rewrite it — it is a guess, not a finding.
 
 **Files:**
 - Create: `src/mc_jarvis/manifest.py`
