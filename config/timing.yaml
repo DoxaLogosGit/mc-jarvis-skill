@@ -1,2 +1,192 @@
-# Trigger timing and priority. Task 17 populates this.
-version: 1
+# Trigger timing and priority. Added 2026-08-21, corrected against real
+# data 2026-08-22.
+#
+# The ordering itself is NOT here. It is the RR's own "Simultaneous Timing
+# Priority" chart, parsed from the ABILITY entry at build time by
+# `timing.parse_chart`. This file holds only what the chart does not say:
+# which printed card prefixes map onto which rung, and the qualifier and
+# alias rules.
+#
+# `expected_chart` is what the chart said on 2026-08-21. It is compared
+# against the parsed chart at build time, so a revision upstream is
+# reported rather than silently changing every answer.
+#
+# NO PAGE NUMBERS LIVE IN THIS FILE. Pages are read from `rules_entries`
+# at query time, so a citation cannot drift from `rules show <term>`.
+# (The 2026-08-21 draft hard-coded Ability p.5 and First Player p.20; the
+# indexed RR says p.4 and p.19. Reading the page kills that whole class.)
+
+version: 2
+
+chart_source:
+  rr_entry: Ability
+  quote: >-
+    the timing priority of abilities with the same triggering condition
+
+expected_chart:
+  - {rung: 1, sub: null, text: "Constant abilities, delayed effects, and lasting effects."}
+  - {rung: 2, sub: null, text: "Interrupts"}
+  - {rung: 2, sub: "a",  text: "Status card “Forced Interrupt” abilities."}
+  - {rung: 2, sub: "b",  text: "“Forced Interrupt” abilities."}
+  - {rung: 2, sub: "c",  text: "“Interrupt” abilities."}
+  - {rung: 3, sub: null, text: "“Boost” and “When Revealed” abilities."}
+  - {rung: 4, sub: null, text: "Responses"}
+  - {rung: 4, sub: "a",  text: "“Forced Response” abilities."}
+  - {rung: 4, sub: "b",  text: "“Response” abilities."}
+  - {rung: 5, sub: null, text: "Consequential damage."}
+
+# Bold prefixes that qualify a trigger without being one. The printed
+# prefix is `<qualifier> <trigger>`, e.g. "Hero Action". Matched
+# case-insensitively: 2 cards print "Alter-ego Action" with a lower-case
+# second word (27131 Common Criminal, 25034 Leadership Training).
+#
+# A PARENTHETICAL qualifier is NOT restricted to this list. If the text
+# outside the parens resolves to a trigger, the parenthetical is recorded
+# verbatim - that is what makes "When Revealed (Norman Osborn)" (2 cards)
+# and the mis-set "When Revealed (Alter_Ego)" (32070) classify without a
+# name list to maintain.
+qualifiers: ["Hero", "Alter-Ego", "First Player", "Mission"]
+
+# Printed prefix -> the chart rung it occupies.
+# `sub` picks the lettered tier where the chart has one.
+triggers:
+  Forced Interrupt: {rung: 2, sub: "b"}
+  Interrupt:        {rung: 2, sub: "c"}
+  Boost:            {rung: 3, sub: null}
+  When Revealed:    {rung: 3, sub: null}
+  Forced Response:  {rung: 4, sub: "a"}
+  Response:         {rung: 4, sub: "b"}
+
+# Aliases the RR defines as equivalent to another trigger.
+# NOTE: "When Revealed" is deliberately NOT here. The RR states this
+# equivalence for When Defeated and When Completed only; the chart puts
+# When Revealed on rung 3, a full tier after Forced Interrupts.
+aliases:
+  When Defeated:
+    canonical: Forced Interrupt
+    rr_entry: When Defeated Abilities
+    quote: >-
+      timing trigger is equivalent to the following trigger
+  When Completed:
+    canonical: Forced Interrupt
+    rr_entry: When Completed Abilities
+    quote: >-
+      timing trigger is equivalent to the following trigger
+
+# Triggers with no rung: they are not tied to a triggering condition, so
+# the chart does not order them. `Forced` is handled as a modifier rather
+# than a prefix of its own, which is what lets "Forced Action" (11 cards)
+# classify as Action with forced = true.
+outside_chart:
+  Action:   {rr_entry: Forced}
+  Resource: {rr_entry: Resource Ability}
+  Special:  {rr_entry: Special}
+  Setup:    {rr_entry: Setup (Triggered Ability)}
+
+# A quoted timing trigger is a REFERENCE to abilities with that trigger,
+# not a trigger. Cited, not guessed - the rule sits in the same entry the
+# chart comes from.
+quoted_reference:
+  rr_entry: Ability
+  quote: >-
+    the quoted text is not itself a timing trigger, but is instead
+    referring to other abilities with that trigger
+
+# Misprints in the published card text. Each names the card it appears on
+# so the mapping stays auditable; a fuzzy matcher would not be. Applied
+# after the qualifier and parenthetical are stripped.
+#
+# Not listed here, because they resolve without help:
+#   "Alter-ego Action"          - qualifiers match case-insensitively
+#   "When Revealed (Alter_Ego)" - parentheticals are taken verbatim
+misprints:
+  Reponse:
+    correct: Response
+    seen_on: ["32187", "32191"]     # Surprise!
+  Reveled:
+    correct: Revealed
+    seen_on: ["04150"]              # Weapon Master
+
+# One printed prefix, two triggers. The card has both abilities, so it
+# gets a row for each - which is why `classify_all` exists alongside
+# `classify`. Listed explicitly rather than split on "/" by rule: the
+# convention that "When Revealed/Defeated" abbreviates "When Defeated"
+# is an inference, and one card is not enough evidence for a rule.
+compounds:
+  "When Revealed/Defeated":
+    parts: ["When Revealed", "When Defeated"]
+    seen_on: ["59042"]            # Hecate
+
+# Bold text that is not a triggered ability at all.
+# `Boost` is NOT in this list - the chart makes it rung 3.
+not_triggers:
+  - Contents
+  - Scenario Contents
+  - Preparation
+  - Standard Mode Only.
+  - Expert Mode Only.
+  - Elite                       # 04143 Hydra Reinforcements
+  - TRAITS                      # 36005 Blizzard
+  - bold                        # 27153 Induced Panic
+  - the players win the game    # 50103a/b M.O.D.O.K.
+
+# Shapes that are not triggers. A pattern is allowed here only when no
+# printed timing trigger could match it - `test_no_trigger_matches_a_
+# not_trigger_pattern` asserts exactly that against every key in
+# `triggers`, `outside_chart` and `aliases`. That is what separates a
+# named rule from the wildcard the plan forbids.
+not_trigger_patterns:
+  # "Give to the Tony Stark player." and ~45 siblings, including the four
+  # printed without "the" or without the full stop, and two that print
+  # "Player" capitalised.
+  - "^Give to (the )?.+? [Pp]layer\\.?$"
+  # "Wrecker's Side Scheme.", "Proxima Midnight's Scheme.", ...
+  - "^.+?'s (Side )?Scheme\\.$"
+
+# Refinements the chart does not carry, each cited. Pages come from the
+# index at print time.
+tie_breaks:
+  - rule: >-
+      The first player has the first opportunity at each rung; opportunities
+      then proceed in player order.
+    rr_entry: First Player
+    quote: >-
+      The first player has the first opportunity to use
+  - rule: >-
+      If two or more forced abilities would initiate at the same moment,
+      the first player chooses the order - regardless of who controls them.
+    rr_entry: Forced
+    quote: >-
+      the first player determines the order in which the abilities initiate
+  - rule: >-
+      Each forced ability resolves as completely as possible before the
+      next forced ability on the same triggering condition initiates.
+    rr_entry: Forced
+    quote: >-
+      must resolve as completely as possible before the next forced ability
+  - rule: >-
+      If two effects with the same bold trigger would resolve
+      simultaneously, the first player chooses the order.
+    rr_entry: Simultaneous Resolution
+    quote: >-
+      the first player determines the order in which the effects resolve
+  - rule: >-
+      An interrupt using the word "would" resolves before its triggering
+      condition initiates, ahead of other interrupts to that condition.
+    rr_entry: Interrupt
+    quote: >-
+      resolve before its triggering condition initiates
+  - rule: >-
+      One effect causing several triggering conditions lets responses to
+      each be resolved in any order.
+    rr_entry: Response
+    quote: >-
+      responses to each of those triggering conditions can be resolved in
+      any order
+  - rule: >-
+      Status card abilities take timing priority over any conflicting
+      triggered ability - which is why the chart puts them at rung 2a.
+    rr_entry: Status Cards
+    quote: >-
+      Status card abilities have timing priority over all conflicting
+      triggered abilities

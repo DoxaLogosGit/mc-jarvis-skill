@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 
 
 class InvariantError(RuntimeError):
@@ -71,10 +71,18 @@ def _reset_if_stale(conn: sqlite3.Connection) -> bool:
     tables = [r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
         " AND name NOT LIKE 'sqlite_%'")]
-    for name in tables:
-        conn.execute(f'DROP TABLE IF EXISTS "{name}"')
-    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    conn.commit()
+    # Drops go in no particular order, so a foreign key between two of
+    # these tables would abort the reset half-done - which is the one
+    # state this function exists to prevent. Suspend the checks for the
+    # teardown; every table here is rebuilt from source immediately after.
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        for name in tables:
+            conn.execute(f'DROP TABLE IF EXISTS "{name}"')
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
     return bool(tables)
 
 

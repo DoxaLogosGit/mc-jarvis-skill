@@ -7,12 +7,13 @@ installs it.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import sqlite3
 import sys
 from pathlib import Path
 
 from . import (cardtext, deckrules, doctor, identity, index, manifest,
-               outofdeck, paths, pdf, rules, rules_chunk, sources)
+               outofdeck, paths, pdf, rules, rules_chunk, sources, timing)
 
 # Below this many index entries, a rulebook is treated as having no
 # alphabetical index and is chunked by page instead: searchable, but not
@@ -49,10 +50,22 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
     counts.update(_rebuild_rules(conn, data_root))
     counts["rules_links"] = rules.build_links(conn)
 
+    counts["timing_triggers"] = timing.build(conn)
+    broken = timing.verify_chart(conn) + timing.verify_citations(conn)
+    if broken:
+        # Not fatal: the card index is still correct and useful. But the
+        # timing reference would now be quoting rules text that no longer
+        # says what it claims, so say so rather than serving it silently.
+        print("WARNING: the timing reference no longer matches the rules "
+              "it is built from:", file=sys.stderr)
+        for b in broken:
+            print(f"  {b}", file=sys.stderr)
+
     conn.executemany(
         "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
         [("built_at", _dt.datetime.now(_dt.timezone.utc).isoformat()),
-         ("card_count", str(counts["cards"]))])
+         ("card_count", str(counts["cards"])),
+         ("timing_broken", json.dumps(broken))])
     conn.commit()
     return counts
 

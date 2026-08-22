@@ -158,6 +158,49 @@ CREATE TABLE IF NOT EXISTS card_rules_links (
 );
 CREATE INDEX IF NOT EXISTS idx_links_term ON card_rules_links(lower(term));
 
+-- The RR's Simultaneous Timing Priority chart, parsed from the ABILITY
+-- entry rather than transcribed.
+CREATE TABLE IF NOT EXISTS timing_chart (
+    rung INTEGER NOT NULL,
+    sub  TEXT,                  -- lettered sub-tier, or NULL
+    text TEXT NOT NULL
+);
+-- SQLite forbids an expression in PRIMARY KEY, so the slot's uniqueness
+-- lives in an index instead. NULL sub is a real value here: it is the
+-- un-lettered rung.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_timing_chart_slot
+    ON timing_chart(rung, COALESCE(sub, ''));
+
+CREATE TABLE IF NOT EXISTS timing_triggers (
+    -- No FOREIGN KEY, matching every other derived table: `load_cards`
+    -- truncates `cards` and rebuilds downstream, and a reference here
+    -- makes the second `update` fail with an integrity error.
+    code       TEXT NOT NULL,
+    ordinal    INTEGER NOT NULL,
+    raw_prefix TEXT NOT NULL,   -- exactly as printed, markup stripped
+    qualifier  TEXT,            -- Hero, Alter-Ego, an identity name, ...
+    forced     INTEGER NOT NULL DEFAULT 0,
+    -- A quoted trigger REFERS to abilities with that trigger; the card
+    -- does not have one. RR, ABILITY. `canonical` names what is referred
+    -- to, so the flag is what separates having from mentioning.
+    quoted     INTEGER NOT NULL DEFAULT 0,
+    canonical  TEXT,            -- NULL when unclassifiable: a loud failure
+    rung       INTEGER,
+    sub        TEXT,
+    PRIMARY KEY (code, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_timing_canonical
+    ON timing_triggers(canonical);
+
+-- The RR's Round Overview: ten steps, nine of which name the glossary
+-- entries that govern them. Parsed, not hand-copied.
+CREATE TABLE IF NOT EXISTS round_steps (
+    step        INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    see         TEXT NOT NULL,   -- comma-separated RR entry names, or ''
+    source_doc  TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'

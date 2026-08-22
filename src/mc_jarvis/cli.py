@@ -141,6 +141,9 @@ def _dispatch(name: str, args) -> int:
     if name == "encounter":
         from . import cards
         return cards.handle_encounter(args)
+    if name == "timing":
+        from . import timing
+        return timing.handle(args)
     if name == "rules":
         from . import rules
         if args.rules_cmd == "show":

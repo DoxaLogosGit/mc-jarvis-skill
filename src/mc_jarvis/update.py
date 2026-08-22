@@ -1,6 +1,7 @@
 """Refresh sources and report staleness (spec §11)."""
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -70,6 +71,8 @@ def status(args) -> int:
         "identities": count("identities"),
         "rules_entries": count("rules_entries"),
         "unmapped_glyphs": meta.get("unmapped_glyphs", ""),
+        "timing_triggers": count("timing_triggers"),
+        "timing_broken": json.loads(meta.get("timing_broken") or "[]"),
     }
     if getattr(args, "json", False):
         emit(payload, as_json=True)
@@ -81,4 +84,9 @@ def status(args) -> int:
         if payload["unmapped_glyphs"]:
             print(f"\nUnmapped icon codepoints: "
                   f"{payload['unmapped_glyphs']} — add them to glyphs.yaml")
+        if payload["timing_broken"]:
+            print("\nThe timing reference no longer matches the rules it "
+                  "is built from:")
+            for b in payload["timing_broken"]:
+                print(f"  {b}")
     return 0
