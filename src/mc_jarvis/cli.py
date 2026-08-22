@@ -120,6 +120,10 @@ def _dispatch(name: str, args) -> int:
     if name == "doctor":
         from . import doctor
         return doctor.handle(args)
+    if name == "card":
+        from . import cards
+        if args.card_cmd == "search":
+            return cards.handle_search(args)
     print(f"mc-jarvis: '{name}' is not implemented yet", file=sys.stderr)
     return 3
 

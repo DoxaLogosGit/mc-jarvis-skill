@@ -235,3 +235,17 @@ def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
 
     conn.commit()
     return report
+
+
+def build_fts(conn: sqlite3.Connection) -> int:
+    """Repopulate the external-content FTS table.
+
+    Populated explicitly rather than by triggers: the index is rebuilt
+    wholesale rather than edited, so triggers would only add write cost.
+    """
+    conn.execute("INSERT INTO cards_fts(cards_fts) VALUES('delete-all')")
+    conn.execute(
+        "INSERT INTO cards_fts(rowid, name, subname, text, traits, flavor) "
+        "SELECT rowid, name, subname, text, traits, flavor FROM cards")
+    conn.commit()
+    return conn.execute("SELECT COUNT(*) FROM cards_fts").fetchone()[0]

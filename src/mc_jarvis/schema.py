@@ -58,4 +58,9 @@ CREATE TABLE IF NOT EXISTS build_meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
+    name, subname, text, traits, flavor,
+    content='cards', content_rowid='rowid'
+);
 """
