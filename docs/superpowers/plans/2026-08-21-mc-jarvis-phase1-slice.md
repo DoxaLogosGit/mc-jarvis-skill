@@ -36,7 +36,15 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9, §10 and §16.
 
-**The corpus has moved since the spec was written.** It now holds **4,379 cards** (§16 says 4,298) across **69 identities** grouped by `set_code` (§16 says 72 heroes). Test tolerances in this plan are ranges, not exact counts, for that reason — do not tighten them to today's numbers.
+**`duplicate_of` is NOT encounter-only, and the spec's reprint model is inverted.** §8 and §16 state that all 342 cards carrying `duplicate_of` are encounter cards, that no player card uses it, and that player-side reprints are "detectable only by name+type+faction". Measured 2026-08-22: **351 cards carry it and 341 resolve to player cards** — 211 to `basic` alone. They are hero-pack reprints of core-set cards, and `duplicate_of` is exactly how player-side reprints are marked.
+
+Each such row is a stub: a code, a pack, a quantity, a position, and nothing else — no name, no text. Every one resolves in a single hop, none chain, and no card carries `duplicate_of` alongside a name of its own. Task 4 fills them in from the card they duplicate, keeping each stub's own code, pack, quantity and position because those belong to the printing rather than the card, and records `canonical_code` so printings can be collapsed. Leaving them unresolved gives 351 nameless rows and breaks collection lookups: owning the Ant-Man pack would not tell you that you own *First Aid*.
+
+**`deck_limit <= quantity` does not hold per printing.** §10 asserts zero violations and concludes that owning any pack containing a card gives you enough copies to play it to its limit. After reprint resolution there are **50 violations** — the Ant-Man pack ships 2 *First Aid* against a limit of 3. What holds with zero violations is the grouped form: every card has *some* printing with at least `deck_limit` copies. Task 4 asserts the per-printing rule on original printings only, and the grouped rule on everything.
+
+The consequence for the collection work in the next plan: ownership is binary per *card*, but only because the printing carrying a full set of copies is usually one a player already owns. It is not a licence to treat every printing as sufficient, and `--owned` must resolve through `canonical_code`.
+
+**The corpus has moved since the spec was written.** It now holds **4,379 cards** (2,154 player-legal after reprint resolution) (§16 says 4,298) across **69 identities** grouped by `set_code` (§16 says 72 heroes). Test tolerances in this plan are ranges, not exact counts, for that reason — do not tighten them to today's numbers.
 
 **The setup audit flags eight identities, not four.** Spec §10's table lists Bobby Drake, Riri Williams, Rogue and Brunnhilde. Running the patterns in this plan's `SETUP_PATTERNS` also returns Matt Murdock, Stephen Strange, Hercules, and Ororo Munroe, all via `begins the game with`. All eight are coverable; see Task 8.
 
