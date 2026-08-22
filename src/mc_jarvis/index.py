@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class InvariantError(RuntimeError):

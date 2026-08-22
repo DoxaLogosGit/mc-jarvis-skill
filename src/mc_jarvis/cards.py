@@ -221,3 +221,52 @@ def handle_show(args) -> int:
         print(f"  {c['code']:<8} {c['name']:<30} "
               f"{c['type_code']:<10} {c['faction_code']}")
     return 1
+
+
+def identity(conn, name: str) -> dict:
+    """All faces and forms of an identity, plus its signature set.
+
+    "What are Angel's stats" has a different answer in Angel form and
+    Archangel form, so every face is returned (spec §8).
+    """
+    row = conn.execute(
+        "SELECT identity_key, name FROM identities "
+        "WHERE lower(name) = lower(?)", (name,)).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT i.identity_key, i.name FROM identities i "
+            "JOIN identity_faces f ON f.identity_key = i.identity_key "
+            "JOIN cards c ON c.code = f.code "
+            "WHERE lower(c.name) = lower(?) LIMIT 1", (name,)).fetchone()
+    if row is None:
+        return {"identity": None, "identity_key": None,
+                "faces": [], "signature": []}
+
+    key = row["identity_key"]
+    faces = [_row(conn, r["code"]) for r in conn.execute(
+        "SELECT code FROM identity_faces WHERE identity_key = ? "
+        "ORDER BY code", (key,))]
+    signature = [dict(r) for r in conn.execute(
+        f"SELECT {', '.join(SUMMARY)} FROM cards "
+        f"WHERE set_code = ? AND type_code NOT IN ('hero', 'alter_ego') "
+        f"AND code = canonical_code ORDER BY code", (key,))]
+    return {"identity": row["name"], "identity_key": key,
+            "faces": faces, "signature": signature}
+
+
+def handle_identity(args) -> int:
+    conn = _open()
+    result = identity(conn, args.name)
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if result["identity"] else 1
+    if not result["identity"]:
+        print(f"no identity named {args.name!r}")
+        return 1
+    print(f"{result['identity']}  [{result['identity_key']}]")
+    for f in result["faces"]:
+        _print_card(f)
+    print(f"\nSignature set ({len(result['signature'])} cards):")
+    for c in result["signature"]:
+        print(f"  {c['code']:<8} {c['name']:<32} {c['type_code']}")
+    return 0

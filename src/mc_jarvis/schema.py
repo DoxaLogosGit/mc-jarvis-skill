@@ -59,6 +59,29 @@ CREATE TABLE IF NOT EXISTS build_meta (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS identities (
+    identity_key TEXT PRIMARY KEY,   -- the set_code
+    name         TEXT NOT NULL       -- the primary hero face's name
+);
+
+CREATE TABLE IF NOT EXISTS identity_faces (
+    identity_key TEXT NOT NULL,
+    code         TEXT NOT NULL,
+    PRIMARY KEY (identity_key, code)
+);
+
+-- The three name roles RR p.45 distinguishes when deciding whether two
+-- unique cards match. The roles must stay separate: the rule's first
+-- clause fires only when BOTH cards lack a subtitle and an alter-ego
+-- title, so flattening them into one set produces false positives.
+CREATE TABLE IF NOT EXISTS card_titles (
+    code  TEXT NOT NULL,
+    role  TEXT NOT NULL,             -- title | subtitle | alter_ego
+    title TEXT NOT NULL,             -- lowercased
+    PRIMARY KEY (code, role, title)
+);
+CREATE INDEX IF NOT EXISTS idx_card_titles_title ON card_titles(title);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'
