@@ -1,0 +1,4966 @@
+# mc-jarvis Phase 1 (Vertical Slice) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build the runnable spine of mc-jarvis — install, bootstrap from live sources, index into SQLite, and answer card, identity, encounter, and rules questions with citations — so that real data can reveal the gaps this design has not yet found.
+
+**Architecture:** A normal Python package exposing a `mc-jarvis` CLI over a local SQLite+FTS5 index. Copyrighted content is fetched to the user's machine at init time and never committed. Everything deterministic lives below the CLI line; the host model only supplies judgement, via a skill file that teaches it these commands.
+
+**Tech Stack:** Python 3.10+, stdlib `sqlite3` (FTS5), `argparse`, `urllib`, `tarfile`; `pypdf` and `PyYAML` as the only third-party dependencies; `pytest` for tests; `uv` for install and dev.
+
+**Spec:** `docs/superpowers/specs/2026-08-20-mc-jarvis-design.md` — read it alongside this plan. Every task cites the spec section it implements.
+
+**Scope boundary.** This plan is Phase 1's spine only. Deliberately **out of scope**, to be planned after this slice has been exercised against real data: `deck fetch` / `deck check` / `deck stats`, the full `config/legality.yaml`, `collection set/show` and `--owned` filtering, and the decklist regression corpus. This plan ships only the minimal `legality.yaml` the setup audit needs (Task 8). Phase 2 (coaching, `team`, `mcp`) and Phase 3 (`meta`, build-from-scratch) are separate plans.
+
+**First testable checkpoint is Task 5** — after it, `mc-jarvis card search` answers real queries against all 4,298 real cards. Stop and exercise it before continuing.
+
+## Global Constraints
+
+Copied verbatim from the spec. Every task's requirements implicitly include this section.
+
+- **Python 3.10+.** `X | Y` type syntax is permitted; nothing newer is used. Do not raise the floor.
+- **Exactly two runtime dependencies: `pypdf` and `PyYAML`.** Both are pure-Python wheels. Adding a third requires changing the spec first.
+- **HTTP uses stdlib `urllib`.** No `requests`, no `httpx`.
+- **No system packages.** `uv tool install mc-jarvis` must be the whole story on Linux, macOS, and Windows. `poppler-utils`, `git`, and `playwright` are optional and every code path must work without them.
+- **The repository ships code and configuration only.** No card text, no rules text, no PDFs, no built index, no cached decklists. Never commit anything fetched at runtime. `data/`, `*.sqlite`, and `*.pdf` are gitignored — verify before every commit.
+- **Every command supports `--json`** and a compact human-readable default.
+- **Every subcommand takes an explicit verb.** No parent command takes a bare positional (`card show Vision` must not parse `show` as a query).
+- **Every rules answer cites the entry name and page.**
+- **Test fixtures are hand-invented and contain no FFG text.** Tests that need the real corpus are integration tests, skipped when the index is absent.
+
+## Verified findings this plan adds to the spec
+
+Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9 and §16.
+
+- **The Rules Reference carries its own index on PDF pages 2–3**, and it is authoritative: 216 entries with page numbers, plus 46 `See …` redirects. This replaces the spec's ALL-CAPS-regex-with-reconciliation approach as the primary entry list. An independent alphabetical-monotonicity filter over the body headers yields ~215 entries, cross-validating the count.
+- **All 13 private-use icon codepoints used in the RR body are named by that index** (`Mental Resource (<glyph>)`, `Amplify Icon (<glyph>)`, …), so `config/glyphs.yaml` is **derived and human-reviewed, not hand-authored**. Zero body glyphs are unmapped.
+- **The glyph range is U+F520–U+F531, not U+F520–F530** as §9 and §16 state. U+F531 is the Unique icon. U+F523 and U+F529–U+F52C do not appear.
+- The naive ALL-CAPS regex yields 386 candidates over 71 pages; the glossary spans PDF pages 4–49 (`ABILITY` … `YOU, YOUR`). Body headers are a **cross-check** on the index, not the source of truth.
+- Two known index-parse artifacts to handle: two-column merge can join adjacent entries (`Variable` + `You, Your` → `Variable You, Your`), and the `Unique Icon` entry picks up bleed from its predecessor (`Activation) Unique Icon`).
+
+---
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `pyproject.toml` | Package metadata, deps, `mc-jarvis` console script |
+| `src/mc_jarvis/paths.py` | Data-directory resolution; nothing else |
+| `src/mc_jarvis/cli.py` | argparse tree, `--json` emission, dispatch. No logic. |
+| `src/mc_jarvis/doctor.py` | Runtime prerequisite checks |
+| `src/mc_jarvis/sources.py` | Card-data tarball fetch and extract |
+| `src/mc_jarvis/schema.py` | SQL DDL as a single string constant |
+| `src/mc_jarvis/index.py` | Index build: load packs, populate tables, assert invariants |
+| `src/mc_jarvis/identity.py` | Identity grouping and unique-match key computation |
+| `src/mc_jarvis/outofdeck.py` | Out-of-deck classification and the setup audit |
+| `src/mc_jarvis/cardtext.py` | Card-text parsing: `[[traits]]`, keywords, cost arrow |
+| `src/mc_jarvis/cards.py` | Card, identity, and encounter queries |
+| `src/mc_jarvis/manifest.py` | FFG product-page HTML → rules manifest |
+| `src/mc_jarvis/pdf.py` | PDF download and text extraction backends |
+| `src/mc_jarvis/rules_chunk.py` | RR index parse, glyph mapping, entry and page chunkers |
+| `src/mc_jarvis/rules.py` | Rules queries: `show`, `search`, card↔rules links |
+| `src/mc_jarvis/init.py` | `init` orchestration |
+| `src/mc_jarvis/update.py` | `update` and `status` |
+| `src/mc_jarvis/skill_install.py` | `install-skill`: detect, place, report |
+| `config/legality.yaml` | Minimal: out-of-deck exceptions only (grows in the next plan) |
+| `config/glyphs.yaml` | Derived glyph → token mapping |
+| `skill/mc-jarvis/SKILL.md` | The agent brief |
+| `tests/fixtures/` | Hand-invented cards and rules text; no FFG content |
+
+`cardtext.py` is deliberately separate from `cards.py`: text parsing is build-time enrichment with its own dense test surface, while `cards.py` is query-time. They change for different reasons.
+
+---
+
+## Task 1: Package scaffold, data paths, and the CLI seam
+
+Implements §5, §5.1, §6. This task locks two things that are expensive to retrofit: the `--json` seam and the explicit-verb argparse structure.
+
+**Files:**
+- Create: `pyproject.toml`, `src/mc_jarvis/__init__.py`, `src/mc_jarvis/paths.py`, `src/mc_jarvis/cli.py`
+- Test: `tests/test_paths.py`, `tests/test_cli.py`
+
+**Interfaces:**
+- Consumes: nothing (first task)
+- Produces:
+  - `paths.data_dir() -> pathlib.Path` — resolves `$MC_JARVIS_DATA` → `$XDG_DATA_HOME/mc-jarvis` → `~/.local/share/mc-jarvis`. Does not create.
+  - `paths.ensure_data_dir() -> pathlib.Path` — creates it (with `marvelsdb/`, `rules/pdf/`, `rules/txt/`) and returns it.
+  - `paths.db_path() -> pathlib.Path` — `data_dir() / "mc.sqlite"`
+  - `cli.build_parser() -> argparse.ArgumentParser`
+  - `cli.emit(payload: object, as_json: bool) -> None` — prints JSON when `as_json`, else a human line-oriented rendering
+  - `cli.main(argv: list[str] | None = None) -> int` — process exit code
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# tests/test_paths.py
+import os
+from pathlib import Path
+from mc_jarvis import paths
+
+
+def test_explicit_env_var_wins(monkeypatch, tmp_path):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path / "custom"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    assert paths.data_dir() == tmp_path / "custom"
+
+
+def test_xdg_used_when_no_explicit_var(monkeypatch, tmp_path):
+    monkeypatch.delenv("MC_JARVIS_DATA", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    assert paths.data_dir() == tmp_path / "xdg" / "mc-jarvis"
+
+
+def test_default_when_nothing_set(monkeypatch):
+    monkeypatch.delenv("MC_JARVIS_DATA", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    assert paths.data_dir() == Path.home() / ".local" / "share" / "mc-jarvis"
+
+
+def test_ensure_creates_subdirectories(monkeypatch, tmp_path):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path / "d"))
+    root = paths.ensure_data_dir()
+    assert (root / "marvelsdb").is_dir()
+    assert (root / "rules" / "pdf").is_dir()
+    assert (root / "rules" / "txt").is_dir()
+```
+
+```python
+# tests/test_cli.py
+import json
+import pytest
+from mc_jarvis import cli
+
+
+def test_card_show_does_not_swallow_verb_as_query():
+    """`card show Vision` must parse `show` as the verb, not as a search query."""
+    args = cli.build_parser().parse_args(["card", "show", "Vision"])
+    assert args.card_cmd == "show"
+    assert args.name == "Vision"
+
+
+def test_card_search_takes_its_query():
+    args = cli.build_parser().parse_args(["card", "search", "web"])
+    assert args.card_cmd == "search"
+    assert args.query == "web"
+
+
+def test_json_flag_available_on_every_leaf_command():
+    parser = cli.build_parser()
+    for argv in (
+        ["doctor"],
+        ["status"],
+        ["card", "search", "x"],
+        ["card", "show", "x"],
+        ["identity", "x"],
+        ["encounter", "x"],
+        ["rules", "show", "x"],
+        ["rules", "search", "x"],
+    ):
+        assert parser.parse_args(argv + ["--json"]).json is True, argv
+
+
+def test_hero_is_an_alias_for_identity():
+    args = cli.build_parser().parse_args(["hero", "Spider-Man"])
+    assert args.command == "identity"
+    assert args.name == "Spider-Man"
+
+
+def test_emit_json(capsys):
+    cli.emit({"a": 1}, as_json=True)
+    assert json.loads(capsys.readouterr().out) == {"a": 1}
+
+
+def test_no_args_prints_help_and_fails():
+    assert cli.main([]) == 2
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `uv run pytest tests/ -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis'`
+
+- [ ] **Step 3: Write `pyproject.toml`**
+
+```toml
+[project]
+name = "mc-jarvis"
+version = "0.1.0"
+description = "An agent-agnostic assistant for Marvel Champions: The Card Game"
+requires-python = ">=3.10"
+dependencies = ["pypdf>=4.0", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.40"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+mc-jarvis = "mc_jarvis.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mc_jarvis"]
+# The skill and config ship inside the wheel so `uv tool install` users,
+# who have no checkout, can still run `install-skill` (spec §7).
+artifacts = ["src/mc_jarvis/_bundled/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires a built index; skipped when absent"]
+```
+
+- [ ] **Step 4: Write `paths.py`**
+
+```python
+"""Data directory resolution. Never alongside the package (spec §5)."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+SUBDIRS = ("marvelsdb", "rules/pdf", "rules/txt", "meta")
+
+
+def data_dir() -> Path:
+    explicit = os.environ.get("MC_JARVIS_DATA")
+    if explicit:
+        return Path(explicit).expanduser()
+    xdg = os.environ.get("XDG_DATA_HOME")
+    if xdg:
+        return Path(xdg).expanduser() / "mc-jarvis"
+    return Path.home() / ".local" / "share" / "mc-jarvis"
+
+
+def ensure_data_dir() -> Path:
+    root = data_dir()
+    for sub in SUBDIRS:
+        (root / sub).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def db_path() -> Path:
+    return data_dir() / "mc.sqlite"
+```
+
+- [ ] **Step 5: Write `cli.py`**
+
+Note the `_leaf` helper: it adds `--json` to every leaf parser, which is what keeps the flag from drifting as commands are added in later tasks. Commands not yet implemented raise `SystemExit(3)` with a clear message rather than a traceback.
+
+```python
+"""argparse tree and dispatch. Logic lives in the modules, not here."""
+from __future__ import annotations
+
+import argparse
+import json as _json
+import sys
+from typing import Any
+
+
+def _leaf(sub, name: str, help_: str, **kw) -> argparse.ArgumentParser:
+    p = sub.add_parser(name, help=help_, **kw)
+    p.add_argument("--json", action="store_true", help="emit JSON")
+    p.add_argument("--owned", action="store_true",
+                   help="restrict to packs in your collection")
+    return p
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="mc-jarvis")
+    sub = parser.add_subparsers(dest="command")
+
+    _leaf(sub, "doctor", "check prerequisites and environment")
+    _leaf(sub, "status", "index age, counts, staleness")
+
+    init_p = _leaf(sub, "init", "one-time bootstrap")
+    src = init_p.add_mutually_exclusive_group()
+    src.add_argument("--from-html", metavar="FILE",
+                     help="saved FFG product page HTML")
+    src.add_argument("--browser", action="store_true",
+                     help="fetch the FFG page with Playwright")
+
+    _leaf(sub, "update", "refresh sources and rebuild the index")
+
+    skill_p = _leaf(sub, "install-skill", "place the skill for every harness")
+    skill_p.add_argument("--link", action="store_true",
+                         help="symlink instead of copy (developer use)")
+    skill_p.add_argument("--global", dest="global_", action="store_true",
+                         help="install to user-global paths")
+
+    # `card` takes an explicit verb: a bare positional would make
+    # `card show Vision` parse `show` as the query (spec §5.1).
+    card = sub.add_parser("card", help="card lookup")
+    card_sub = card.add_subparsers(dest="card_cmd")
+    search = _leaf(card_sub, "search", "search cards")
+    search.add_argument("query", nargs="?", default=None)
+    search.add_argument("--aspect")
+    search.add_argument("--type")
+    search.add_argument("--cost")
+    search.add_argument("--trait")
+    search.add_argument("--text")
+    search.add_argument("--limit", type=int, default=20)
+    show = _leaf(card_sub, "show", "one card in full")
+    show.add_argument("name")
+    show.add_argument("--explain", action="store_true",
+                      help="expand keywords with rules text and page cites")
+
+    ident = _leaf(sub, "identity", "all faces and forms of an identity",
+                  aliases=["hero"])
+    ident.add_argument("name")
+
+    enc = _leaf(sub, "encounter", "villain stats and set contents")
+    enc.add_argument("name")
+
+    rules = sub.add_parser("rules", help="rules lookup")
+    rules_sub = rules.add_subparsers(dest="rules_cmd")
+    rshow = _leaf(rules_sub, "show", "a Rules Reference entry")
+    rshow.add_argument("term")
+    rsearch = _leaf(rules_sub, "search", "full-text search the rules")
+    rsearch.add_argument("text")
+
+    return parser
+
+
+def emit(payload: Any, as_json: bool) -> None:
+    if as_json:
+        print(_json.dumps(payload, indent=2, ensure_ascii=False))
+        return
+    _render(payload)
+
+
+def _render(payload: Any, indent: int = 0) -> None:
+    pad = "  " * indent
+    if isinstance(payload, list):
+        for item in payload:
+            _render(item, indent)
+            if isinstance(item, dict):
+                print()
+    elif isinstance(payload, dict):
+        for key, value in payload.items():
+            if isinstance(value, (dict, list)):
+                print(f"{pad}{key}:")
+                _render(value, indent + 1)
+            else:
+                print(f"{pad}{key}: {value}")
+    else:
+        print(f"{pad}{payload}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.command:
+        parser.print_help()
+        return 2
+    # Subcommands are wired in later tasks; until then fail loudly and
+    # legibly rather than with a traceback.
+    handler = _HANDLERS.get(args.command)
+    if handler is None:
+        print(f"mc-jarvis: '{args.command}' is not implemented yet",
+              file=sys.stderr)
+        return 3
+    return handler(args)
+
+
+_HANDLERS: dict[str, Any] = {}
+```
+
+`identity`'s alias means `args.command` is `"identity"` for both spellings — argparse sets `dest` to the canonical name, which is what `test_hero_is_an_alias_for_identity` asserts.
+
+**`--owned` is declared but inert in this plan.** The collection lands in the deck-pipeline plan, so the flag exists here only to keep the command surface stable. A flag that silently does nothing is the "did you filter?" bug class spec §13 warns about, so it must refuse rather than be ignored. Add to `_dispatch`, before the handler lookup:
+
+```python
+    if getattr(args, "owned", False):
+        print("mc-jarvis: --owned needs a collection, which is not built "
+              "yet in this version", file=sys.stderr)
+        return 3
+```
+
+and a test:
+
+```python
+def test_owned_refuses_rather_than_silently_ignoring():
+    assert cli.main(["card", "search", "web", "--owned"]) == 3
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v`
+Expected: PASS, 11 tests
+
+- [ ] **Step 7: Verify the console script installs**
+
+Run: `uv tool install --editable . && mc-jarvis --help && mc-jarvis doctor; echo "exit=$?"`
+Expected: help text listing every command; `doctor` prints the not-implemented message and `exit=3`
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add pyproject.toml src/ tests/
+git commit -m "feat: package scaffold, data paths, and CLI seam"
+```
+
+---
+
+## Task 2: `mc-jarvis doctor`
+
+Implements §6. Requirements are checked at runtime because this runs under agents we do not control, on machines we have never seen.
+
+**Files:**
+- Create: `src/mc_jarvis/doctor.py`
+- Modify: `src/mc_jarvis/cli.py` (register the handler)
+- Test: `tests/test_doctor.py`
+
+**Interfaces:**
+- Consumes: `paths.data_dir`, `paths.db_path`, `cli.emit`
+- Produces:
+  - `doctor.Check` — dataclass with fields `name: str`, `ok: bool`, `detail: str`, `hard: bool`
+  - `doctor.run_checks(*, network: bool = True) -> list[Check]`
+  - `doctor.pdf_backend() -> str` — returns `"pdftotext"`, `"pypdf"`, or `"none"`
+  - `doctor.has_fts5() -> bool`
+  - `doctor.handle(args) -> int` — 0 when all hard checks pass, 1 otherwise
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_doctor.py
+import sqlite3
+from mc_jarvis import doctor
+
+
+def test_fts5_detected_on_this_interpreter():
+    # Every supported environment has it; if this fails here, doctor is
+    # correctly telling us the environment is unsupported.
+    assert doctor.has_fts5() is True
+
+
+def test_pdf_backend_is_one_of_the_known_values():
+    assert doctor.pdf_backend() in {"pdftotext", "pypdf", "none"}
+
+
+def test_run_checks_offline_reports_no_network_checks():
+    names = [c.name for c in doctor.run_checks(network=False)]
+    assert "python" in names
+    assert "sqlite-fts5" in names
+    assert "data-dir" in names
+    assert not any(n.startswith("network:") for n in names)
+
+
+def test_run_checks_marks_missing_index_as_soft(monkeypatch, tmp_path):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path))
+    index_check = next(c for c in doctor.run_checks(network=False)
+                       if c.name == "index")
+    assert index_check.ok is False
+    assert index_check.hard is False   # no index yet is normal before init
+    assert "init" in index_check.detail
+
+
+def test_handle_returns_nonzero_only_on_hard_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path))
+
+    class Args:
+        json = False
+    assert doctor.handle(Args()) == 0    # missing index alone must not fail
+
+    monkeypatch.setattr(doctor, "has_fts5", lambda: False)
+    assert doctor.handle(Args()) == 1
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `uv run pytest tests/test_doctor.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.doctor'`
+
+- [ ] **Step 3: Write `doctor.py`**
+
+```python
+"""Runtime prerequisite checks (spec §6)."""
+from __future__ import annotations
+
+import os
+import platform
+import shutil
+import sqlite3
+import sys
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, asdict
+
+from . import paths
+from .cli import emit
+
+PYTHON_FLOOR = (3, 10)
+UPSTREAMS = {
+    "network:card-data": "https://codeload.github.com",
+    "network:ffg-cdn": "https://images-cdn.fantasyflightgames.com",
+}
+
+INSTALL_HINT = {
+    "Linux": "your distribution's package manager, e.g. `sudo dnf install poppler-utils`",
+    "Darwin": "`brew install poppler`",
+    "Windows": "not required — pypdf is used",
+}
+
+
+@dataclass
+class Check:
+    name: str
+    ok: bool
+    detail: str
+    hard: bool
+
+
+def has_fts5() -> bool:
+    try:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE _probe USING fts5(x)")
+        conn.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def pdf_backend() -> str:
+    if shutil.which("pdftotext"):
+        return "pdftotext"
+    try:
+        import pypdf  # noqa: F401
+        return "pypdf"
+    except ImportError:
+        return "none"
+
+
+def _reachable(url: str, timeout: float = 5.0) -> bool:
+    req = urllib.request.Request(url, method="HEAD")
+    try:
+        urllib.request.urlopen(req, timeout=timeout)
+        return True
+    except urllib.error.HTTPError:
+        return True          # a status code means the host answered
+    except Exception:
+        return False
+
+
+def run_checks(*, network: bool = True) -> list[Check]:
+    checks: list[Check] = []
+
+    v = sys.version_info
+    checks.append(Check(
+        "python", v[:2] >= PYTHON_FLOOR,
+        f"{v.major}.{v.minor}.{v.micro} (need >= 3.10)", hard=True))
+
+    checks.append(Check(
+        "sqlite-fts5", has_fts5(),
+        f"SQLite {sqlite3.sqlite_version}"
+        + ("" if has_fts5() else " — built without FTS5; a full CPython "
+                                "build is required"),
+        hard=True))
+
+    backend = pdf_backend()
+    checks.append(Check(
+        "pdf-backend", backend != "none",
+        backend if backend != "none"
+        else f"neither pdftotext nor pypdf found; install poppler via "
+             f"{INSTALL_HINT.get(platform.system(), 'your package manager')}",
+        hard=True))
+
+    root = paths.data_dir()
+    writable = os.access(root.parent if not root.exists() else root, os.W_OK)
+    checks.append(Check("data-dir", writable, str(root), hard=True))
+
+    db = paths.db_path()
+    if db.exists():
+        age_days = (time.time() - db.stat().st_mtime) / 86400
+        checks.append(Check(
+            "index", True,
+            f"{db} ({age_days:.0f} days old)"
+            + ("  — stale, run `mc-jarvis update`" if age_days > 14 else ""),
+            hard=False))
+    else:
+        checks.append(Check(
+            "index", False, "not built — run `mc-jarvis init`", hard=False))
+
+    for optional, present in (
+        ("git", shutil.which("git") is not None),
+        ("playwright", _playwright_present()),
+    ):
+        checks.append(Check(
+            f"optional:{optional}", present,
+            "present" if present else "absent (not required)", hard=False))
+
+    if network:
+        for name, url in UPSTREAMS.items():
+            ok = _reachable(url)
+            checks.append(Check(name, ok, url, hard=False))
+
+    return checks
+
+
+def _playwright_present() -> bool:
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def handle(args) -> int:
+    checks = run_checks()
+    if getattr(args, "json", False):
+        emit([asdict(c) for c in checks], as_json=True)
+    else:
+        for c in checks:
+            mark = "ok  " if c.ok else ("FAIL" if c.hard else "--  ")
+            print(f"{mark} {c.name}: {c.detail}")
+    return 1 if any(c.hard and not c.ok for c in checks) else 0
+```
+
+- [ ] **Step 4: Register the handler in `cli.py`**
+
+Replace the empty `_HANDLERS` dict at the bottom of `cli.py`. Import inside the function to keep `cli` import-light and avoid a circular import with `doctor`.
+
+```python
+def _dispatch(name: str, args) -> int:
+    if name == "doctor":
+        from . import doctor
+        return doctor.handle(args)
+    print(f"mc-jarvis: '{name}' is not implemented yet", file=sys.stderr)
+    return 3
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.command:
+        parser.print_help()
+        return 2
+    return _dispatch(args.command, args)
+```
+
+Delete the `_HANDLERS` dict and the old handler lookup in `main`.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v`
+Expected: PASS
+
+- [ ] **Step 6: Verify against the real environment**
+
+Run: `mc-jarvis doctor; echo "exit=$?"`
+Expected: `python`, `sqlite-fts5`, `pdf-backend`, `data-dir` all `ok`; `index` shows `not built`; `exit=0`
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/mc_jarvis/doctor.py src/mc_jarvis/cli.py tests/test_doctor.py
+git commit -m "feat: mc-jarvis doctor with runtime prerequisite checks"
+```
+
+---
+
+## Task 3: Fetch the card data
+
+Implements §6 and §11 step 1. The tarball is 1.5 MB and needs no `git`.
+
+**Files:**
+- Create: `src/mc_jarvis/sources.py`
+- Test: `tests/test_sources.py`
+
+**Interfaces:**
+- Consumes: `paths.ensure_data_dir`
+- Produces:
+  - `sources.CARD_DATA_URL: str`
+  - `sources.fetch_card_data(dest: Path, *, url: str = CARD_DATA_URL) -> FetchReport`
+  - `sources.FetchReport` — dataclass with `pack_files: int`, `bytes_downloaded: int`, `dest: Path`
+
+- [ ] **Step 1: Write the failing test**
+
+The test builds its own tarball, so it needs no network and no FFG content.
+
+```python
+# tests/test_sources.py
+import io
+import json
+import tarfile
+import pytest
+from mc_jarvis import sources
+
+
+def _fake_tarball(tmp_path):
+    """A tarball shaped like GitHub's: one top-level prefix directory."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        for name, body in [
+            ("marvelsdb-json-data-master/pack/core.json",
+             json.dumps([{"code": "01001a", "name": "Test Hero"}])),
+            ("marvelsdb-json-data-master/pack/gmw.json",
+             json.dumps([{"code": "02001", "name": "Test Ally"}])),
+            ("marvelsdb-json-data-master/packs.json", json.dumps([])),
+            ("marvelsdb-json-data-master/sets.json", json.dumps([])),
+            ("marvelsdb-json-data-master/README.md", "ignore me"),
+        ]:
+            data = body.encode()
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def test_extracts_and_strips_the_github_prefix(tmp_path, monkeypatch):
+    blob = _fake_tarball(tmp_path)
+    monkeypatch.setattr(sources, "_download", lambda url: blob)
+    report = sources.fetch_card_data(tmp_path / "marvelsdb")
+    assert (tmp_path / "marvelsdb" / "pack" / "core.json").is_file()
+    assert (tmp_path / "marvelsdb" / "packs.json").is_file()
+    assert report.pack_files == 2
+
+
+def test_refuses_path_traversal_members(tmp_path, monkeypatch):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+        data = b"pwned"
+        info = tarfile.TarInfo("marvelsdb-json-data-master/../../evil.json")
+        info.size = len(data)
+        tf.addfile(info, io.BytesIO(data))
+    monkeypatch.setattr(sources, "_download", lambda url: buf.getvalue())
+    with pytest.raises(ValueError, match="unsafe path"):
+        sources.fetch_card_data(tmp_path / "marvelsdb")
+    assert not (tmp_path.parent / "evil.json").exists()
+
+
+def test_replaces_previous_contents(tmp_path, monkeypatch):
+    dest = tmp_path / "marvelsdb"
+    (dest / "pack").mkdir(parents=True)
+    (dest / "pack" / "stale.json").write_text("[]")
+    monkeypatch.setattr(sources, "_download", lambda url: _fake_tarball(tmp_path))
+    sources.fetch_card_data(dest)
+    assert not (dest / "pack" / "stale.json").exists()
+
+
+@pytest.mark.integration
+def test_real_tarball_has_the_expected_shape(tmp_path):
+    report = sources.fetch_card_data(tmp_path / "marvelsdb")
+    assert report.pack_files > 100          # 116 at time of writing
+    assert report.bytes_downloaded < 5_000_000
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `uv run pytest tests/test_sources.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.sources'`
+
+- [ ] **Step 3: Write `sources.py`**
+
+`tarfile` extraction of a downloaded archive is the classic path-traversal sink, so members are validated before any write. Python 3.12 has `filter="data"` but the floor is 3.10, so the check is explicit.
+
+```python
+"""Card data acquisition (spec §6, §11)."""
+from __future__ import annotations
+
+import io
+import shutil
+import tarfile
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+
+CARD_DATA_URL = "https://codeload.github.com/zzorba/marvelsdb-json-data/tar.gz/refs/heads/master"
+USER_AGENT = "mc-jarvis (+https://github.com/zzorba/marvelsdb-json-data)"
+
+
+@dataclass
+class FetchReport:
+    pack_files: int
+    bytes_downloaded: int
+    dest: Path
+
+
+def _download(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return resp.read()
+
+
+def _safe_members(tf: tarfile.TarFile, root: Path):
+    for member in tf.getmembers():
+        if not member.isfile():
+            continue
+        # Strip GitHub's top-level "<repo>-<ref>/" prefix.
+        parts = Path(member.name).parts
+        if len(parts) < 2:
+            continue
+        rel = Path(*parts[1:])
+        target = (root / rel).resolve()
+        if not str(target).startswith(str(root.resolve())):
+            raise ValueError(f"unsafe path in archive: {member.name}")
+        if ".." in rel.parts:
+            raise ValueError(f"unsafe path in archive: {member.name}")
+        yield member, rel
+
+
+def fetch_card_data(dest: Path, *, url: str = CARD_DATA_URL) -> FetchReport:
+    blob = _download(url)
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+
+    pack_files = 0
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tf:
+        for member, rel in _safe_members(tf, dest):
+            if rel.suffix != ".json":
+                continue
+            out = dest / rel
+            out.parent.mkdir(parents=True, exist_ok=True)
+            src = tf.extractfile(member)
+            if src is None:
+                continue
+            out.write_bytes(src.read())
+            if rel.parts[0] == "pack":
+                pack_files += 1
+
+    return FetchReport(pack_files=pack_files,
+                       bytes_downloaded=len(blob), dest=dest)
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_sources.py -v -m "not integration"`
+Expected: PASS, 3 tests
+
+- [ ] **Step 5: Run the integration test against the real upstream**
+
+Run: `uv run pytest tests/test_sources.py -v -m integration`
+Expected: PASS — `pack_files` around 116, download under 2 MB
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/mc_jarvis/sources.py tests/test_sources.py
+git commit -m "feat: fetch card data tarball without requiring git"
+```
+
+---
+
+## Task 4: Schema and card loader
+
+Implements §8 and the copies rules in §10. The `deck_limit <= quantity` invariant is asserted here so that a future upstream change fails loudly instead of quietly under-counting.
+
+**Files:**
+- Create: `src/mc_jarvis/schema.py`, `src/mc_jarvis/index.py`, `tests/fixtures/__init__.py`, `tests/fixtures/cards.py`
+- Test: `tests/test_index.py`
+
+**Interfaces:**
+- Consumes: `paths.db_path`
+- Produces:
+  - `schema.SCHEMA: str` — all DDL, idempotent (`IF NOT EXISTS`)
+  - `index.connect(db_path: Path) -> sqlite3.Connection` — row factory set to `sqlite3.Row`, foreign keys on
+  - `index.load_cards(conn, marvelsdb_dir: Path) -> BuildReport`
+  - `index.BuildReport` — dataclass with `cards: int`, `player_cards: int`, `packs: int`, `sets: int`, `warnings: list[str]`
+  - `index.InvariantError` — exception
+  - `index.resolve_deck_limit(card: dict) -> int` — the `deck_limit: null` → `quantity` fallback
+
+**Fixture contract.** `tests/fixtures/cards.py` exposes `PACK` — a list of hand-invented card dicts in marvelsdb shape containing no FFG text. Later tasks extend it; the traps it must encode are listed in spec §14. This task adds: a `deck_limit: null` card, a normal card, and a card that violates the invariant (used only by the failure test).
+
+- [ ] **Step 1: Write the fixture**
+
+```python
+# tests/fixtures/cards.py
+"""Hand-invented cards in marvelsdb shape. No FFG text appears here."""
+
+def card(code, name, **kw):
+    base = {
+        "code": code, "name": name, "type_code": "ally",
+        "faction_code": "leadership", "pack_code": "tst",
+        "set_code": "tester", "quantity": 3, "deck_limit": 3,
+        "cost": 2, "text": "", "traits": "", "is_unique": False,
+    }
+    base.update(kw)
+    return base
+
+
+PACK = [
+    card("tst01a", "Tester", type_code="hero", faction_code="hero",
+         deck_limit=None, quantity=1, cost=None, back_link="tst01b",
+         hand_size=5, health=10),
+    card("tst01b", "Terry Tester", type_code="alter_ego",
+         faction_code="hero", deck_limit=None, quantity=1, cost=None,
+         hand_size=6, health=10),
+    card("tst02", "Ordinary Ally", cost=3, quantity=3, deck_limit=3),
+    card("tst03", "Limited Signature", faction_code="hero",
+         deck_limit=None, quantity=2),
+]
+
+INVARIANT_VIOLATION = card("tst99", "Impossible Card",
+                           quantity=1, deck_limit=3)
+```
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_index.py
+import json
+import pytest
+from mc_jarvis import index, schema
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def corpus(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(fx.PACK))
+    (root / "packs.json").write_text(json.dumps(
+        [{"code": "tst", "name": "Tester Pack"}]))
+    (root / "sets.json").write_text(json.dumps(
+        [{"code": "tester", "name": "Tester Set",
+          "card_set_type_code": "hero"}]))
+    return root
+
+
+@pytest.fixture
+def conn(tmp_path):
+    return index.connect(tmp_path / "mc.sqlite")
+
+
+def test_loads_every_card(conn, corpus):
+    report = index.load_cards(conn, corpus)
+    assert report.cards == 4
+    assert report.packs == 1
+    assert report.sets == 1
+
+
+def test_null_deck_limit_falls_back_to_quantity(conn, corpus):
+    index.load_cards(conn, corpus)
+    row = conn.execute(
+        "SELECT deck_limit, deck_limit_raw, quantity FROM cards "
+        "WHERE code = 'tst03'").fetchone()
+    assert row["deck_limit_raw"] is None
+    assert row["deck_limit"] == 2      # falls back to quantity, not unlimited
+    assert row["quantity"] == 2
+
+
+def test_deck_limit_never_silently_exceeds_quantity(conn, corpus):
+    bad = json.loads((corpus / "pack" / "tst.json").read_text())
+    bad.append(fx.INVARIANT_VIOLATION)
+    (corpus / "pack" / "tst.json").write_text(json.dumps(bad))
+    with pytest.raises(index.InvariantError, match="deck_limit"):
+        index.load_cards(conn, corpus)
+
+
+def test_grouped_invariant_catches_cross_printing_violation(conn, corpus):
+    """A card at quantity 1 in every pack breaks the invariant even
+    though no single row does (spec §10)."""
+    other = dict(fx.card("tst02", "Ordinary Ally"),
+                 pack_code="tst2", quantity=1, deck_limit=1)
+    (corpus / "pack" / "tst2.json").write_text(json.dumps([other]))
+    index.load_cards(conn, corpus)   # 3 in tst, 1 in tst2 -> max 3 <= max 3, ok
+
+
+def test_reload_is_idempotent(conn, corpus):
+    index.load_cards(conn, corpus)
+    report = index.load_cards(conn, corpus)
+    assert report.cards == 4
+    assert conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 4
+
+
+def test_raw_json_is_retained_verbatim(conn, corpus):
+    index.load_cards(conn, corpus)
+    raw = conn.execute(
+        "SELECT raw FROM cards WHERE code = 'tst02'").fetchone()["raw"]
+    assert json.loads(raw)["name"] == "Ordinary Ally"
+
+
+@pytest.mark.integration
+def test_real_corpus_counts(real_index):
+    n = real_index.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
+    assert 4000 < n < 6000                      # 4,298 at time of writing
+    player = real_index.execute(
+        "SELECT COUNT(*) FROM cards WHERE faction_code != 'encounter'"
+    ).fetchone()[0]
+    assert 1400 < player < 2500                 # 1,607 at time of writing
+```
+
+Add the shared integration fixture:
+
+```python
+# tests/conftest.py
+import pytest
+from mc_jarvis import index, paths
+
+
+@pytest.fixture
+def real_index():
+    db = paths.db_path()
+    if not db.exists():
+        pytest.skip("no built index; run `mc-jarvis init`")
+    return index.connect(db)
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_index.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.schema'`
+
+- [ ] **Step 4: Write `schema.py`**
+
+```python
+"""All DDL in one place. Idempotent."""
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS cards (
+    code                TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    subname             TEXT,
+    type_code           TEXT,
+    faction_code        TEXT,
+    pack_code           TEXT,
+    set_code            TEXT,
+    back_link           TEXT,
+    double_sided        INTEGER,
+    is_unique           INTEGER,
+    permanent           INTEGER,
+    duplicate_of        TEXT,
+    cost                INTEGER,
+    quantity            INTEGER,
+    deck_limit          INTEGER,   -- resolved: null falls back to quantity
+    deck_limit_raw      INTEGER,   -- exactly as printed upstream
+    resource_physical   INTEGER,
+    resource_mental     INTEGER,
+    resource_energy     INTEGER,
+    resource_wild       INTEGER,
+    attack              INTEGER,
+    thwart              INTEGER,
+    defense             INTEGER,
+    recover             INTEGER,
+    health              INTEGER,
+    hand_size           INTEGER,
+    text                TEXT,
+    flavor              TEXT,
+    traits              TEXT,
+    raw                 TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cards_name       ON cards(name);
+CREATE INDEX IF NOT EXISTS idx_cards_set        ON cards(set_code);
+CREATE INDEX IF NOT EXISTS idx_cards_pack       ON cards(pack_code);
+CREATE INDEX IF NOT EXISTS idx_cards_faction    ON cards(faction_code);
+CREATE INDEX IF NOT EXISTS idx_cards_type       ON cards(type_code);
+
+CREATE TABLE IF NOT EXISTS packs (
+    code TEXT PRIMARY KEY,
+    name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sets (
+    code               TEXT PRIMARY KEY,
+    name               TEXT,
+    card_set_type_code TEXT
+);
+
+CREATE TABLE IF NOT EXISTS build_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+"""
+```
+
+- [ ] **Step 5: Write `index.py`**
+
+```python
+"""SQLite index build (spec §8, §10)."""
+from __future__ import annotations
+
+import json
+import sqlite3
+from collections import defaultdict
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from . import schema
+
+
+class InvariantError(RuntimeError):
+    """An upstream assumption this design relies on no longer holds."""
+
+
+@dataclass
+class BuildReport:
+    cards: int = 0
+    player_cards: int = 0
+    packs: int = 0
+    sets: int = 0
+    warnings: list[str] = field(default_factory=list)
+
+
+COLUMNS = (
+    "code name subname type_code faction_code pack_code set_code back_link "
+    "double_sided is_unique permanent duplicate_of cost quantity "
+    "resource_physical resource_mental resource_energy resource_wild "
+    "attack thwart defense recover health hand_size text flavor traits"
+).split()
+
+
+def connect(db_path: Path) -> sqlite3.Connection:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(schema.SCHEMA)
+    return conn
+
+
+def resolve_deck_limit(card: dict) -> int | None:
+    """`deck_limit: null` is not unlimited — it falls back to `quantity`
+    (spec §10). 120 player cards depend on this."""
+    limit = card.get("deck_limit")
+    if limit is None:
+        return card.get("quantity")
+    return limit
+
+
+def _assert_copy_invariant(rows: list[dict]) -> None:
+    """`deck_limit` must never exceed `quantity`, per printing and grouped
+    across printings (spec §10). Collection ownership being binary depends
+    on this holding."""
+    for c in rows:
+        raw = c.get("deck_limit")
+        qty = c.get("quantity")
+        if raw is not None and qty is not None and raw > qty:
+            raise InvariantError(
+                f"deck_limit {raw} exceeds quantity {qty} for "
+                f"{c['code']} ({c.get('name')}); collection logic assumes "
+                f"this cannot happen (spec §10)")
+
+    by_name = defaultdict(lambda: {"limit": 0, "qty": 0})
+    for c in rows:
+        key = (c.get("name"), c.get("type_code"), c.get("faction_code"))
+        agg = by_name[key]
+        agg["limit"] = max(agg["limit"], resolve_deck_limit(c) or 0)
+        agg["qty"] = max(agg["qty"], c.get("quantity") or 0)
+    for key, agg in by_name.items():
+        if agg["limit"] > agg["qty"]:
+            raise InvariantError(
+                f"grouped deck_limit {agg['limit']} exceeds max quantity "
+                f"{agg['qty']} for {key} (spec §10)")
+
+
+def _read_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
+    report = BuildReport()
+
+    pack_dir = marvelsdb_dir / "pack"
+    if not pack_dir.is_dir():
+        raise InvariantError(f"no pack/ directory under {marvelsdb_dir}")
+
+    rows: list[dict] = []
+    for path in sorted(pack_dir.glob("*.json")):
+        payload = _read_json(path)
+        if not isinstance(payload, list):
+            report.warnings.append(f"{path.name}: not a list, skipped")
+            continue
+        rows.extend(payload)
+
+    if not rows:
+        raise InvariantError(f"no cards found under {pack_dir}")
+
+    _assert_copy_invariant(rows)
+
+    conn.execute("DELETE FROM cards")
+    conn.executemany(
+        f"INSERT OR REPLACE INTO cards ({', '.join(COLUMNS)}, "
+        f"deck_limit, deck_limit_raw, raw) VALUES "
+        f"({', '.join('?' * len(COLUMNS))}, ?, ?, ?)",
+        [
+            tuple(c.get(col) for col in COLUMNS)
+            + (resolve_deck_limit(c), c.get("deck_limit"),
+               json.dumps(c, ensure_ascii=False))
+            for c in rows
+        ],
+    )
+    report.cards = len(rows)
+    report.player_cards = sum(
+        1 for c in rows if c.get("faction_code") != "encounter")
+
+    for name, table, cols in (
+        ("packs.json", "packs", ("code", "name")),
+        ("sets.json", "sets", ("code", "name", "card_set_type_code")),
+    ):
+        path = marvelsdb_dir / name
+        if not path.exists():
+            report.warnings.append(f"{name} missing")
+            continue
+        payload = _read_json(path)
+        conn.execute(f"DELETE FROM {table}")
+        conn.executemany(
+            f"INSERT OR REPLACE INTO {table} ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' * len(cols))})",
+            [tuple(item.get(c) for c in cols) for item in payload])
+        setattr(report, table, len(payload))
+
+    conn.commit()
+    return report
+```
+
+Note `sqlite3` stores Python `bool` as 0/1 and `None` as NULL, so `is_unique` and `permanent` need no conversion.
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_index.py -v -m "not integration"`
+Expected: PASS, 6 tests
+
+- [ ] **Step 7: Build against the real corpus by hand**
+
+```bash
+uv run python -c "
+from pathlib import Path
+from mc_jarvis import index, sources, paths
+root = paths.ensure_data_dir()
+print(sources.fetch_card_data(root / 'marvelsdb'))
+conn = index.connect(paths.db_path())
+print(index.load_cards(conn, root / 'marvelsdb'))
+"
+```
+Expected: around 4,298 cards, 1,607 player cards, 61 packs, no `InvariantError`
+
+- [ ] **Step 8: Run the integration tests**
+
+Run: `uv run pytest tests/ -v -m integration`
+Expected: PASS
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/mc_jarvis/schema.py src/mc_jarvis/index.py tests/
+git commit -m "feat: SQLite schema and card loader with copy invariants"
+```
+
+---
+
+## Task 5: FTS5 and `card search` — FIRST TESTABLE CHECKPOINT
+
+Implements §3 and §5.1. After this task the tool answers real questions. **Stop here and exercise it against the real corpus before continuing** — this is the point of the slice.
+
+**Files:**
+- Create: `src/mc_jarvis/cards.py`
+- Modify: `src/mc_jarvis/schema.py` (add FTS table), `src/mc_jarvis/index.py` (populate it), `src/mc_jarvis/cli.py` (dispatch)
+- Test: `tests/test_cards_search.py`
+
+**Interfaces:**
+- Consumes: `index.connect`, `cli.emit`
+- Produces:
+  - `cards.search(conn, query: str | None = None, *, aspect=None, type=None, cost=None, trait=None, text=None, limit=20) -> list[dict]`
+  - `cards.handle_search(args) -> int`
+  - `index.build_fts(conn) -> int` — rebuilds the FTS table, returns row count
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_cards_search.py
+import json
+import pytest
+from mc_jarvis import cards, index
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def conn(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    pack = fx.PACK + [
+        fx.card("tst10", "Web Shooter", type_code="upgrade",
+                faction_code="hero", text="Exhaust to web an enemy.",
+                traits="Tech.", cost=1),
+        fx.card("tst11", "Aerial Strike", type_code="event",
+                faction_code="aggression", text="Deal 3 damage.",
+                traits="Attack.", cost=2),
+    ]
+    (root / "pack" / "tst.json").write_text(json.dumps(pack))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text("[]")
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    return c
+
+
+def test_full_text_matches_card_text(conn):
+    hits = cards.search(conn, "web")
+    names = {h["name"] for h in hits}
+    assert "Web Shooter" in names
+
+
+def test_filters_compose_with_the_query(conn):
+    assert cards.search(conn, "damage", aspect="aggression")
+    assert cards.search(conn, "damage", aspect="protection") == []
+
+
+def test_filter_only_search_needs_no_query(conn):
+    hits = cards.search(conn, None, type="upgrade")
+    assert [h["code"] for h in hits] == ["tst10"]
+
+
+def test_cost_filter_accepts_comparisons(conn):
+    assert {h["code"] for h in cards.search(conn, None, cost="<=1")} == {"tst10"}
+    assert {h["code"] for h in cards.search(conn, None, cost="2")} >= {"tst11"}
+
+
+def test_limit_is_honoured(conn):
+    assert len(cards.search(conn, None, limit=2)) == 2
+
+
+def test_fts_special_characters_do_not_raise(conn):
+    """A user query is not FTS5 syntax; `Sp//dr` and quotes must not
+    become a syntax error."""
+    for q in ["Sp//dr", 'a "quoted" thing', "AND", "foo*bar", "-"]:
+        cards.search(conn, q)
+
+
+@pytest.mark.integration
+def test_real_corpus_structural_query(real_index):
+    hits = cards.search(real_index, None, aspect="justice", type="ally",
+                        cost="<=2", limit=100)
+    assert len(hits) > 5
+    assert all(h["faction_code"] == "justice" for h in hits)
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `uv run pytest tests/test_cards_search.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.cards'`
+
+- [ ] **Step 3: Add the FTS table to `schema.py`**
+
+Append to `SCHEMA`:
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
+    name, subname, text, traits, flavor,
+    content='cards', content_rowid='rowid'
+);
+```
+
+External-content FTS5 keeps no second copy of the text; `build_fts` repopulates it explicitly rather than via triggers, because the index is rebuilt wholesale rather than edited.
+
+- [ ] **Step 4: Add `build_fts` to `index.py`**
+
+```python
+def build_fts(conn: sqlite3.Connection) -> int:
+    conn.execute("INSERT INTO cards_fts(cards_fts) VALUES('delete-all')")
+    conn.execute(
+        "INSERT INTO cards_fts(rowid, name, subname, text, traits, flavor) "
+        "SELECT rowid, name, subname, text, traits, flavor FROM cards")
+    conn.commit()
+    return conn.execute("SELECT COUNT(*) FROM cards_fts").fetchone()[0]
+```
+
+- [ ] **Step 5: Write `cards.py`**
+
+`_fts_query` is load-bearing: a player's words are not FTS5 syntax, and card names contain `//`, `-`, and quotes. Every term is quoted so it is treated as a literal.
+
+```python
+"""Card queries (spec §5.1)."""
+from __future__ import annotations
+
+import re
+import sqlite3
+
+from . import index, paths
+from .cli import emit
+
+SUMMARY = ("code", "name", "subname", "type_code", "faction_code",
+           "cost", "pack_code", "traits", "text")
+
+_COST = re.compile(r"^(<=|>=|<|>|=)?\s*(\d+)$")
+
+
+def _fts_query(raw: str) -> str:
+    """Turn a human phrase into a safe FTS5 MATCH expression.
+
+    Every token is double-quoted, so FTS5 operators and punctuation in
+    card names (Sp//dr, Alter-Ego) are literals rather than syntax.
+    """
+    tokens = re.findall(r"[\w'/-]+", raw)
+    if not tokens:
+        return ""
+    return " AND ".join('"' + t.replace('"', '""') + '"' for t in tokens)
+
+
+def search(conn, query=None, *, aspect=None, type=None, cost=None,
+           trait=None, text=None, limit=20) -> list[dict]:
+    where, params = [], []
+    joins = ""
+
+    if query:
+        expr = _fts_query(query)
+        if expr:
+            joins = ("JOIN cards_fts ON cards_fts.rowid = cards.rowid "
+                     "AND cards_fts MATCH ?")
+            params.append(expr)
+
+    if aspect:
+        where.append("cards.faction_code = ?")
+        params.append(aspect)
+    if type:
+        where.append("cards.type_code = ?")
+        params.append(type)
+    if trait:
+        where.append("cards.traits LIKE ?")
+        params.append(f"%{trait}%")
+    if text:
+        where.append("cards.text LIKE ?")
+        params.append(f"%{text}%")
+    if cost:
+        m = _COST.match(str(cost).strip())
+        if not m:
+            raise ValueError(f"unparseable cost filter: {cost!r} "
+                             f"(try 2, <=3, >1)")
+        op = m.group(1) or "="
+        where.append(f"cards.cost {op} ?")
+        params.append(int(m.group(2)))
+
+    sql = (f"SELECT {', '.join('cards.' + c for c in SUMMARY)} "
+           f"FROM cards {joins}")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY cards.code LIMIT ?"
+    params.append(limit)
+
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
+def _open():
+    db = paths.db_path()
+    if not db.exists():
+        raise SystemExit("no index found — run `mc-jarvis init` first")
+    return index.connect(db)
+
+
+def handle_search(args) -> int:
+    conn = _open()
+    hits = search(conn, args.query, aspect=args.aspect, type=args.type,
+                  cost=args.cost, trait=args.trait, text=args.text,
+                  limit=args.limit)
+    if args.json:
+        emit(hits, as_json=True)
+    else:
+        if not hits:
+            print("no matches")
+        for h in hits:
+            cost = "-" if h["cost"] is None else h["cost"]
+            print(f"{h['code']:<8} {h['name']:<32} "
+                  f"{h['faction_code']:<12} {h['type_code']:<10} {cost}")
+    return 0
+```
+
+- [ ] **Step 6: Dispatch it from `cli.py`**
+
+In `_dispatch`, add:
+
+```python
+    if name == "card":
+        from . import cards
+        if args.card_cmd == "search":
+            return cards.handle_search(args)
+```
+
+- [ ] **Step 7: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 8: Rebuild the real index and exercise it**
+
+```bash
+uv run python -c "
+from mc_jarvis import index, paths
+conn = index.connect(paths.db_path())
+print('fts rows:', index.build_fts(conn))
+"
+mc-jarvis card search "web" --limit 5
+mc-jarvis card search --aspect justice --type ally --cost "<=2" --limit 10
+mc-jarvis card search "Sp//dr"
+mc-jarvis card search --trait Aerial --limit 5 --json
+```
+Expected: real cards in every case; no FTS5 syntax errors; `--json` is valid JSON
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/mc_jarvis/cards.py src/mc_jarvis/schema.py src/mc_jarvis/index.py src/mc_jarvis/cli.py tests/
+git commit -m "feat: FTS5 index and card search"
+```
+
+**CHECKPOINT — hand the tool to the user here.** Real queries against the real corpus are what this slice exists to enable. Gaps found now are cheaper than gaps found after the deck pipeline is built on top.
+
+---
+
+## Task 6: `card show` and name disambiguation
+
+Implements §8. 79 player names appear in more than one pack and 60 character names exist as both an identity face and an ally, so this command **disambiguates rather than guesses**.
+
+**Files:**
+- Modify: `src/mc_jarvis/cards.py`, `src/mc_jarvis/cli.py`
+- Test: `tests/test_cards_show.py`
+
+**Interfaces:**
+- Produces:
+  - `cards.show(conn, ident: str) -> dict` — either `{"card": {...}, "faces": [...]}` or `{"ambiguous": [...]}`
+  - `cards.handle_show(args) -> int`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_cards_show.py
+import json
+import pytest
+from mc_jarvis import cards, index
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def conn(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    pack = fx.PACK + [
+        # The trap: one name, two genuinely different cards.
+        fx.card("tst20", "Tester", type_code="ally",
+                faction_code="leadership", cost=3),
+    ]
+    (root / "pack" / "tst.json").write_text(json.dumps(pack))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text("[]")
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    return c
+
+
+def test_lookup_by_code_is_exact(conn):
+    result = cards.show(conn, "tst02")
+    assert result["card"]["name"] == "Ordinary Ally"
+
+
+def test_unambiguous_name_resolves(conn):
+    assert cards.show(conn, "Ordinary Ally")["card"]["code"] == "tst02"
+
+
+def test_name_shared_by_a_hero_and_an_ally_is_ambiguous(conn):
+    result = cards.show(conn, "Tester")
+    assert "card" not in result
+    codes = {c["code"] for c in result["ambiguous"]}
+    assert codes == {"tst01a", "tst20"}
+
+
+def test_name_match_is_case_insensitive(conn):
+    assert cards.show(conn, "ordinary ally")["card"]["code"] == "tst02"
+
+
+def test_linked_faces_are_returned_together(conn):
+    result = cards.show(conn, "tst01a")
+    assert [f["code"] for f in result["faces"]] == ["tst01a", "tst01b"]
+
+
+def test_unknown_name_returns_no_match(conn):
+    assert cards.show(conn, "Nonexistent")["ambiguous"] == []
+
+
+@pytest.mark.integration
+def test_real_black_panther_is_ambiguous(real_index):
+    """Two distinct heroes plus an ally share this title (spec §8)."""
+    result = real_index and cards.show(real_index, "Black Panther")
+    assert "card" not in result
+    assert len(result["ambiguous"]) >= 3
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `uv run pytest tests/test_cards_show.py -v -m "not integration"`
+Expected: FAIL — `AttributeError: module 'mc_jarvis.cards' has no attribute 'show'`
+
+- [ ] **Step 3: Implement `show` in `cards.py`**
+
+```python
+FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
+                  "deck_limit", "quantity", "attack", "thwart", "defense",
+                  "recover", "health", "hand_size", "resource_physical",
+                  "resource_mental", "resource_energy", "resource_wild",
+                  "flavor")
+
+
+def _row(conn, code) -> dict | None:
+    r = conn.execute(
+        f"SELECT {', '.join(FULL)} FROM cards WHERE code = ?",
+        (code,)).fetchone()
+    return dict(r) if r else None
+
+
+def _faces(conn, card: dict) -> list[dict]:
+    """A card and everything linked to it, in code order. `back_link`
+    points hero -> alter-ego and is null on extra forms (spec §8)."""
+    seen, queue, out = set(), [card["code"]], []
+    while queue:
+        code = queue.pop()
+        if code in seen:
+            continue
+        seen.add(code)
+        row = _row(conn, code)
+        if not row:
+            continue
+        out.append(row)
+        if row.get("back_link"):
+            queue.append(row["back_link"])
+        for other in conn.execute(
+                "SELECT code FROM cards WHERE back_link = ?", (code,)):
+            queue.append(other["code"])
+    return sorted(out, key=lambda r: r["code"])
+
+
+def show(conn, ident: str) -> dict:
+    exact = _row(conn, ident)
+    if exact:
+        return {"card": exact, "faces": _faces(conn, exact)}
+
+    matches = [dict(r) for r in conn.execute(
+        f"SELECT {', '.join(SUMMARY)} FROM cards "
+        f"WHERE lower(name) = lower(?) ORDER BY code", (ident,))]
+
+    if len(matches) == 1:
+        card = _row(conn, matches[0]["code"])
+        return {"card": card, "faces": _faces(conn, card)}
+
+    # Zero or many: never guess. 60 character names exist as both an
+    # identity face and an ally (spec §8).
+    return {"ambiguous": matches}
+
+
+def handle_show(args) -> int:
+    conn = _open()
+    result = show(conn, args.name)
+    if getattr(args, "explain", False) and "card" in result:
+        from . import rules
+        result["keywords"] = rules.explain(conn, result["card"]["code"])
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if "card" in result else 1
+    if "card" in result:
+        for face in result["faces"]:
+            _print_card(face)
+        for kw in result.get("keywords", []):
+            print(f"\n  {kw['term']} (p.{kw['page']}) — {kw['body']}")
+        return 0
+    if not result["ambiguous"]:
+        print(f"no card named {args.name!r}")
+        return 1
+    print(f"{args.name!r} matches several cards — pick one by code:")
+    for c in result["ambiguous"]:
+        print(f"  {c['code']:<8} {c['name']:<28} "
+              f"{c['type_code']:<10} {c['faction_code']}")
+    return 1
+
+
+def _print_card(c: dict) -> None:
+    title = c["name"] + (f" — {c['subname']}" if c.get("subname") else "")
+    print(f"\n{title}  [{c['code']}]")
+    print(f"  {c['faction_code']} {c['type_code']}"
+          + (f", cost {c['cost']}" if c["cost"] is not None else ""))
+    if c.get("traits"):
+        print(f"  {c['traits']}")
+    if c.get("text"):
+        print(f"  {c['text']}")
+```
+
+`handle_show` references `rules.explain`, which Task 14 provides. Until then, `--explain` is the only flag that fails; leave the import inside the branch so nothing else breaks.
+
+- [ ] **Step 4: Dispatch it** — in `cli.py` `_dispatch`, under the `card` branch add `if args.card_cmd == "show": return cards.handle_show(args)`
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 6: Exercise against real data**
+
+```bash
+mc-jarvis card show "Black Panther"      # must list candidates, exit 1
+mc-jarvis card show 01040a               # must show hero and alter-ego faces
+mc-jarvis card show "Swinging Web Kick"
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/mc_jarvis/cards.py src/mc_jarvis/cli.py tests/test_cards_show.py
+git commit -m "feat: card show with name disambiguation and linked faces"
+```
+
+---
+
+## Task 7: Identity grouping and unique-match
+
+Implements §8 — the subtlest part of the data model. Two separate rules, both of which naive implementations get wrong:
+
+1. **Identities group on `set_code`, not `back_link`.** Angel, Ant-Man, and Wasp each have a third face with `back_link: null`; Ironheart has three complete identity cards.
+2. **Unique-match is a graph over three name fields, not string equality.** It misses `23012` (matches via `subname`) and falsely matches the two Black Panther heroes (whose alter-egos are T'Challa and Shuri).
+
+**Files:**
+- Create: `src/mc_jarvis/identity.py`
+- Modify: `src/mc_jarvis/schema.py`, `src/mc_jarvis/index.py`, `src/mc_jarvis/cards.py`, `src/mc_jarvis/cli.py`, `tests/fixtures/cards.py`
+- Test: `tests/test_identity.py`
+
+**Interfaces:**
+- Produces:
+  - `identity.build(conn) -> int` — populates `identities`, `identity_faces`, `match_titles`; returns identity count
+  - `identity.titles_for(conn, code: str) -> set[str]` — every title, subtitle, and linked-face title, normalised
+  - `identity.matches(conn, code_a: str, code_b: str) -> bool` — RR p.45
+  - `cards.identity(conn, name: str) -> dict`
+  - `cards.handle_identity(args) -> int`
+
+- [ ] **Step 1: Extend the fixture**
+
+Append to `tests/fixtures/cards.py` — this mirrors the Black Panther family's shape without using its text:
+
+```python
+# The RR p.45 unique-match family, invented. Four cards:
+#   - a linked hero/alter-ego pair
+#   - an ally sharing the hero's title
+#   - an ally matching via subname, not name
+#   - a second hero sharing the title but NOT matching (different alter-ego)
+MATCH_FAMILY = [
+    card("mtc01a", "Nightjar", type_code="hero", faction_code="hero",
+         set_code="nightjar", is_unique=True, back_link="mtc01b",
+         deck_limit=None, quantity=1),
+    card("mtc01b", "Ada Vance", type_code="alter_ego", faction_code="hero",
+         set_code="nightjar", is_unique=True, deck_limit=None, quantity=1),
+    card("mtc02", "Ada Vance", type_code="ally", is_unique=True,
+         deck_limit=1, quantity=1, set_code=None),
+    card("mtc03", "Nightjar", subname="Ada Vance", type_code="ally",
+         is_unique=True, deck_limit=1, quantity=1, set_code=None),
+    card("mtc04a", "Nightjar", type_code="hero", faction_code="hero",
+         set_code="nightjar2", is_unique=True, back_link="mtc04b",
+         deck_limit=None, quantity=1),
+    card("mtc04b", "Jo Reyes", type_code="alter_ego", faction_code="hero",
+         set_code="nightjar2", is_unique=True, deck_limit=None, quantity=1),
+]
+
+# Extra hero form with back_link None (the Archangel shape), and a
+# multi-card identity (the Ironheart shape).
+EXTRA_FORMS = [
+    card("frm01a", "Skyward", type_code="hero", faction_code="hero",
+         set_code="skyward", back_link="frm01b", deck_limit=None,
+         quantity=1, hand_size=5),
+    card("frm01b", "Nell Cross", type_code="alter_ego", faction_code="hero",
+         set_code="skyward", deck_limit=None, quantity=1, hand_size=6),
+    card("frm01c", "Skyward Ascendant", type_code="hero",
+         faction_code="hero", set_code="skyward", back_link=None,
+         deck_limit=None, quantity=1, hand_size=4),
+]
+
+MULTI_IDENTITY = [
+    c for i in (1, 2, 3) for c in (
+        card(f"mid0{i}a", f"Cascade Mk{i}", type_code="hero",
+             faction_code="hero", set_code="cascade", back_link=f"mid0{i}b",
+             deck_limit=None, quantity=1, hand_size=3 + i),
+        card(f"mid0{i}b", "Wren Bell", type_code="alter_ego",
+             faction_code="hero", set_code="cascade", deck_limit=None,
+             quantity=1, hand_size=6),
+    )
+]
+```
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_identity.py
+import json
+import pytest
+from mc_jarvis import cards, identity, index
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def conn(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(
+        fx.PACK + fx.MATCH_FAMILY + fx.EXTRA_FORMS + fx.MULTI_IDENTITY))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text("[]")
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    identity.build(c)
+    return c
+
+
+def test_extra_hero_form_is_part_of_the_identity(conn):
+    """frm01c has back_link None; grouping on back_link would drop it."""
+    faces = conn.execute(
+        "SELECT code FROM identity_faces WHERE identity_key = 'skyward' "
+        "ORDER BY code").fetchall()
+    assert [f["code"] for f in faces] == ["frm01a", "frm01b", "frm01c"]
+
+
+def test_multi_card_identity_is_one_identity(conn):
+    """The Ironheart shape: three identity cards, six faces, one identity."""
+    n = conn.execute(
+        "SELECT COUNT(*) FROM identity_faces WHERE identity_key = 'cascade'"
+    ).fetchone()[0]
+    assert n == 6
+    assert conn.execute(
+        "SELECT COUNT(*) FROM identities WHERE identity_key = 'cascade'"
+    ).fetchone()[0] == 1
+
+
+def test_titles_include_every_linked_face(conn):
+    assert identity.titles_for(conn, "mtc01a") == {"nightjar", "ada vance"}
+
+
+def test_subname_participates_in_matching(conn):
+    """mtc03's title differs from mtc02's; they match via subname."""
+    assert identity.matches(conn, "mtc03", "mtc02") is True
+    assert identity.matches(conn, "mtc01a", "mtc03") is True
+
+
+def test_same_title_different_alter_ego_does_not_match(conn):
+    """The false positive string equality produces: two heroes share the
+    title 'Nightjar' but their alter-egos differ (spec §8)."""
+    assert identity.matches(conn, "mtc01a", "mtc04a") is False
+
+
+def test_non_unique_cards_never_match(conn):
+    assert identity.matches(conn, "tst02", "tst02") is False
+
+
+def test_identity_command_returns_all_faces(conn):
+    result = cards.identity(conn, "Skyward")
+    assert len(result["faces"]) == 3
+    assert {f["hand_size"] for f in result["faces"]} == {4, 5, 6}
+
+
+@pytest.mark.integration
+def test_real_ironheart_has_six_faces(real_index):
+    result = cards.identity(real_index, "Ironheart")
+    assert len(result["faces"]) == 6
+
+
+@pytest.mark.integration
+def test_real_black_panther_heroes_do_not_match(real_index):
+    assert identity.matches(real_index, "01040a", "51001a") is False
+    assert identity.matches(real_index, "01040a", "23012") is True
+    assert identity.matches(real_index, "01040a", "51002") is True
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_identity.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.identity'`
+
+- [ ] **Step 4: Add tables to `schema.py`**
+
+```sql
+CREATE TABLE IF NOT EXISTS identities (
+    identity_key TEXT PRIMARY KEY,   -- the set_code
+    name         TEXT NOT NULL       -- the primary hero face's name
+);
+
+CREATE TABLE IF NOT EXISTS identity_faces (
+    identity_key TEXT NOT NULL REFERENCES identities(identity_key),
+    code         TEXT NOT NULL REFERENCES cards(code),
+    PRIMARY KEY (identity_key, code)
+);
+
+-- Every title a card contributes to unique-matching: its name, its
+-- subname, and the names of all its linked faces (spec §8, RR p.45).
+CREATE TABLE IF NOT EXISTS match_titles (
+    code  TEXT NOT NULL REFERENCES cards(code),
+    title TEXT NOT NULL,             -- lowercased
+    PRIMARY KEY (code, title)
+);
+CREATE INDEX IF NOT EXISTS idx_match_titles_title ON match_titles(title);
+```
+
+- [ ] **Step 5: Write `identity.py`**
+
+```python
+"""Identity grouping and RR p.45 unique-card matching (spec §8)."""
+from __future__ import annotations
+
+import sqlite3
+
+IDENTITY_TYPES = ("hero", "alter_ego")
+
+
+def _norm(title: str | None) -> str | None:
+    return title.strip().lower() if title else None
+
+
+def build(conn: sqlite3.Connection) -> int:
+    conn.execute("DELETE FROM identity_faces")
+    conn.execute("DELETE FROM identities")
+    conn.execute("DELETE FROM match_titles")
+
+    # Identities group on set_code. back_link is null on extra hero forms
+    # (Archangel, Ant-Man's giant form, Wasp), so it cannot be the key.
+    rows = conn.execute(
+        "SELECT code, name, set_code, type_code FROM cards "
+        "WHERE type_code IN (?, ?) AND set_code IS NOT NULL "
+        "ORDER BY code", IDENTITY_TYPES).fetchall()
+
+    groups: dict[str, list[sqlite3.Row]] = {}
+    for r in rows:
+        groups.setdefault(r["set_code"], []).append(r)
+
+    for key, faces in groups.items():
+        primary = next((f for f in faces if f["type_code"] == "hero"), faces[0])
+        conn.execute("INSERT INTO identities (identity_key, name) VALUES (?, ?)",
+                     (key, primary["name"]))
+        conn.executemany(
+            "INSERT INTO identity_faces (identity_key, code) VALUES (?, ?)",
+            [(key, f["code"]) for f in faces])
+
+    _build_match_titles(conn)
+    conn.commit()
+    return len(groups)
+
+
+def _build_match_titles(conn: sqlite3.Connection) -> None:
+    """A card's match set is its own titles plus those of every face it is
+    linked to. Only unique cards participate (all 653 unique player cards
+    have deck_limit 1 or null, so uniqueness is the right gate)."""
+    linked: dict[str, set[str]] = {}
+    for r in conn.execute(
+            "SELECT code, back_link FROM cards WHERE back_link IS NOT NULL"):
+        linked.setdefault(r["code"], set()).add(r["back_link"])
+        linked.setdefault(r["back_link"], set()).add(r["code"])
+
+    # Faces of the same identity are linked for matching purposes.
+    for r in conn.execute(
+            "SELECT identity_key, code FROM identity_faces"):
+        for other in conn.execute(
+                "SELECT code FROM identity_faces WHERE identity_key = ?",
+                (r["identity_key"],)):
+            if other["code"] != r["code"]:
+                linked.setdefault(r["code"], set()).add(other["code"])
+
+    names = {r["code"]: (r["name"], r["subname"]) for r in conn.execute(
+        "SELECT code, name, subname FROM cards WHERE is_unique = 1")}
+
+    payload = []
+    for code in names:
+        titles: set[str] = set()
+        for related in {code} | linked.get(code, set()):
+            pair = names.get(related)
+            if pair is None:
+                # A linked face may not itself be flagged unique; its
+                # title still counts toward the identity's match set.
+                row = conn.execute(
+                    "SELECT name, subname FROM cards WHERE code = ?",
+                    (related,)).fetchone()
+                pair = (row["name"], row["subname"]) if row else (None, None)
+            for t in pair:
+                n = _norm(t)
+                if n:
+                    titles.add(n)
+        payload.extend((code, t) for t in titles)
+
+    conn.executemany(
+        "INSERT OR IGNORE INTO match_titles (code, title) VALUES (?, ?)",
+        payload)
+
+
+def titles_for(conn, code: str) -> set[str]:
+    return {r["title"] for r in conn.execute(
+        "SELECT title FROM match_titles WHERE code = ?", (code,))}
+
+
+def matches(conn, code_a: str, code_b: str) -> bool:
+    """RR p.45. Two unique cards match when their title sets overlap.
+
+    This is why string equality on `name` fails in both directions: an
+    ally can match via its subtitle, and two heroes sharing a title do
+    not match when their alter-ego titles differ.
+    """
+    a, b = titles_for(conn, code_a), titles_for(conn, code_b)
+    if not a or not b:
+        return False          # non-unique cards never match
+    return bool(a & b)
+```
+
+Note `matches(x, x)` on a non-unique card returns `False` because it has no rows in `match_titles` — which is what `test_non_unique_cards_never_match` asserts.
+
+- [ ] **Step 6: Add `cards.identity`**
+
+```python
+def identity(conn, name: str) -> dict:
+    row = conn.execute(
+        "SELECT identity_key, name FROM identities "
+        "WHERE lower(name) = lower(?)", (name,)).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT i.identity_key, i.name FROM identities i "
+            "JOIN identity_faces f ON f.identity_key = i.identity_key "
+            "JOIN cards c ON c.code = f.code "
+            "WHERE lower(c.name) = lower(?) LIMIT 1", (name,)).fetchone()
+    if row is None:
+        return {"identity": None, "faces": [], "signature": []}
+
+    key = row["identity_key"]
+    faces = [_row(conn, r["code"]) for r in conn.execute(
+        "SELECT code FROM identity_faces WHERE identity_key = ? "
+        "ORDER BY code", (key,))]
+    signature = [dict(r) for r in conn.execute(
+        f"SELECT {', '.join(SUMMARY)} FROM cards "
+        f"WHERE set_code = ? AND type_code NOT IN ('hero', 'alter_ego') "
+        f"ORDER BY code", (key,))]
+    return {"identity": row["name"], "identity_key": key,
+            "faces": faces, "signature": signature}
+
+
+def handle_identity(args) -> int:
+    conn = _open()
+    result = identity(conn, args.name)
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if result["identity"] else 1
+    if not result["identity"]:
+        print(f"no identity named {args.name!r}")
+        return 1
+    print(f"{result['identity']}  [{result['identity_key']}]")
+    for f in result["faces"]:
+        _print_card(f)
+    print(f"\nSignature set ({len(result['signature'])} cards):")
+    for c in result["signature"]:
+        print(f"  {c['code']:<8} {c['name']:<30} {c['type_code']}")
+    return 0
+```
+
+- [ ] **Step 7: Call `identity.build` from the index build and dispatch the command**
+
+In `index.py`, after `build_fts`, callers run `identity.build(conn)`; Task 15 wires this into `init`. In `cli.py` `_dispatch` add:
+
+```python
+    if name == "identity":
+        from . import cards
+        return cards.handle_identity(args)
+```
+
+- [ ] **Step 8: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 9: Rebuild the real index and check the named cases**
+
+```bash
+uv run python -c "
+from mc_jarvis import index, identity, paths
+conn = index.connect(paths.db_path())
+print('identities:', identity.build(conn))
+"
+mc-jarvis identity Ironheart      # expect 6 faces
+mc-jarvis identity Angel          # expect 3 faces including Archangel
+mc-jarvis hero Spider-Man         # alias; expect 2 faces + 9 signature cards
+uv run pytest tests/test_identity.py -v -m integration
+```
+Expected: 72 identities; the integration assertions on Black Panther pass
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/mc_jarvis/identity.py src/mc_jarvis/schema.py src/mc_jarvis/cards.py src/mc_jarvis/cli.py tests/
+git commit -m "feat: identity grouping on set_code and RR p.45 unique-match"
+```
+
+---
+
+## Task 8: Out-of-deck classification and the setup audit
+
+Implements §10. Three mechanisms mark cards as sitting outside the constructed deck, **one of which is no marking at all**. The audit turns an unbounded hand-maintained list into a check that fails loudly when a new release adds an uncovered case.
+
+**Files:**
+- Create: `src/mc_jarvis/outofdeck.py`, `config/legality.yaml`
+- Modify: `src/mc_jarvis/schema.py`, `tests/fixtures/cards.py`
+- Test: `tests/test_outofdeck.py`
+
+**Interfaces:**
+- Produces:
+  - `outofdeck.classify(conn, config: dict) -> int` — populates `out_of_deck`; returns row count
+  - `outofdeck.setup_audit(conn, config: dict) -> list[AuditFinding]`
+  - `outofdeck.AuditFinding` — dataclass `identity_key: str`, `identity_name: str`, `quote: str`, `covered: bool`
+  - `outofdeck.AuditError` — raised when a finding is uncovered
+  - `outofdeck.load_config(path: Path | None = None) -> dict`
+
+**`config/legality.yaml` scope for this plan.** Only the `out_of_deck` section. Deck size, aspect purity, and the rest are the next plan's work.
+
+- [ ] **Step 1: Write `config/legality.yaml`**
+
+```yaml
+# Hand-encoded deckbuilding rules (spec §10).
+# THIS PLAN populates only `out_of_deck`. The remaining rules — deck size,
+# aspect purity, dual-aspect, basic allowances, the Deadpool `pool`
+# exception — are added in the deck-pipeline plan.
+#
+# Every entry here exists because no structured field marks the card.
+# The setup audit fails the build when an identity implies a set-aside
+# card that neither `permanent`, `hero_special`, nor this list covers.
+
+version: 1
+
+out_of_deck:
+  # Structured mechanisms, listed for documentation. Code reads the data,
+  # not these values.
+  by_keyword: permanent            # spec §10 mechanism 1
+  by_set_type: hero_special        # spec §10 mechanism 2
+
+  # Mechanism 3: unmarked. Prose on the identity card is the only evidence.
+  # `identity` is the identity_key (set_code); `cards` are card codes.
+  exceptions:
+    - identity: rogue
+      cards: []                    # resolved in Task 8 Step 7, not guessed here
+      note: >-
+        Rogue's identity text instructs the player to find this card and set
+        it aside. The card carries deck_limit 1, quantity 1, permanent null,
+        in the ordinary set — structurally indistinguishable from a normal
+        signature upgrade.
+    - identity: valkyrie
+      cards: []                    # resolved in Task 8 Step 7, not guessed here
+      note: >-
+        Brunnhilde's setup text names "Death Glow"; the card is named
+        "Death-Glow". Resolution cannot be by exact name match.
+```
+
+The two `cards: []` lists are filled in during Step 7 from real data, not guessed now — the audit's whole purpose is that these codes are not derivable by exact-match.
+
+- [ ] **Step 2: Extend the fixture**
+
+```python
+# Three out-of-deck mechanisms, plus the Sp//dr ordering trap.
+OUT_OF_DECK = [
+    # 1. permanent
+    card("ood01", "Bonded Blade", type_code="upgrade", faction_code="hero",
+         set_code="edge", permanent=True, deck_limit=1, quantity=1),
+    # 2. hero_special set member
+    card("ood02", "Channelled Spark", type_code="event", faction_code="hero",
+         set_code="edge_special", deck_limit=1, quantity=1),
+    # 3. unmarked; only the identity text implies it
+    card("ood03", "Kindling", type_code="upgrade", faction_code="hero",
+         set_code="edge", deck_limit=1, quantity=1),
+    card("ood00a", "Emberline", type_code="hero", faction_code="hero",
+         set_code="edge", back_link="ood00b", deck_limit=None, quantity=1,
+         text="Setup: Set the Kindling upgrade aside, out of play."),
+    card("ood00b", "Sasha Vane", type_code="alter_ego", faction_code="hero",
+         set_code="edge", deck_limit=None, quantity=1),
+    # A normal signature card that must NOT be classified out-of-deck.
+    card("ood04", "Ordinary Signature", type_code="event",
+         faction_code="hero", set_code="edge", deck_limit=3, quantity=3),
+]
+
+# The Sp//dr shape: a hero face and a permanent support sharing a title.
+SPDR = [
+    card("spd01a", "Loomcore Rig", type_code="hero", faction_code="hero",
+         set_code="loom", back_link="spd01b", is_unique=True,
+         deck_limit=None, quantity=1),
+    card("spd01b", "Pilot Wren", type_code="alter_ego", faction_code="hero",
+         set_code="loom", is_unique=True, deck_limit=None, quantity=1),
+    card("spd02", "Loomcore Rig", type_code="support", faction_code="hero",
+         set_code="loom", permanent=True, is_unique=True,
+         deck_limit=1, quantity=1),
+]
+
+SETS = [
+    {"code": "edge", "name": "Edge", "card_set_type_code": "hero"},
+    {"code": "edge_special", "name": "Edge Special",
+     "card_set_type_code": "hero_special"},
+    {"code": "loom", "name": "Loom", "card_set_type_code": "hero"},
+]
+
+CONFIG_COVERING_EMBERLINE = {
+    "version": 1,
+    "out_of_deck": {
+        "by_keyword": "permanent",
+        "by_set_type": "hero_special",
+        "exceptions": [{"identity": "edge", "cards": ["ood03"],
+                        "note": "test"}],
+    },
+}
+```
+
+- [ ] **Step 3: Write the failing test**
+
+```python
+# tests/test_outofdeck.py
+import copy
+import json
+import pytest
+from mc_jarvis import identity, index, outofdeck
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def conn(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(
+        fx.PACK + fx.OUT_OF_DECK + fx.SPDR))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text(json.dumps(fx.SETS))
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    identity.build(c)
+    return c
+
+
+def _codes(conn, mechanism=None):
+    sql = "SELECT code FROM out_of_deck"
+    args = ()
+    if mechanism:
+        sql += " WHERE mechanism = ?"
+        args = (mechanism,)
+    return {r["code"] for r in conn.execute(sql, args)}
+
+
+def test_permanent_cards_are_excluded(conn):
+    outofdeck.classify(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert "ood01" in _codes(conn, "permanent")
+
+
+def test_hero_special_set_members_are_excluded(conn):
+    outofdeck.classify(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert "ood02" in _codes(conn, "hero_special")
+
+
+def test_config_exceptions_are_excluded(conn):
+    outofdeck.classify(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert "ood03" in _codes(conn, "config")
+
+
+def test_ordinary_signature_cards_are_not_excluded(conn):
+    outofdeck.classify(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert "ood04" not in _codes(conn)
+
+
+def test_identity_faces_are_never_in_the_deck(conn):
+    outofdeck.classify(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert {"ood00a", "ood00b"} <= _codes(conn, "identity")
+
+
+def test_audit_flags_an_uncovered_identity(conn):
+    bare = copy.deepcopy(fx.CONFIG_COVERING_EMBERLINE)
+    bare["out_of_deck"]["exceptions"] = []
+    findings = outofdeck.setup_audit(conn, bare)
+    uncovered = [f for f in findings if not f.covered]
+    assert [f.identity_key for f in uncovered] == ["edge"]
+    assert "Kindling" in uncovered[0].quote
+
+
+def test_audit_passes_once_the_config_covers_it(conn):
+    findings = outofdeck.setup_audit(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert all(f.covered for f in findings)
+
+
+def test_audit_does_not_auto_resolve_by_name(conn):
+    """The audit reports the quote for human review; it must not try to
+    resolve prose to a card code itself (spec §10, the Death-Glow case)."""
+    bare = copy.deepcopy(fx.CONFIG_COVERING_EMBERLINE)
+    bare["out_of_deck"]["exceptions"] = []
+    finding = outofdeck.setup_audit(conn, bare)[0]
+    assert not hasattr(finding, "resolved_code")
+
+
+def test_classify_raises_when_audit_is_uncovered(conn):
+    bare = copy.deepcopy(fx.CONFIG_COVERING_EMBERLINE)
+    bare["out_of_deck"]["exceptions"] = []
+    with pytest.raises(outofdeck.AuditError, match="edge"):
+        outofdeck.classify(conn, bare, strict=True)
+
+
+def test_spdr_permanent_shares_a_title_with_its_hero_face(conn):
+    """Both are unique and share a title, so unique-match would reject the
+    deck — unless out-of-deck classification runs first (spec §10)."""
+    outofdeck.classify(conn, fx.CONFIG_COVERING_EMBERLINE)
+    assert identity.matches(conn, "spd01a", "spd02") is True
+    assert "spd02" in _codes(conn)      # so it is removed before matching
+
+
+@pytest.mark.integration
+def test_real_audit_returns_the_four_known_identities(real_index):
+    config = outofdeck.load_config()
+    findings = outofdeck.setup_audit(real_index, config)
+    names = {f.identity_name for f in findings}
+    assert {"Rogue", "Brunnhilde"} <= names
+    assert all(f.covered for f in findings), \
+        [f.identity_name for f in findings if not f.covered]
+```
+
+- [ ] **Step 4: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_outofdeck.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.outofdeck'`
+
+- [ ] **Step 5: Add the table to `schema.py`**
+
+```sql
+CREATE TABLE IF NOT EXISTS out_of_deck (
+    code      TEXT PRIMARY KEY REFERENCES cards(code),
+    mechanism TEXT NOT NULL,   -- permanent | hero_special | config | identity
+    note      TEXT
+);
+```
+
+- [ ] **Step 6: Write `outofdeck.py`**
+
+```python
+"""Cards that sit outside the constructed deck, and the audit that keeps
+the list honest (spec §10)."""
+from __future__ import annotations
+
+import re
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+CONFIG_PATH = Path(__file__).parent / "_bundled" / "legality.yaml"
+
+# Prose on an identity card that implies a card starts outside the deck.
+SETUP_PATTERNS = [
+    re.compile(r"set\s+(?:it|them|this card|the\s+[^.]{1,40}?)\s+aside", re.I),
+    re.compile(r"set\s+aside", re.I),
+    re.compile(r"begins?\s+the\s+game\s+with", re.I),
+    re.compile(r"begin\s+the\s+game\s+with", re.I),
+]
+
+
+class AuditError(RuntimeError):
+    """An identity implies an out-of-deck card that nothing covers."""
+
+
+@dataclass
+class AuditFinding:
+    identity_key: str
+    identity_name: str
+    quote: str
+    covered: bool
+
+
+def load_config(path: Path | None = None) -> dict:
+    return yaml.safe_load((path or CONFIG_PATH).read_text(encoding="utf-8"))
+
+
+def _exception_codes(config: dict) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for entry in config.get("out_of_deck", {}).get("exceptions", []) or []:
+        out[entry["identity"]] = list(entry.get("cards") or [])
+    return out
+
+
+def setup_audit(conn: sqlite3.Connection, config: dict) -> list[AuditFinding]:
+    """Scan identity text for set-aside language and report identities whose
+    implied cards nothing covers.
+
+    Reports for human review. It deliberately does not attempt to resolve
+    prose to a card code: Brunnhilde's text says "Death Glow" while the
+    card is "Death-Glow", so any exact-match resolution would silently
+    miss it — the exact failure this audit exists to prevent.
+    """
+    exceptions = _exception_codes(config)
+    special_type = config["out_of_deck"]["by_set_type"]
+
+    findings: list[AuditFinding] = []
+    for row in conn.execute(
+        "SELECT f.identity_key, c.code, c.name, c.text "
+        "FROM identity_faces f JOIN cards c ON c.code = f.code "
+        "WHERE c.text IS NOT NULL AND c.text != '' ORDER BY c.code"
+    ):
+        for pattern in SETUP_PATTERNS:
+            m = pattern.search(row["text"])
+            if not m:
+                continue
+            key = row["identity_key"]
+            sentence = _sentence_around(row["text"], m.start())
+
+            covered = bool(exceptions.get(key))
+            if not covered:
+                covered = conn.execute(
+                    "SELECT 1 FROM cards c LEFT JOIN sets s "
+                    "  ON s.code = c.set_code "
+                    "WHERE c.set_code = ? AND ("
+                    "  c.permanent = 1 OR s.card_set_type_code = ?) LIMIT 1",
+                    (key, special_type)).fetchone() is not None
+            if not covered:
+                # An identity whose set-aside language refers to its own
+                # other identity cards (the Ironheart shape) is covered by
+                # identity grouping.
+                covered = conn.execute(
+                    "SELECT COUNT(*) FROM identity_faces "
+                    "WHERE identity_key = ?", (key,)).fetchone()[0] > 2
+
+            findings.append(AuditFinding(key, row["name"], sentence, covered))
+            break
+
+    return findings
+
+
+def _sentence_around(text: str, pos: int) -> str:
+    start = text.rfind(".", 0, pos) + 1
+    end = text.find(".", pos)
+    end = len(text) if end == -1 else end + 1
+    return text[start:end].strip()
+
+
+def classify(conn: sqlite3.Connection, config: dict, *,
+             strict: bool = False) -> int:
+    findings = setup_audit(conn, config)
+    uncovered = [f for f in findings if not f.covered]
+    if uncovered and strict:
+        detail = "; ".join(
+            f"{f.identity_name} ({f.identity_key}): {f.quote}"
+            for f in uncovered)
+        raise AuditError(
+            f"{len(uncovered)} identity(ies) imply out-of-deck cards that "
+            f"nothing covers — add them to legality.yaml after checking "
+            f"the card names by hand: {detail}")
+
+    conn.execute("DELETE FROM out_of_deck")
+    rows: list[tuple[str, str, str | None]] = []
+
+    for r in conn.execute("SELECT code FROM cards WHERE permanent = 1"):
+        rows.append((r["code"], "permanent", None))
+
+    for r in conn.execute(
+        "SELECT c.code FROM cards c JOIN sets s ON s.code = c.set_code "
+        "WHERE s.card_set_type_code = ?",
+        (config["out_of_deck"]["by_set_type"],)
+    ):
+        rows.append((r["code"], "hero_special", None))
+
+    # Identity faces never count toward deck size (spec §8).
+    for r in conn.execute("SELECT code FROM identity_faces"):
+        rows.append((r["code"], "identity", None))
+
+    for entry in config.get("out_of_deck", {}).get("exceptions", []) or []:
+        for code in entry.get("cards") or []:
+            rows.append((code, "config", entry.get("note")))
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO out_of_deck (code, mechanism, note) "
+        "VALUES (?, ?, ?)", rows)
+    conn.commit()
+    return conn.execute("SELECT COUNT(*) FROM out_of_deck").fetchone()[0]
+```
+
+Config ships inside the wheel at `src/mc_jarvis/_bundled/legality.yaml`. Create that directory and make `config/legality.yaml` the editable source, copied there by the build; for development, symlink it.
+
+- [ ] **Step 7: Fill in the real card codes**
+
+The two `cards: []` entries must be resolved by looking at the data, not by guessing:
+
+```bash
+uv run python -c "
+from mc_jarvis import index, paths
+conn = index.connect(paths.db_path())
+for key in ('rogue', 'valkyrie'):
+    print('---', key)
+    for r in conn.execute(
+        'SELECT code, name, type_code, permanent, deck_limit FROM cards '
+        'WHERE set_code = ? ORDER BY code', (key,)):
+        print(dict(r))
+"
+```
+Read the output, identify Touched and Death-Glow by eye, and write their codes into `config/legality.yaml`. Record the exact names you saw in the `note`.
+
+- [ ] **Step 8: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 9: Run the real audit**
+
+```bash
+uv run python -c "
+from mc_jarvis import index, outofdeck, paths
+conn = index.connect(paths.db_path())
+cfg = outofdeck.load_config()
+for f in outofdeck.setup_audit(conn, cfg):
+    print(('OK  ' if f.covered else 'GAP '), f.identity_name, '|', f.quote)
+print('classified:', outofdeck.classify(conn, cfg, strict=True))
+"
+```
+Expected: the four identities from spec §10 — Bobby Drake, Riri Williams, Rogue, Brunnhilde — all `OK` once Step 7 is done. **If more than four appear, that is a real finding: record it and widen the config.**
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/mc_jarvis/outofdeck.py src/mc_jarvis/schema.py config/ tests/
+git commit -m "feat: out-of-deck classification and the setup audit"
+```
+
+---
+
+## Task 9: Card text parsing — traits, keywords, and the cost arrow
+
+Implements §10's "card text is a rules source the fields do not capture". **The parse enriches, it never replaces:** original text is stored verbatim and is always what gets quoted back.
+
+**Files:**
+- Create: `src/mc_jarvis/cardtext.py`
+- Modify: `src/mc_jarvis/schema.py`, `tests/fixtures/cards.py`
+- Test: `tests/test_cardtext.py`
+
+**Interfaces:**
+- Produces:
+  - `cardtext.parse_traits(text: str) -> list[str]` — `[[...]]` markup tokens
+  - `cardtext.parse_arrow(text: str) -> list[CostClause]`
+  - `cardtext.CostClause` — dataclass `ordinal: int`, `ability_type: str | None`, `timing: str | None`, `cost: str`, `effect: str`, `ambiguous: bool`, `raw: str`
+  - `cardtext.KEYWORDS: tuple[str, ...]`
+  - `cardtext.build(conn) -> dict[str, int]` — populates `card_traits`, `card_keywords`, `cost_clauses`
+
+- [ ] **Step 1: Extend the fixture**
+
+```python
+ARROW_CARDS = [
+    # Plain cost -> effect.
+    card("arw01", "Simple Trade", type_code="event",
+         text="<b>Action:</b> Discard a card → draw a card."),
+    # Interrupt: the timing clause is NOT part of the cost (RR, spec §10).
+    card("arw02", "Timed Guard", type_code="upgrade",
+         text="<b>Interrupt:</b> When a character would take damage, "
+              "exhaust an [[Aerial]] character you control → prevent 2 "
+              "of that damage."),
+    # `If ...` — undecided by the rules text; must come back ambiguous.
+    card("arw03", "Conditional Swing", type_code="upgrade",
+         text="<b>Action:</b> If you are in [[Tiny]] hero form, exhaust "
+              "Conditional Swing → deal 1 damage."),
+    # Two arrows on one card.
+    card("arw04", "Double Deal", type_code="event",
+         text="<b>Action:</b> Spend 1 resource → draw a card. "
+              "<b>Response:</b> After you draw, discard a card → heal 1."),
+    # Keywords and traits, no arrow.
+    card("arw05", "Sturdy Wall", type_code="ally", traits="Tech.",
+         text="Toughness. Retaliate 1. Protects [[S.H.I.E.L.D.]] allies."),
+]
+```
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_cardtext.py
+import json
+import pytest
+from mc_jarvis import cardtext, index
+from tests.fixtures import cards as fx
+
+
+def test_traits_come_from_markup():
+    assert cardtext.parse_traits(
+        "Protects [[S.H.I.E.L.D.]] and [[Aerial]] allies."
+    ) == ["S.H.I.E.L.D.", "Aerial"]
+
+
+def test_plain_cost_and_effect_split():
+    c = cardtext.parse_arrow(
+        "<b>Action:</b> Discard a card → draw a card.")[0]
+    assert c.ability_type == "Action"
+    assert c.timing is None
+    assert c.cost == "Discard a card"
+    assert c.effect == "draw a card."
+    assert c.ambiguous is False
+
+
+def test_interrupt_timing_is_not_part_of_the_cost():
+    """Splitting on the arrow alone would report the When-clause as
+    something the player must pay (spec §10)."""
+    c = cardtext.parse_arrow(fx.ARROW_CARDS[1]["text"])[0]
+    assert c.ability_type == "Interrupt"
+    assert c.timing == "When a character would take damage"
+    assert c.cost == "exhaust an [[Aerial]] character you control"
+    assert "When a character" not in c.cost
+
+
+def test_if_clauses_are_flagged_not_guessed():
+    c = cardtext.parse_arrow(fx.ARROW_CARDS[2]["text"])[0]
+    assert c.ambiguous is True
+    assert c.timing is None
+
+
+def test_two_arrows_produce_two_clauses():
+    clauses = cardtext.parse_arrow(fx.ARROW_CARDS[3]["text"])
+    assert [c.ordinal for c in clauses] == [0, 1]
+    assert clauses[1].ability_type == "Response"
+    assert clauses[1].timing == "After you draw"
+
+
+def test_no_arrow_produces_no_clauses():
+    assert cardtext.parse_arrow("Toughness. Retaliate 1.") == []
+
+
+def test_raw_text_is_preserved_on_every_clause():
+    for c in cardtext.parse_arrow(fx.ARROW_CARDS[3]["text"]):
+        assert "→" in c.raw
+
+
+def test_build_populates_all_three_tables(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(fx.ARROW_CARDS))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text("[]")
+    conn = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(conn, root)
+    counts = cardtext.build(conn)
+    assert counts["traits"] >= 3
+    assert counts["clauses"] == 5
+    kws = {r["keyword"] for r in conn.execute(
+        "SELECT keyword FROM card_keywords WHERE code = 'arw05'")}
+    assert {"toughness", "retaliate"} <= kws
+
+
+@pytest.mark.integration
+def test_real_corpus_arrow_counts(real_index):
+    total = real_index.execute(
+        "SELECT COUNT(*) FROM cost_clauses").fetchone()[0]
+    timed = real_index.execute(
+        "SELECT COUNT(*) FROM cost_clauses WHERE timing IS NOT NULL"
+    ).fetchone()[0]
+    ambiguous = real_index.execute(
+        "SELECT COUNT(*) FROM cost_clauses WHERE ambiguous = 1"
+    ).fetchone()[0]
+    assert 550 < total < 700          # 607 at time of writing
+    assert 150 < timed < 260          # 196 at time of writing
+    assert ambiguous < 25             # 6 at time of writing
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_cardtext.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.cardtext'`
+
+- [ ] **Step 4: Add tables to `schema.py`**
+
+```sql
+CREATE TABLE IF NOT EXISTS card_traits (
+    code  TEXT NOT NULL REFERENCES cards(code),
+    trait TEXT NOT NULL,
+    PRIMARY KEY (code, trait)
+);
+
+CREATE TABLE IF NOT EXISTS card_keywords (
+    code    TEXT NOT NULL REFERENCES cards(code),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (code, keyword)
+);
+
+CREATE TABLE IF NOT EXISTS cost_clauses (
+    code         TEXT NOT NULL REFERENCES cards(code),
+    ordinal      INTEGER NOT NULL,
+    ability_type TEXT,
+    timing       TEXT,
+    cost         TEXT NOT NULL,
+    effect       TEXT NOT NULL,
+    ambiguous    INTEGER NOT NULL DEFAULT 0,
+    raw          TEXT NOT NULL,   -- verbatim; always what gets quoted back
+    PRIMARY KEY (code, ordinal)
+);
+```
+
+- [ ] **Step 5: Write `cardtext.py`**
+
+```python
+"""Build-time card-text parsing (spec §10).
+
+The parse enriches, it never replaces. `cards.raw` and `cost_clauses.raw`
+hold the original text and are what the CLI quotes back; the split powers
+structured questions the raw text cannot answer.
+"""
+from __future__ import annotations
+
+import re
+import sqlite3
+from dataclasses import dataclass
+
+ARROW = "→"
+
+TRAIT_RE = re.compile(r"\[\[(.+?)\]\]")
+BOLD_RE = re.compile(r"<b>(.*?)</b>", re.S)
+TAG_RE = re.compile(r"<[^>]+>")
+
+# A clause's timing is a When/After phrase; the RR excludes it from the
+# cost for interrupts and responses.
+TIMING_RE = re.compile(r"^\s*(When|After)\b(.*?),\s*(.+)$", re.S | re.I)
+# `If ...` is undecided by the rules text — flag, do not guess.
+CONDITION_RE = re.compile(r"^\s*If\b", re.I)
+
+KEYWORDS = (
+    "surge", "toughness", "retaliate", "piercing", "overkill", "guard",
+    "stalwart", "steady", "ranged", "permanent", "patrol", "quickstrike",
+    "uppercut", "peril", "hinder", "restricted", "incite", "villainous",
+)
+KEYWORD_RE = {k: re.compile(rf"\b{k}\b", re.I) for k in KEYWORDS}
+
+
+@dataclass
+class CostClause:
+    ordinal: int
+    ability_type: str | None
+    timing: str | None
+    cost: str
+    effect: str
+    ambiguous: bool
+    raw: str
+
+
+def parse_traits(text: str | None) -> list[str]:
+    if not text:
+        return []
+    seen, out = set(), []
+    for t in TRAIT_RE.findall(text):
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def parse_keywords(text: str | None) -> list[str]:
+    if not text:
+        return []
+    plain = TAG_RE.sub(" ", text)
+    return [k for k in KEYWORDS if KEYWORD_RE[k].search(plain)]
+
+
+def _strip(s: str) -> str:
+    return TAG_RE.sub("", s).strip().strip(".").strip()
+
+
+def parse_arrow(text: str | None) -> list[CostClause]:
+    if not text or ARROW not in text:
+        return []
+
+    clauses: list[CostClause] = []
+    # Split the card into segments, one per arrow, by cutting after each
+    # effect at the next ability-type prefix.
+    segments = re.split(r"(?=<b>)", text)
+    if len(segments) == 1:
+        segments = [text]
+
+    ordinal = 0
+    for segment in segments:
+        if ARROW not in segment:
+            continue
+        for piece in _split_multiple_arrows(segment):
+            before, _, after = piece.partition(ARROW)
+
+            bold = BOLD_RE.search(before)
+            ability_type = None
+            if bold:
+                ability_type = bold.group(1).strip().rstrip(":").strip()
+                before = before[bold.end():]
+
+            timing = None
+            ambiguous = False
+            body = before.strip()
+
+            if CONDITION_RE.match(TAG_RE.sub("", body).strip()):
+                # The RR exempts *timing* text for interrupts and
+                # responses. It says nothing about a condition on an
+                # Action, so this split is undecided by the rules.
+                ambiguous = True
+            else:
+                m = TIMING_RE.match(body)
+                if m:
+                    timing = _strip(f"{m.group(1)}{m.group(2)}")
+                    body = m.group(3)
+
+            clauses.append(CostClause(
+                ordinal=ordinal,
+                ability_type=ability_type,
+                timing=timing,
+                cost=_strip(body),
+                effect=TAG_RE.sub("", after).strip(),
+                ambiguous=ambiguous,
+                raw=piece.strip(),
+            ))
+            ordinal += 1
+
+    return clauses
+
+
+def _split_multiple_arrows(segment: str) -> list[str]:
+    """A segment with N arrows and no <b> boundary between them is treated
+    as N clauses split at sentence ends."""
+    if segment.count(ARROW) <= 1:
+        return [segment]
+    parts, buf = [], ""
+    for sentence in re.split(r"(?<=\.)\s+", segment):
+        buf = f"{buf} {sentence}".strip()
+        if ARROW in buf:
+            parts.append(buf)
+            buf = ""
+    if buf and ARROW in buf:
+        parts.append(buf)
+    return parts or [segment]
+
+
+def build(conn: sqlite3.Connection) -> dict[str, int]:
+    for table in ("card_traits", "card_keywords", "cost_clauses"):
+        conn.execute(f"DELETE FROM {table}")
+
+    traits, keywords, clauses = [], [], []
+    for row in conn.execute(
+            "SELECT code, text FROM cards WHERE text IS NOT NULL"):
+        code, text = row["code"], row["text"]
+        traits.extend((code, t) for t in parse_traits(text))
+        keywords.extend((code, k) for k in parse_keywords(text))
+        clauses.extend(
+            (code, c.ordinal, c.ability_type, c.timing, c.cost, c.effect,
+             int(c.ambiguous), c.raw)
+            for c in parse_arrow(text))
+
+    conn.executemany(
+        "INSERT OR IGNORE INTO card_traits (code, trait) VALUES (?, ?)",
+        traits)
+    conn.executemany(
+        "INSERT OR IGNORE INTO card_keywords (code, keyword) VALUES (?, ?)",
+        keywords)
+    conn.executemany(
+        "INSERT OR REPLACE INTO cost_clauses "
+        "(code, ordinal, ability_type, timing, cost, effect, ambiguous, raw) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clauses)
+    conn.commit()
+    return {"traits": len(traits), "keywords": len(keywords),
+            "clauses": len(clauses)}
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_cardtext.py -v -m "not integration"`
+Expected: PASS, 8 tests
+
+- [ ] **Step 7: Check the parse against the real corpus and eyeball the ambiguous set**
+
+```bash
+uv run python -c "
+from mc_jarvis import cardtext, index, paths
+conn = index.connect(paths.db_path())
+print(cardtext.build(conn))
+for r in conn.execute('SELECT code, raw FROM cost_clauses WHERE ambiguous = 1'):
+    print('AMBIGUOUS', r['code'], r['raw'][:110])
+print()
+for r in conn.execute('SELECT code, timing, cost FROM cost_clauses '
+                      'WHERE timing IS NOT NULL LIMIT 10'):
+    print(r['code'], '| timing:', r['timing'], '| cost:', r['cost'])
+"
+uv run pytest tests/test_cardtext.py -v -m integration
+```
+Expected: roughly 607 clauses, ~196 with timing, single-digit ambiguous. **Read the timing/cost pairs.** If a timing clause has leaked into a cost, that is the failure this task exists to prevent — fix and re-run before committing.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/mc_jarvis/cardtext.py src/mc_jarvis/schema.py tests/
+git commit -m "feat: parse traits, keywords, and cost-arrow clauses from card text"
+```
+
+---
+
+## Task 10: `mc-jarvis encounter`
+
+Implements §5.1. Card-data only; no new dependencies.
+
+**Files:**
+- Modify: `src/mc_jarvis/cards.py`, `src/mc_jarvis/cli.py`
+- Test: `tests/test_encounter.py`
+
+**Interfaces:**
+- Produces: `cards.encounter(conn, name: str) -> dict`, `cards.handle_encounter(args) -> int`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_encounter.py
+import json
+import pytest
+from mc_jarvis import cards, index
+from tests.fixtures import cards as fx
+
+ENCOUNTER = [
+    fx.card("enc01", "The Collector", type_code="villain",
+            faction_code="encounter", set_code="collector",
+            health=12, attack=2, thwart=2, quantity=1, deck_limit=None,
+            text="Stage 1."),
+    fx.card("enc02", "The Collector", type_code="villain",
+            faction_code="encounter", set_code="collector",
+            health=16, attack=3, thwart=2, quantity=1, deck_limit=None,
+            text="Stage 2."),
+    fx.card("enc03", "Gathering Swarm", type_code="minion",
+            faction_code="encounter", set_code="collector",
+            health=3, attack=1, thwart=1, quantity=3, deck_limit=None),
+]
+
+
+@pytest.fixture
+def conn(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(fx.PACK + ENCOUNTER))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text(json.dumps(
+        [{"code": "collector", "name": "The Collector",
+          "card_set_type_code": "villain"}]))
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    return c
+
+
+def test_villain_stages_are_returned_in_order(conn):
+    result = cards.encounter(conn, "The Collector")
+    assert [v["health"] for v in result["villain"]] == [12, 16]
+
+
+def test_set_contents_include_quantities(conn):
+    result = cards.encounter(conn, "The Collector")
+    swarm = next(c for c in result["contents"]
+                 if c["name"] == "Gathering Swarm")
+    assert swarm["quantity"] == 3
+
+
+def test_lookup_by_set_code_works(conn):
+    assert cards.encounter(conn, "collector")["set_code"] == "collector"
+
+
+def test_unknown_set_returns_empty(conn):
+    assert cards.encounter(conn, "Nobody")["set_code"] is None
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `uv run pytest tests/test_encounter.py -v`
+Expected: FAIL — `AttributeError: module 'mc_jarvis.cards' has no attribute 'encounter'`
+
+- [ ] **Step 3: Implement `encounter` in `cards.py`**
+
+```python
+def encounter(conn, name: str) -> dict:
+    row = conn.execute(
+        "SELECT code, name FROM sets WHERE lower(code) = lower(?) "
+        "   OR lower(name) = lower(?)", (name, name)).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT s.code, s.name FROM sets s JOIN cards c "
+            "  ON c.set_code = s.code "
+            "WHERE lower(c.name) = lower(?) AND c.faction_code = 'encounter' "
+            "LIMIT 1", (name,)).fetchone()
+    if row is None:
+        return {"set_code": None, "set_name": None,
+                "villain": [], "contents": []}
+
+    contents = [dict(r) for r in conn.execute(
+        f"SELECT {', '.join(SUMMARY)}, quantity, health, attack, thwart, "
+        f"       defense "
+        f"FROM cards WHERE set_code = ? ORDER BY code", (row["code"],))]
+    villain = [c for c in contents if c["type_code"] == "villain"]
+    return {"set_code": row["code"], "set_name": row["name"],
+            "villain": villain, "contents": contents}
+
+
+def handle_encounter(args) -> int:
+    conn = _open()
+    result = encounter(conn, args.name)
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if result["set_code"] else 1
+    if not result["set_code"]:
+        print(f"no encounter set matching {args.name!r}")
+        return 1
+    print(f"{result['set_name']}  [{result['set_code']}]")
+    for v in result["villain"]:
+        print(f"  {v['name']:<28} HP {v['health']}  "
+              f"ATK {v['attack']}  THW {v['thwart']}")
+    print(f"\nSet contents ({len(result['contents'])} cards):")
+    for c in result["contents"]:
+        print(f"  {c['quantity']}x {c['name']:<30} {c['type_code']}")
+    return 0
+```
+
+Villain hit points scale by player count at the table rather than living in separate rows, so `--difficulty` is deliberately absent; the printed value is the base. Note this in `SKILL.md` (Task 16).
+
+- [ ] **Step 4: Dispatch it** — in `cli.py` `_dispatch`: `if name == "encounter": from . import cards; return cards.handle_encounter(args)`
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 6: Exercise against real data**
+
+```bash
+mc-jarvis encounter "Rhino"
+mc-jarvis encounter "Klaw" --json
+```
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/mc_jarvis/cards.py src/mc_jarvis/cli.py tests/test_encounter.py
+git commit -m "feat: encounter set and villain lookup"
+```
+
+---
+
+## Task 11: The rules manifest
+
+Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regardless of headers, so **`--from-html` is the default path**, not a fallback: it is the only one that works on an agent with no browser capability at all.
+
+**Files:**
+- Create: `src/mc_jarvis/manifest.py`
+- Test: `tests/fixtures/ffg_page.html`, `tests/test_manifest.py`
+
+**Interfaces:**
+- Produces:
+  - `manifest.parse(html: str) -> list[RuleDoc]`
+  - `manifest.RuleDoc` — dataclass `title: str`, `url: str`, `size: str | None`, `date: str | None`, `slug: str`
+  - `manifest.write(docs: list[RuleDoc], path: Path) -> None`
+  - `manifest.read(path: Path) -> list[RuleDoc]`
+  - `manifest.diff(old: list[RuleDoc], new: list[RuleDoc]) -> list[tuple[str, str]]` — `(slug, reason)` for added or revised documents
+  - `manifest.DEFAULT_SLUGS: tuple[str, ...]` — Rules Reference and Learn to Play
+  - `manifest.fetch_with_browser() -> str` — Playwright; raises `RuntimeError` when the extra is absent
+
+- [ ] **Step 1: Write the fixture**
+
+Hand-written, mimicking the page's structure without reproducing FFG's page. Save as `tests/fixtures/ffg_page.html`:
+
+```html
+<html><body>
+<div class="product-support">
+  <a href="https://images-cdn.example.invalid/filer_public/aa/bb/rules_ref_v18.pdf">
+     Rules Reference</a>
+  <span class="size">(3.4 MB)</span><span class="date">Updated 22 Jul 2026</span>
+  <a href="https://images-cdn.example.invalid/filer_public/cc/dd/learn_to_play.pdf">
+     Learn to Play</a>
+  <span class="size">(2.1 MB)</span><span class="date">Updated 01 Oct 2019</span>
+  <a href="https://images-cdn.example.invalid/filer_public/ee/ff/galaxy_rules.pdf">
+     Galaxy&rsquo;s Most Wanted Rules</a>
+  <span class="size">(1.2 MB)</span><span class="date">Updated 03 Mar 2020</span>
+  <a href="/en/products/marvel-champions/">Not a PDF</a>
+</div>
+</body></html>
+```
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_manifest.py
+import json
+from pathlib import Path
+import pytest
+from mc_jarvis import manifest
+
+FIXTURE = Path(__file__).parent / "fixtures" / "ffg_page.html"
+
+
+@pytest.fixture
+def docs():
+    return manifest.parse(FIXTURE.read_text())
+
+
+def test_only_pdf_links_are_collected(docs):
+    assert len(docs) == 3
+    assert all(d.url.endswith(".pdf") for d in docs)
+
+
+def test_titles_are_cleaned(docs):
+    assert docs[0].title == "Rules Reference"
+    assert "Galaxy" in docs[2].title
+
+
+def test_slugs_are_stable_and_filesystem_safe(docs):
+    assert docs[0].slug == "rules-reference"
+    assert "/" not in docs[2].slug and " " not in docs[2].slug
+
+
+def test_default_slugs_are_present_in_a_realistic_page(docs):
+    slugs = {d.slug for d in docs}
+    assert set(manifest.DEFAULT_SLUGS) <= slugs
+
+
+def test_roundtrip_through_disk(tmp_path, docs):
+    path = tmp_path / "manifest.json"
+    manifest.write(docs, path)
+    assert manifest.read(path) == docs
+
+
+def test_diff_reports_a_revised_document(docs):
+    newer = [manifest.RuleDoc(**{**d.__dict__}) for d in docs]
+    newer[0].date = "Updated 01 Jan 2027"
+    changes = dict(manifest.diff(docs, newer))
+    assert changes["rules-reference"] == "revised"
+
+
+def test_diff_reports_an_added_document(docs):
+    changes = dict(manifest.diff(docs[:2], docs))
+    assert changes["galaxys-most-wanted-rules"] == "added"
+
+
+def test_diff_is_empty_when_nothing_changed(docs):
+    assert manifest.diff(docs, docs) == []
+```
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `uv run pytest tests/test_manifest.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.manifest'`
+
+- [ ] **Step 4: Write `manifest.py`**
+
+`html.parser` from the stdlib is used rather than a dependency; the parse is one pass over anchors.
+
+```python
+"""FFG product page -> rules manifest (spec §11)."""
+from __future__ import annotations
+
+import json
+import re
+import unicodedata
+from dataclasses import dataclass, asdict
+from html.parser import HTMLParser
+from pathlib import Path
+
+PRODUCT_PAGE = ("https://www.fantasyflightgames.com/en/products/"
+                "marvel-champions-the-card-game/")
+DEFAULT_SLUGS = ("rules-reference", "learn-to-play")
+
+SIZE_RE = re.compile(r"\(([\d.]+\s*[KMG]B)\)", re.I)
+DATE_RE = re.compile(r"(Updated\s+.+?\d{4})", re.I)
+
+
+@dataclass
+class RuleDoc:
+    title: str
+    url: str
+    size: str | None = None
+    date: str | None = None
+    slug: str = ""
+
+
+def slugify(title: str) -> str:
+    norm = unicodedata.normalize("NFKD", title)
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    norm = re.sub(r"[^\w\s-]", "", norm).strip().lower()
+    return re.sub(r"[\s_]+", "-", norm)
+
+
+class _Collector(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.docs: list[RuleDoc] = []
+        self._href: str | None = None
+        self._text: list[str] = []
+        self._tail: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "a":
+            return
+        self._flush()
+        href = dict(attrs).get("href", "")
+        self._href = href if href.lower().endswith(".pdf") else None
+        self._text = []
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href:
+            title = " ".join("".join(self._text).split())
+            self.docs.append(RuleDoc(title=title, url=self._href,
+                                     slug=slugify(title)))
+            self._href = None
+            self._tail = []
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._text.append(data)
+        elif self.docs:
+            self._tail.append(data)
+            self._apply_tail()
+
+    def _apply_tail(self) -> None:
+        blob = " ".join(self._tail)
+        doc = self.docs[-1]
+        if doc.size is None:
+            m = SIZE_RE.search(blob)
+            if m:
+                doc.size = m.group(1)
+        if doc.date is None:
+            m = DATE_RE.search(blob)
+            if m:
+                doc.date = m.group(1).strip()
+
+    def _flush(self) -> None:
+        self._tail = []
+
+
+def parse(html: str) -> list[RuleDoc]:
+    c = _Collector()
+    c.feed(html)
+    seen, out = set(), []
+    for doc in c.docs:
+        if doc.url in seen:
+            continue
+        seen.add(doc.url)
+        out.append(doc)
+    return out
+
+
+def write(docs: list[RuleDoc], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([asdict(d) for d in docs], indent=2),
+                    encoding="utf-8")
+
+
+def read(path: Path) -> list[RuleDoc]:
+    if not path.exists():
+        return []
+    return [RuleDoc(**d) for d in json.loads(path.read_text(encoding="utf-8"))]
+
+
+def diff(old: list[RuleDoc], new: list[RuleDoc]) -> list[tuple[str, str]]:
+    by_slug = {d.slug: d for d in old}
+    changes = []
+    for doc in new:
+        prev = by_slug.get(doc.slug)
+        if prev is None:
+            changes.append((doc.slug, "added"))
+        elif prev.date != doc.date or prev.url != doc.url:
+            changes.append((doc.slug, "revised"))
+    return changes
+
+
+def fetch_with_browser() -> str:
+    """`init --browser`. The FFG page requires a real browser engine; a
+    plain urllib request returns 403 whatever headers are sent."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError(
+            "the browser extra is not installed. Either run\n"
+            "  uv tool install 'mc-jarvis[browser]' && playwright install chromium\n"
+            "or use the default path: save the product page as HTML and run\n"
+            f"  mc-jarvis init --from-html page.html\n"
+            f"The page is at {PRODUCT_PAGE}") from exc
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(PRODUCT_PAGE, wait_until="networkidle")
+        html = page.content()
+        browser.close()
+    return html
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_manifest.py -v`
+Expected: PASS, 8 tests
+
+- [ ] **Step 6: Verify against the real page**
+
+Save the real product page to `/tmp/ffg.html` using any browser (or an agent's browser tool), then:
+
+```bash
+uv run python -c "
+from pathlib import Path
+from mc_jarvis import manifest
+docs = manifest.parse(Path('/tmp/ffg.html').read_text())
+print(len(docs), 'PDFs')
+for d in docs[:8]: print(' ', d.slug, '|', d.title, '|', d.size, '|', d.date)
+print('defaults present:',
+      set(manifest.DEFAULT_SLUGS) <= {d.slug for d in docs})
+"
+```
+Expected: around 91 PDFs; both default slugs present. **If `rules-reference` is not among the slugs, the title on the page differs from the assumption — fix `DEFAULT_SLUGS` rather than the slugifier.**
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/mc_jarvis/manifest.py tests/
+git commit -m "feat: parse the FFG product page into a rules manifest"
+```
+
+---
+
+## Task 12: PDF download and text extraction
+
+Implements §9 and §6. Two backends behind one interface: `pypdf` by default, `pdftotext -raw` when poppler is present. **Column order is the constraint that disqualifies otherwise reasonable libraries** — do not substitute `pdfplumber` or `pdftotext -layout`.
+
+**Files:**
+- Create: `src/mc_jarvis/pdf.py`
+- Test: `tests/test_pdf.py`
+
+**Interfaces:**
+- Produces:
+  - `pdf.download(url: str, dest: Path) -> Path`
+  - `pdf.extract_pages(path: Path, *, backend: str | None = None) -> list[str]` — one string per page, 1-indexed by list position
+  - `pdf.available_backends() -> list[str]`
+  - `pdf.PdfError` — exception
+
+- [ ] **Step 1: Write the failing test**
+
+The test generates its own two-column PDF so no FFG content is committed and column order is genuinely exercised.
+
+```python
+# tests/test_pdf.py
+import pytest
+from mc_jarvis import pdf
+
+
+@pytest.fixture
+def two_column_pdf(tmp_path):
+    """A real two-column PDF, written with pypdf's own writer so the test
+    needs no external tooling."""
+    from pypdf import PdfWriter
+    try:
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        pytest.skip("reportlab not installed; run with --with reportlab")
+    path = tmp_path / "two_col.pdf"
+    c = canvas.Canvas(str(path))
+    for line, y in enumerate(range(700, 500, -20)):
+        c.drawString(60, y, f"LEFT{line}")
+        c.drawString(330, y, f"RIGHT{line}")
+    c.showPage()
+    c.drawString(60, 700, "PAGE2")
+    c.save()
+    return path
+
+
+def test_pages_are_returned_one_per_page(two_column_pdf):
+    pages = pdf.extract_pages(two_column_pdf)
+    assert len(pages) == 2
+    assert "PAGE2" in pages[1]
+
+
+def test_columns_are_not_interleaved(two_column_pdf):
+    """The failure this guards: LEFT0 RIGHT0 LEFT1 RIGHT1 ... instead of
+    the whole left column then the whole right (spec §9)."""
+    text = pdf.extract_pages(two_column_pdf)[0]
+    assert text.index("LEFT0") < text.index("LEFT9")
+    assert text.index("LEFT9") < text.index("RIGHT0")
+
+
+def test_unknown_backend_is_rejected(two_column_pdf):
+    with pytest.raises(pdf.PdfError, match="unknown backend"):
+        pdf.extract_pages(two_column_pdf, backend="pdfplumber")
+
+
+def test_available_backends_always_includes_pypdf():
+    assert "pypdf" in pdf.available_backends()
+
+
+def test_missing_file_raises_clearly(tmp_path):
+    with pytest.raises(pdf.PdfError, match="not found"):
+        pdf.extract_pages(tmp_path / "nope.pdf")
+```
+
+Add `reportlab` to the dev extra in `pyproject.toml` (`dev = ["pytest>=8.0", "reportlab>=4.0"]`). It is a **test-only** dependency and must not appear in `dependencies`.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run --extra dev pytest tests/test_pdf.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.pdf'`
+
+- [ ] **Step 3: Write `pdf.py`**
+
+```python
+"""PDF acquisition and text extraction (spec §6, §9).
+
+Only two extractors read the two-column Rules Reference in the correct
+column order: pypdf, and `pdftotext -raw`. `pdftotext -layout` and
+pdfplumber interleave the columns into unusable text — do not add them.
+"""
+from __future__ import annotations
+
+import shutil
+import subprocess
+import urllib.request
+from pathlib import Path
+
+PAGE_BREAK = "\f"
+USER_AGENT = "mc-jarvis"
+
+
+class PdfError(RuntimeError):
+    pass
+
+
+def available_backends() -> list[str]:
+    backends = []
+    if shutil.which("pdftotext"):
+        backends.append("pdftotext")
+    try:
+        import pypdf  # noqa: F401
+        backends.append("pypdf")
+    except ImportError:
+        pass
+    return backends
+
+
+def download(url: str, dest: Path) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            dest.write_bytes(resp.read())
+    except Exception as exc:
+        raise PdfError(f"could not download {url}: {exc}") from exc
+    return dest
+
+
+def extract_pages(path: Path, *, backend: str | None = None) -> list[str]:
+    path = Path(path)
+    if not path.exists():
+        raise PdfError(f"PDF not found: {path}")
+
+    if backend is None:
+        backend = "pdftotext" if shutil.which("pdftotext") else "pypdf"
+    if backend not in ("pdftotext", "pypdf"):
+        raise PdfError(
+            f"unknown backend {backend!r}; only 'pypdf' and 'pdftotext' "
+            f"read the two-column Rules Reference in the correct order "
+            f"(spec §9)")
+
+    if backend == "pdftotext":
+        return _extract_pdftotext(path)
+    return _extract_pypdf(path)
+
+
+def _extract_pdftotext(path: Path) -> list[str]:
+    # -raw preserves reading order and the >> sub-bullet marker.
+    proc = subprocess.run(
+        ["pdftotext", "-raw", str(path), "-"],
+        capture_output=True, timeout=300)
+    if proc.returncode != 0:
+        raise PdfError(f"pdftotext failed: {proc.stderr.decode()[:400]}")
+    text = proc.stdout.decode("utf-8", errors="replace")
+    pages = text.split(PAGE_BREAK)
+    if pages and not pages[-1].strip():
+        pages.pop()
+    return pages
+
+
+def _extract_pypdf(path: Path) -> list[str]:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:
+        raise PdfError("pypdf is not installed") from exc
+    reader = PdfReader(str(path))
+    return [(page.extract_text() or "") for page in reader.pages]
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `uv run --extra dev pytest tests/test_pdf.py -v`
+Expected: PASS, 5 tests
+
+- [ ] **Step 5: Verify both backends agree on the real Rules Reference**
+
+```bash
+uv run python -c "
+from pathlib import Path
+from mc_jarvis import pdf
+p = Path('/tmp/rr.pdf')
+pdf.download('<the Rules Reference URL from your manifest>', p)
+for backend in pdf.available_backends():
+    pages = pdf.extract_pages(p, backend=backend)
+    print(backend, len(pages), 'pages;',
+          'index on p2:', 'INDEX' in pages[1])
+"
+```
+Expected: 71 pages from each backend; `INDEX` present on page 2 for both. **If the page count differs between backends, stop — the chunker in Task 13 assumes page indices are comparable.**
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/mc_jarvis/pdf.py tests/test_pdf.py pyproject.toml
+git commit -m "feat: PDF download and two-backend text extraction"
+```
+
+---
+
+## Task 13: Rules chunking — the RR index, glyphs, and entry bodies
+
+Implements §9, **with a correction to it**. The spec proposed finding entries with an ALL-CAPS regex over the body. Verified on 2026-08-21: **the Rules Reference carries its own index on PDF pages 2–3**, listing 216 entries with page numbers plus 46 `See …` redirects. That index is authoritative and is now the primary source; the ALL-CAPS scan is demoted to a cross-check.
+
+The same index also names every icon, so **`config/glyphs.yaml` is derived and reviewed rather than hand-authored** — all 13 private-use codepoints used in the body are covered, none unmapped.
+
+**Files:**
+- Create: `src/mc_jarvis/rules_chunk.py`, `config/glyphs.yaml`
+- Modify: `src/mc_jarvis/schema.py`
+- Test: `tests/fixtures/rr_like.txt`, `tests/test_rules_chunk.py`
+
+**Interfaces:**
+- Produces:
+  - `rules_chunk.parse_index(pages: list[str]) -> IndexResult`
+  - `rules_chunk.IndexResult` — dataclass `entries: list[tuple[str, int]]`, `redirects: list[tuple[str, str]]`, `glyphs: dict[str, str]`
+  - `rules_chunk.chunk_entries(pages, index: IndexResult, *, source_doc: str) -> list[Entry]`
+  - `rules_chunk.chunk_pages(pages, *, source_doc: str) -> list[Entry]` — for non-RR documents
+  - `rules_chunk.Entry` — dataclass `term: str`, `body: str`, `page: int`, `source_doc: str`, `entry_addressable: bool`, `see_also: list[str]`
+  - `rules_chunk.apply_glyphs(text: str, mapping: dict[str, str]) -> tuple[str, set[str]]` — returns text and the set of unmapped codepoints
+  - `rules_chunk.load_glyphs(path=None) -> dict[str, str]`
+  - `rules_chunk.store(conn, entries: list[Entry]) -> int`
+
+- [ ] **Step 1: Write the text fixture**
+
+`tests/fixtures/rr_like.txt` — shaped like real extractor output, invented content, one private-use codepoint (U+F521) and one unmapped one (U+F5FF). Pages separated by form feeds:
+
+```
+COVER PAGE
+\f
+INDEXINDEX
+Aether Surge ....................................3
+Amplify Icon (\uf521) ...........................3
+"Bolstered" ............. See Aether Surge
+Cascade .............................................4
+Warding ..............................................4
+\f
+GLOSSARYGLOSSARY
+AETHER SURGE
+When a card instructs you to surge aether, add one
+token to the pool.
+See also: Cascade
+AMPLIFY ICON (\uf521)
+The \uf521 icon marks an amplified effect. Unknown
+glyph follows: \uf5ff
+\f
+CASCADE
+A cascade resolves each effect in turn.
+WARDING
+Warding prevents the next point of damage.
+```
+
+Write it with a short script so the escapes become real codepoints:
+
+```bash
+uv run python - <<'PY'
+from pathlib import Path
+p = Path("tests/fixtures/rr_like.txt")
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(RAW.replace("\\uf521", "\uf521").replace("\\uf5ff", "\uf5ff")
+             .replace("\\f", "\f"), encoding="utf-8")
+PY
+```
+(Set `RAW` to the block above.)
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_rules_chunk.py
+from pathlib import Path
+import pytest
+from mc_jarvis import index, rules_chunk
+
+FIXTURE = Path(__file__).parent / "fixtures" / "rr_like.txt"
+
+
+@pytest.fixture
+def pages():
+    return FIXTURE.read_text(encoding="utf-8").split("\f")
+
+
+def test_index_yields_entries_with_pages(pages):
+    result = rules_chunk.parse_index(pages)
+    assert ("Aether Surge", 3) in result.entries
+    assert ("Warding", 4) in result.entries
+
+
+def test_index_separates_redirects_from_entries(pages):
+    result = rules_chunk.parse_index(pages)
+    assert ("“Bolstered”", "Aether Surge") in result.redirects or \
+           ('"Bolstered"', "Aether Surge") in result.redirects
+    assert not any(t == "Bolstered" for t, _ in result.entries)
+
+
+def test_glyph_names_are_derived_from_the_index(pages):
+    result = rules_chunk.parse_index(pages)
+    assert result.glyphs["\uf521"] == "Amplify Icon"
+
+
+def test_entries_carry_body_and_page(pages):
+    result = rules_chunk.parse_index(pages)
+    entries = rules_chunk.chunk_entries(pages, result, source_doc="rr")
+    surge = next(e for e in entries if e.term == "Aether Surge")
+    assert "add one" in surge.body
+    assert surge.page == 3
+    assert surge.entry_addressable is True
+
+
+def test_see_also_is_extracted(pages):
+    result = rules_chunk.parse_index(pages)
+    entries = rules_chunk.chunk_entries(pages, result, source_doc="rr")
+    surge = next(e for e in entries if e.term == "Aether Surge")
+    assert surge.see_also == ["Cascade"]
+    assert "See also" not in surge.body
+
+
+def test_mapped_glyphs_become_readable_tokens():
+    out, unmapped = rules_chunk.apply_glyphs(
+        "The \uf521 icon", {"\uf521": "amplify"})
+    assert out == "The [amplify] icon"
+    assert unmapped == set()
+
+
+def test_unmapped_glyphs_are_preserved_and_reported():
+    out, unmapped = rules_chunk.apply_glyphs("x \uf5ff y", {})
+    assert "\uf5ff" in out          # preserved verbatim, never stripped
+    assert unmapped == {"\uf5ff"}
+
+
+def test_non_rr_documents_chunk_by_page(pages):
+    entries = rules_chunk.chunk_pages(pages, source_doc="ltp")
+    assert all(e.entry_addressable is False for e in entries)
+    assert entries[0].page == 1
+
+
+def test_store_is_idempotent(tmp_path, pages):
+    conn = index.connect(tmp_path / "mc.sqlite")
+    result = rules_chunk.parse_index(pages)
+    entries = rules_chunk.chunk_entries(pages, result, source_doc="rr")
+    rules_chunk.store(conn, entries)
+    n = rules_chunk.store(conn, entries)
+    assert n == len(entries)
+
+
+@pytest.mark.integration
+def test_real_rules_reference_index(real_index):
+    n = real_index.execute(
+        "SELECT COUNT(*) FROM rules_entries WHERE source_doc = "
+        "'rules-reference' AND entry_addressable = 1").fetchone()[0]
+    assert 190 < n < 240              # 216 at time of writing
+
+
+@pytest.mark.integration
+def test_no_unmapped_glyphs_in_the_real_rules(real_index):
+    row = real_index.execute(
+        "SELECT value FROM build_meta WHERE key = 'unmapped_glyphs'"
+    ).fetchone()
+    assert row is None or row["value"] == "", \
+        f"unmapped glyph codepoints: {row['value']}"
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_rules_chunk.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.rules_chunk'`
+
+- [ ] **Step 4: Add tables to `schema.py`**
+
+```sql
+CREATE TABLE IF NOT EXISTS rules_entries (
+    id                INTEGER PRIMARY KEY,
+    term              TEXT NOT NULL,
+    body              TEXT NOT NULL,
+    page              INTEGER,
+    source_doc        TEXT NOT NULL,
+    entry_addressable INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (source_doc, term, page)
+);
+CREATE INDEX IF NOT EXISTS idx_rules_term ON rules_entries(lower(term));
+
+CREATE TABLE IF NOT EXISTS rules_see_also (
+    term       TEXT NOT NULL,
+    target     TEXT NOT NULL,
+    source_doc TEXT NOT NULL,
+    PRIMARY KEY (source_doc, term, target)
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS rules_fts USING fts5(
+    term, body, content='rules_entries', content_rowid='id'
+);
+```
+
+- [ ] **Step 5: Write `rules_chunk.py`**
+
+```python
+"""Rules Reference chunking (spec §9, as corrected).
+
+The RR carries its own index on PDF pages 2-3: 216 entries with page
+numbers and 46 `See ...` redirects. That is the authoritative entry list.
+The ALL-CAPS body scan is a cross-check, not the source of truth, because
+a candidate is not an entry — the naive regex yields 386 candidates over
+71 pages, and the surplus are diagram labels and worked examples.
+"""
+from __future__ import annotations
+
+import re
+import sqlite3
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+GLYPHS_PATH = Path(__file__).parent / "_bundled" / "glyphs.yaml"
+PUA = re.compile(r"[\ue000-\uf8ff]")
+
+# "Term ......... 14"  (leaders may be spaced)
+ENTRY_RE = re.compile(r"^(.*?)[\s.]*\.{2,}[\s.]*(\d{1,3})$")
+# "Term ..... See Other Term"
+REDIRECT_RE = re.compile(r"^(.*?)\.*\s*See\s+(.+)$")
+# "Amplify Icon ()" — the glyph sits between the parentheses
+GLYPH_NAME_RE = re.compile(r"^(.*?)\s*\(([\ue000-\uf8ff])\s*\)$")
+SEE_ALSO_RE = re.compile(r"^\s*See also:\s*(.+)$", re.M)
+HEADER_RE = re.compile(r"^[A-Z][A-Z0-9 ,'/&()-]{2,60}$")
+
+
+@dataclass
+class IndexResult:
+    entries: list[tuple[str, int]] = field(default_factory=list)
+    redirects: list[tuple[str, str]] = field(default_factory=list)
+    glyphs: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class Entry:
+    term: str
+    body: str
+    page: int | None
+    source_doc: str
+    entry_addressable: bool = True
+    see_also: list[str] = field(default_factory=list)
+
+
+def parse_index(pages: list[str], *, scan_pages: int = 3) -> IndexResult:
+    result = IndexResult()
+    blob = "\n".join(pages[1:scan_pages])
+    buf = ""
+    for line in (l.rstrip() for l in blob.split("\n")):
+        if not line.strip() or line.strip().upper().startswith("INDEX"):
+            continue
+        buf = f"{buf} {line}".strip() if buf else line.strip()
+
+        m = ENTRY_RE.match(buf)
+        if m:
+            term = m.group(1).strip().strip(".").strip()
+            if term:
+                result.entries.append((term, int(m.group(2))))
+            buf = ""
+            continue
+
+        m = REDIRECT_RE.match(buf)
+        if m and not buf.rstrip().endswith(","):
+            result.redirects.append(
+                (m.group(1).strip().strip(".").strip(), m.group(2).strip()))
+            buf = ""
+
+    for term, _ in result.entries + [(t, None) for t, _ in result.redirects]:
+        m = GLYPH_NAME_RE.match(term)
+        if m:
+            result.glyphs[m.group(2)] = m.group(1).strip()
+
+    return result
+
+
+def _entry_page_bounds(pages: list[str], term: str, page: int) -> str:
+    """The index gives a printed page number; extractor page indices may be
+    offset. Locate the header near the stated page and read to the next
+    ALL-CAPS header."""
+    header = term.upper()
+    header = GLYPH_NAME_RE.sub(lambda m: m.group(1).upper(), header).strip()
+    for offset in (0, 1, -1, 2, -2):
+        idx = page - 1 + offset
+        if not 0 <= idx < len(pages):
+            continue
+        text = pages[idx]
+        for line_no, line in enumerate(text.split("\n")):
+            if line.strip().upper().startswith(header[:24]):
+                rest = text.split("\n")[line_no + 1:]
+                out = []
+                for line2 in rest:
+                    if HEADER_RE.match(line2.strip()) and len(out) > 0:
+                        break
+                    out.append(line2)
+                return "\n".join(out).strip()
+    return ""
+
+
+def chunk_entries(pages: list[str], index: IndexResult, *,
+                  source_doc: str) -> list[Entry]:
+    entries = []
+    for term, page in index.entries:
+        body = _entry_page_bounds(pages, term, page)
+        see_also: list[str] = []
+        m = SEE_ALSO_RE.search(body)
+        if m:
+            see_also = [s.strip() for s in re.split(r",|and", m.group(1))
+                        if s.strip()]
+            body = SEE_ALSO_RE.sub("", body).strip()
+        entries.append(Entry(term=term, body=body, page=page,
+                             source_doc=source_doc, entry_addressable=True,
+                             see_also=see_also))
+    for term, target in index.redirects:
+        entries.append(Entry(term=term, body=f"See {target}.", page=None,
+                             source_doc=source_doc, entry_addressable=True,
+                             see_also=[target]))
+    return entries
+
+
+def chunk_pages(pages: list[str], *, source_doc: str) -> list[Entry]:
+    """Non-RR documents lack the alphabetical entry structure, so they are
+    chunked by page with their leading heading. Searchable, not
+    entry-addressable — and the CLI labels the difference (spec §9)."""
+    out = []
+    for n, text in enumerate(pages, start=1):
+        body = text.strip()
+        if not body:
+            continue
+        first = next((l.strip() for l in body.split("\n") if l.strip()), "")
+        out.append(Entry(term=f"{source_doc} p.{n}: {first[:60]}",
+                         body=body, page=n, source_doc=source_doc,
+                         entry_addressable=False))
+    return out
+
+
+def load_glyphs(path: Path | None = None) -> dict[str, str]:
+    p = path or GLYPHS_PATH
+    if not p.exists():
+        return {}
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    return {chr(int(k, 16)) if isinstance(k, str) and k.startswith("U+")
+            else k: v for k, v in (raw.get("glyphs") or {}).items()}
+
+
+def apply_glyphs(text: str, mapping: dict[str, str]) -> tuple[str, set[str]]:
+    """Map private-use codepoints to readable tokens. Unmapped codepoints
+    are preserved verbatim and reported, never silently stripped."""
+    unmapped = {c for c in PUA.findall(text) if c not in mapping}
+    for glyph, token in mapping.items():
+        text = text.replace(glyph, f"[{token}]")
+    return text, unmapped
+
+
+def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
+    docs = {e.source_doc for e in entries}
+    for doc in docs:
+        conn.execute("DELETE FROM rules_entries WHERE source_doc = ?", (doc,))
+        conn.execute("DELETE FROM rules_see_also WHERE source_doc = ?", (doc,))
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO rules_entries "
+        "(term, body, page, source_doc, entry_addressable) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [(e.term, e.body, e.page, e.source_doc, int(e.entry_addressable))
+         for e in entries])
+    conn.executemany(
+        "INSERT OR IGNORE INTO rules_see_also (term, target, source_doc) "
+        "VALUES (?, ?, ?)",
+        [(e.term, t, e.source_doc) for e in entries for t in e.see_also])
+
+    conn.execute("INSERT INTO rules_fts(rules_fts) VALUES('delete-all')")
+    conn.execute(
+        "INSERT INTO rules_fts(rowid, term, body) "
+        "SELECT id, term, body FROM rules_entries")
+    conn.commit()
+    return conn.execute(
+        "SELECT COUNT(*) FROM rules_entries").fetchone()[0]
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_rules_chunk.py -v -m "not integration"`
+Expected: PASS, 9 tests
+
+- [ ] **Step 7: Derive `config/glyphs.yaml` from the real Rules Reference — then read it**
+
+```bash
+uv run python -c "
+from mc_jarvis import pdf, rules_chunk
+import collections
+pages = pdf.extract_pages('/tmp/rr.pdf', backend='pypdf')
+idx = rules_chunk.parse_index(pages)
+print('entries:', len(idx.entries), 'redirects:', len(idx.redirects))
+body = ''.join(pages)
+used = collections.Counter(c for c in body if 0xE000 <= ord(c) <= 0xF8FF)
+print('glyphs:')
+for ch, n in sorted(used.items()):
+    print(f'  \"U+{ord(ch):04X}\": {idx.glyphs.get(ch, \"** UNMAPPED **\")!r}  # {n} uses')
+"
+```
+
+Expected: about 216 entries, 46 redirects, and **13 glyphs in U+F520–U+F531, all named**. Two known parse artifacts to correct by hand: two-column merge can join adjacent entries (`Variable` + `You, Your`), and the Unique icon's name picks up bleed from its predecessor (`Activation) Unique Icon` → `Unique Icon`).
+
+Write the reviewed result to `config/glyphs.yaml`:
+
+```yaml
+# Private-use icon codepoints -> readable tokens (spec §9).
+# DERIVED from the Rules Reference's own index, which names every icon,
+# then reviewed by hand. Regenerate with the script in the plan's Task 13
+# after an RR revision; do not hand-edit codepoints you have not seen in
+# that output.
+version: 1
+glyphs:
+  "U+F520": "boost"
+  "U+F521": "amplify"
+  "U+F522": "consequential-damage"
+  "U+F524": "per-player"
+  "U+F525": "wild"
+  "U+F526": "physical"
+  "U+F527": "mental"
+  "U+F528": "energy"
+  "U+F52D": "star"
+  "U+F52E": "crisis"
+  "U+F52F": "hazard"
+  "U+F530": "acceleration"
+  "U+F531": "unique"
+```
+
+**Verify this table against the script's output before committing** — the values above are what was observed on 2026-08-21 and the RR may have been revised since. Note that spec §9 and §16 say the range is U+F520–F530; it is U+F520–**F531**, and U+F523 and U+F529–U+F52C are unused.
+
+- [ ] **Step 8: Cross-check the index against the body headers**
+
+```bash
+uv run python -c "
+import re
+from mc_jarvis import pdf, rules_chunk
+pages = pdf.extract_pages('/tmp/rr.pdf', backend='pypdf')
+idx = rules_chunk.parse_index(pages)
+entries = rules_chunk.chunk_entries(pages, idx, source_doc='rules-reference')
+empty = [e.term for e in entries if e.entry_addressable and not e.body]
+print('entries with no body found:', len(empty))
+for t in empty[:20]: print('  ', t)
+"
+```
+Expected: a small number. **Each one is a real defect** — the header locator failed to find that entry in the body. Fix `_entry_page_bounds` until the list is empty or every remainder is understood and recorded.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/mc_jarvis/rules_chunk.py src/mc_jarvis/schema.py config/glyphs.yaml tests/
+git commit -m "feat: chunk the Rules Reference from its own index, with derived glyph mapping"
+```
+
+---
+
+## Task 14: `rules show`, `rules search`, and the card↔rules link table
+
+Implements §5.1, §9, §10. **Every rules answer cites the entry name and page** — an uncited ruling is worthless in an argument at the table.
+
+**Files:**
+- Create: `src/mc_jarvis/rules.py`
+- Modify: `src/mc_jarvis/schema.py`, `src/mc_jarvis/cli.py`
+- Test: `tests/test_rules.py`
+
+**Interfaces:**
+- Produces:
+  - `rules.show(conn, term: str) -> dict`
+  - `rules.search(conn, text: str, *, limit: int = 10) -> list[dict]`
+  - `rules.explain(conn, code: str) -> list[dict]` — keywords on a card, each with rules body and page
+  - `rules.build_links(conn) -> int` — populates `card_rules_links`
+  - `rules.handle_show(args) -> int`, `rules.handle_search(args) -> int`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_rules.py
+import json
+import pytest
+from mc_jarvis import cardtext, index, rules, rules_chunk
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def conn(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(fx.ARROW_CARDS))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text("[]")
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    cardtext.build(c)
+    entries = [
+        rules_chunk.Entry("Toughness", "A tough status card absorbs "
+                          "the next damage.", 41, "rules-reference"),
+        rules_chunk.Entry("Retaliate", "After this character defends, "
+                          "deal damage to the attacker.", 36,
+                          "rules-reference"),
+        rules_chunk.Entry("Setup", "Follow these steps in order.", 3,
+                          "learn-to-play", entry_addressable=False),
+    ]
+    rules_chunk.store(c, entries)
+    rules.build_links(c)
+    return c
+
+
+def test_show_returns_body_and_page(conn):
+    result = rules.show(conn, "Toughness")
+    assert result["page"] == 41
+    assert "absorbs" in result["body"]
+    assert result["source_doc"] == "rules-reference"
+
+
+def test_show_is_case_insensitive(conn):
+    assert rules.show(conn, "toughness")["term"] == "Toughness"
+
+
+def test_show_lists_cards_using_the_keyword(conn):
+    assert "arw05" in {c["code"] for c in rules.show(conn, "Toughness")["cards"]}
+
+
+def test_show_of_an_unknown_term_suggests_a_search(conn):
+    result = rules.show(conn, "Quantum Flux")
+    assert result["term"] is None
+    assert result["suggestions"] is not None
+
+
+def test_search_results_all_carry_a_citation(conn):
+    hits = rules.search(conn, "damage")
+    assert hits
+    for h in hits:
+        assert h["source_doc"]
+        assert h["page"] is not None
+
+
+def test_search_labels_non_entry_addressable_sources(conn):
+    hits = rules.search(conn, "steps")
+    ltp = next(h for h in hits if h["source_doc"] == "learn-to-play")
+    assert ltp["entry_addressable"] is False
+
+
+def test_search_handles_punctuation_without_a_syntax_error(conn):
+    for q in ["Sp//dr", 'a "quote"', "AND", "-"]:
+        rules.search(conn, q)
+
+
+def test_explain_expands_a_cards_keywords(conn):
+    kws = {k["term"] for k in rules.explain(conn, "arw05")}
+    assert {"Toughness", "Retaliate"} <= kws
+
+
+def test_explain_of_a_keywordless_card_is_empty(conn):
+    assert rules.explain(conn, "arw01") == []
+
+
+@pytest.mark.integration
+def test_real_keyword_entries_resolve(real_index):
+    for term in ("Overkill", "Retaliate", "Piercing", "Surge", "Guard"):
+        result = rules.show(real_index, term)
+        assert result["term"] is not None, term
+        assert result["page"] is not None, term
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_rules.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.rules'`
+
+- [ ] **Step 3: Add the link table to `schema.py`**
+
+```sql
+CREATE TABLE IF NOT EXISTS card_rules_links (
+    code       TEXT NOT NULL REFERENCES cards(code),
+    term       TEXT NOT NULL,
+    source_doc TEXT NOT NULL,
+    PRIMARY KEY (code, term, source_doc)
+);
+CREATE INDEX IF NOT EXISTS idx_links_term ON card_rules_links(lower(term));
+```
+
+- [ ] **Step 4: Write `rules.py`**
+
+```python
+"""Rules queries (spec §5.1, §9). Every answer carries a citation."""
+from __future__ import annotations
+
+import sqlite3
+
+from . import index, paths
+from .cards import _fts_query, _open
+from .cli import emit
+
+
+def show(conn, term: str) -> dict:
+    row = conn.execute(
+        "SELECT id, term, body, page, source_doc, entry_addressable "
+        "FROM rules_entries WHERE lower(term) = lower(?) "
+        "ORDER BY entry_addressable DESC LIMIT 1", (term,)).fetchone()
+
+    if row is None:
+        return {"term": None, "suggestions": search(conn, term, limit=5)}
+
+    see_also = [r["target"] for r in conn.execute(
+        "SELECT target FROM rules_see_also "
+        "WHERE lower(term) = lower(?) AND source_doc = ?",
+        (row["term"], row["source_doc"]))]
+
+    cards = [dict(r) for r in conn.execute(
+        "SELECT c.code, c.name, c.type_code FROM card_rules_links l "
+        "JOIN cards c ON c.code = l.code "
+        "WHERE lower(l.term) = lower(?) ORDER BY c.code LIMIT 40",
+        (row["term"],))]
+
+    return {"term": row["term"], "body": row["body"], "page": row["page"],
+            "source_doc": row["source_doc"],
+            "entry_addressable": bool(row["entry_addressable"]),
+            "see_also": see_also, "cards": cards}
+
+
+def search(conn, text: str, *, limit: int = 10) -> list[dict]:
+    expr = _fts_query(text)
+    if not expr:
+        return []
+    rows = conn.execute(
+        "SELECT e.term, e.body, e.page, e.source_doc, e.entry_addressable "
+        "FROM rules_fts f JOIN rules_entries e ON e.id = f.rowid "
+        "WHERE rules_fts MATCH ? ORDER BY rank LIMIT ?", (expr, limit))
+    return [{**dict(r), "entry_addressable": bool(r["entry_addressable"])}
+            for r in rows]
+
+
+def build_links(conn: sqlite3.Connection) -> int:
+    """Join keyword occurrences in card text to Rules Reference entries.
+    One table serves both directions: `card show --explain` expands a
+    card's keywords, and `rules show` lists the cards that use one."""
+    conn.execute("DELETE FROM card_rules_links")
+    conn.execute(
+        "INSERT OR IGNORE INTO card_rules_links (code, term, source_doc) "
+        "SELECT k.code, e.term, e.source_doc "
+        "FROM card_keywords k JOIN rules_entries e "
+        "  ON lower(e.term) = lower(k.keyword) "
+        "WHERE e.entry_addressable = 1")
+    conn.commit()
+    return conn.execute(
+        "SELECT COUNT(*) FROM card_rules_links").fetchone()[0]
+
+
+def explain(conn, code: str) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT e.term, e.body, e.page, e.source_doc "
+        "FROM card_rules_links l "
+        "JOIN rules_entries e ON e.term = l.term "
+        "  AND e.source_doc = l.source_doc "
+        "WHERE l.code = ? ORDER BY e.term", (code,))]
+
+
+def _cite(row: dict) -> str:
+    label = row["source_doc"]
+    page = f"p.{row['page']}" if row.get("page") else "no page"
+    suffix = "" if row.get("entry_addressable", True) else "  (page chunk)"
+    return f"[{label} {page}]{suffix}"
+
+
+def handle_show(args) -> int:
+    conn = _open()
+    result = show(conn, args.term)
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if result["term"] else 1
+    if not result["term"]:
+        print(f"no rules entry named {args.term!r}")
+        if result["suggestions"]:
+            print("\nclosest full-text matches:")
+            for s in result["suggestions"]:
+                print(f"  {s['term']}  {_cite(s)}")
+        return 1
+    print(f"{result['term']}  {_cite(result)}\n")
+    print(result["body"])
+    if result["see_also"]:
+        print(f"\nSee also: {', '.join(result['see_also'])}")
+    if result["cards"]:
+        print(f"\nCards using this keyword ({len(result['cards'])}):")
+        for c in result["cards"]:
+            print(f"  {c['code']:<8} {c['name']}")
+    return 0
+
+
+def handle_search(args) -> int:
+    conn = _open()
+    hits = search(conn, args.text)
+    if args.json:
+        emit(hits, as_json=True)
+        return 0 if hits else 1
+    if not hits:
+        print("no matches")
+        return 1
+    for h in hits:
+        body = " ".join(h["body"].split())
+        print(f"\n{h['term']}  {_cite(h)}")
+        print(f"  {body[:300]}{'...' if len(body) > 300 else ''}")
+    return 0
+```
+
+- [ ] **Step 5: Dispatch it** — in `cli.py` `_dispatch`:
+
+```python
+    if name == "rules":
+        from . import rules
+        if args.rules_cmd == "show":
+            return rules.handle_show(args)
+        if args.rules_cmd == "search":
+            return rules.handle_search(args)
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 7: Exercise against real rules**
+
+```bash
+mc-jarvis rules show Overkill
+mc-jarvis rules show "Cost Arrow Icon"
+mc-jarvis rules search "when does the villain attack"
+mc-jarvis card show 01001a --explain
+```
+Expected: every answer carries an entry name and page; `--explain` lists the card's keywords with rules text
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/mc_jarvis/rules.py src/mc_jarvis/schema.py src/mc_jarvis/cli.py tests/test_rules.py
+git commit -m "feat: rules lookup, full-text search, and the card-rules link table"
+```
+
+---
+
+## Task 15: `init`, `update`, and `status`
+
+Implements §11. Ties every preceding task into one bootstrap. **First run is a shell command, not an agent request** — the skill is what teaches an agent that `mc-jarvis` exists, so the agent cannot be what installs it.
+
+**Files:**
+- Create: `src/mc_jarvis/init.py`, `src/mc_jarvis/update.py`
+- Modify: `src/mc_jarvis/cli.py`
+- Test: `tests/test_init.py`
+
+**Interfaces:**
+- Produces:
+  - `init.rebuild_index(conn, data_root: Path) -> dict[str, int]` — the shared build pipeline
+  - `init.run(args) -> int`
+  - `update.run(args) -> int`
+  - `update.status(args) -> int`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_init.py
+import json
+import pytest
+from mc_jarvis import index, init, manifest, outofdeck
+from tests.fixtures import cards as fx
+
+
+@pytest.fixture
+def data_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path))
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(
+        fx.PACK + fx.MATCH_FAMILY + fx.OUT_OF_DECK + fx.ARROW_CARDS))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text(json.dumps(fx.SETS))
+    return tmp_path
+
+
+def test_rebuild_runs_every_stage(data_root, monkeypatch):
+    monkeypatch.setattr(outofdeck, "load_config",
+                        lambda path=None: fx.CONFIG_COVERING_EMBERLINE)
+    conn = index.connect(data_root / "mc.sqlite")
+    counts = init.rebuild_index(conn, data_root)
+    for stage in ("cards", "fts", "identities", "out_of_deck",
+                  "traits", "clauses"):
+        assert stage in counts, stage
+    assert counts["cards"] > 0
+
+
+def test_rebuild_is_idempotent(data_root, monkeypatch):
+    monkeypatch.setattr(outofdeck, "load_config",
+                        lambda path=None: fx.CONFIG_COVERING_EMBERLINE)
+    conn = index.connect(data_root / "mc.sqlite")
+    first = init.rebuild_index(conn, data_root)
+    second = init.rebuild_index(conn, data_root)
+    assert first == second
+
+
+def test_rebuild_records_build_metadata(data_root, monkeypatch):
+    monkeypatch.setattr(outofdeck, "load_config",
+                        lambda path=None: fx.CONFIG_COVERING_EMBERLINE)
+    conn = index.connect(data_root / "mc.sqlite")
+    init.rebuild_index(conn, data_root)
+    keys = {r["key"] for r in conn.execute("SELECT key FROM build_meta")}
+    assert {"built_at", "card_count"} <= keys
+
+
+def test_init_refuses_on_a_hard_doctor_failure(data_root, monkeypatch):
+    from mc_jarvis import doctor
+    monkeypatch.setattr(doctor, "has_fts5", lambda: False)
+
+    class Args:
+        json = False
+        from_html = None
+        browser = False
+    assert init.run(Args()) == 1
+
+
+def test_status_reports_missing_index(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path))
+    from mc_jarvis import update
+
+    class Args:
+        json = False
+    assert update.status(Args()) == 1
+    assert "init" in capsys.readouterr().out
+
+
+def test_update_diff_reports_a_revised_rulebook(tmp_path):
+    old = [manifest.RuleDoc("Rules Reference", "u", None, "Jul 2026",
+                            "rules-reference")]
+    new = [manifest.RuleDoc("Rules Reference", "u", None, "Jan 2027",
+                            "rules-reference")]
+    assert manifest.diff(old, new) == [("rules-reference", "revised")]
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_init.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.init'`
+
+- [ ] **Step 3: Write `init.py`**
+
+```python
+"""Bootstrap (spec §11)."""
+from __future__ import annotations
+
+import datetime as _dt
+import sqlite3
+import sys
+from pathlib import Path
+
+from . import (cardtext, doctor, identity, index, manifest, outofdeck,
+               paths, pdf, rules, rules_chunk, sources)
+
+
+def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
+    """The single build pipeline, shared by `init` and `update`.
+
+    Order matters: out-of-deck classification must run after identities
+    exist, and the card-rules link table after both card keywords and
+    rules entries (spec §8, §10).
+    """
+    counts: dict[str, int] = {}
+    report = index.load_cards(conn, data_root / "marvelsdb")
+    counts["cards"] = report.cards
+    counts["player_cards"] = report.player_cards
+    counts["fts"] = index.build_fts(conn)
+    counts["identities"] = identity.build(conn)
+
+    config = outofdeck.load_config()
+    counts["out_of_deck"] = outofdeck.classify(conn, config, strict=True)
+
+    text_counts = cardtext.build(conn)
+    counts.update(text_counts)
+
+    counts["rules_entries"] = _rebuild_rules(conn, data_root)
+    counts["rules_links"] = rules.build_links(conn)
+
+    conn.executemany(
+        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+        [("built_at", _dt.datetime.now(_dt.timezone.utc).isoformat()),
+         ("card_count", str(counts["cards"]))])
+    conn.commit()
+    return counts
+
+
+def _rebuild_rules(conn, data_root: Path) -> int:
+    txt_dir = data_root / "rules" / "txt"
+    glyphs = rules_chunk.load_glyphs()
+    all_entries, unmapped = [], set()
+
+    for path in sorted(txt_dir.glob("*.txt")):
+        slug = path.stem
+        pages = path.read_text(encoding="utf-8").split("\f")
+        pages = [_apply(p, glyphs, unmapped) for p in pages]
+        idx = rules_chunk.parse_index(pages)
+        if len(idx.entries) > 50:
+            all_entries.extend(rules_chunk.chunk_entries(
+                pages, idx, source_doc=slug))
+        else:
+            # No alphabetical index: chunk by page, searchable but not
+            # entry-addressable (spec §9).
+            all_entries.extend(rules_chunk.chunk_pages(
+                pages, source_doc=slug))
+
+    conn.execute(
+        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+        ("unmapped_glyphs",
+         " ".join(sorted(f"U+{ord(c):04X}" for c in unmapped))))
+    if not all_entries:
+        return 0
+    return rules_chunk.store(conn, all_entries)
+
+
+def _apply(page: str, glyphs, unmapped: set) -> str:
+    text, missing = rules_chunk.apply_glyphs(page, glyphs)
+    unmapped |= missing
+    return text
+
+
+def run(args) -> int:
+    checks = doctor.run_checks(network=False)
+    hard = [c for c in checks if c.hard and not c.ok]
+    if hard:
+        print("mc-jarvis init cannot start:", file=sys.stderr)
+        for c in hard:
+            print(f"  {c.name}: {c.detail}", file=sys.stderr)
+        return 1
+
+    root = paths.ensure_data_dir()
+    print(f"data directory: {root}")
+
+    print("fetching card data...")
+    fetched = sources.fetch_card_data(root / "marvelsdb")
+    print(f"  {fetched.pack_files} pack files "
+          f"({fetched.bytes_downloaded / 1e6:.1f} MB)")
+
+    html = _get_page_html(args)
+    if html is None:
+        print("\nNo rules manifest. Card commands will work; rules "
+              "commands will not.\nRe-run with --from-html once you have "
+              "saved the product page:\n"
+              f"  {manifest.PRODUCT_PAGE}")
+        docs = []
+    else:
+        docs = manifest.parse(html)
+        manifest.write(docs, root / "rules" / "manifest.json")
+        print(f"  {len(docs)} rulebooks listed")
+
+    for doc in docs:
+        if doc.slug not in manifest.DEFAULT_SLUGS:
+            continue
+        target = root / "rules" / "pdf" / f"{doc.slug}.pdf"
+        print(f"downloading {doc.title}...")
+        pdf.download(doc.url, target)
+        pages = pdf.extract_pages(target)
+        (root / "rules" / "txt" / f"{doc.slug}.txt").write_text(
+            "\f".join(pages), encoding="utf-8")
+        print(f"  {len(pages)} pages")
+
+    print("building index...")
+    conn = index.connect(paths.db_path())
+    counts = rebuild_index(conn, root)
+    for key, value in counts.items():
+        print(f"  {key}: {value}")
+
+    print("\nNext:  mc-jarvis install-skill      (in your deck workspace)")
+    return 0
+
+
+def _get_page_html(args) -> str | None:
+    if getattr(args, "from_html", None):
+        return Path(args.from_html).read_text(encoding="utf-8",
+                                              errors="replace")
+    if getattr(args, "browser", False):
+        try:
+            return manifest.fetch_with_browser()
+        except RuntimeError as exc:
+            print(exc, file=sys.stderr)
+            return None
+    return None
+```
+
+- [ ] **Step 4: Write `update.py`**
+
+```python
+"""Refresh and staleness reporting (spec §11)."""
+from __future__ import annotations
+
+import time
+
+from . import index, init, manifest, paths, pdf, sources
+from .cli import emit
+
+STALE_DAYS = 14
+
+
+def run(args) -> int:
+    root = paths.ensure_data_dir()
+    print("refreshing card data...")
+    fetched = sources.fetch_card_data(root / "marvelsdb")
+    print(f"  {fetched.pack_files} pack files")
+
+    manifest_path = root / "rules" / "manifest.json"
+    old = manifest.read(manifest_path)
+    if old:
+        print(f"  {len(old)} rulebooks known; re-run `init --from-html` "
+              f"to re-check FFG for revisions")
+
+    conn = index.connect(paths.db_path())
+    counts = init.rebuild_index(conn, root)
+    if args.json:
+        emit(counts, as_json=True)
+    else:
+        for key, value in counts.items():
+            print(f"  {key}: {value}")
+    return 0
+
+
+def status(args) -> int:
+    db = paths.db_path()
+    if not db.exists():
+        print("no index — run `mc-jarvis init`")
+        return 1
+
+    conn = index.connect(db)
+    age_days = (time.time() - db.stat().st_mtime) / 86400
+    meta = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM build_meta")}
+    payload = {
+        "data_dir": str(paths.data_dir()),
+        "built_at": meta.get("built_at"),
+        "age_days": round(age_days, 1),
+        "stale": age_days > STALE_DAYS,
+        "cards": conn.execute(
+            "SELECT COUNT(*) FROM cards").fetchone()[0],
+        "identities": conn.execute(
+            "SELECT COUNT(*) FROM identities").fetchone()[0],
+        "rules_entries": conn.execute(
+            "SELECT COUNT(*) FROM rules_entries").fetchone()[0],
+        "unmapped_glyphs": meta.get("unmapped_glyphs", ""),
+    }
+    if args.json:
+        emit(payload, as_json=True)
+    else:
+        for key, value in payload.items():
+            print(f"{key}: {value}")
+        if payload["stale"]:
+            print(f"\nIndex is {payload['age_days']:.0f} days old — "
+                  f"run `mc-jarvis update`")
+    return 0
+```
+
+- [ ] **Step 5: Dispatch them** — in `cli.py` `_dispatch`:
+
+```python
+    if name == "init":
+        from . import init as init_mod
+        return init_mod.run(args)
+    if name == "update":
+        from . import update
+        return update.run(args)
+    if name == "status":
+        from . import update
+        return update.status(args)
+```
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 7: Run a real end-to-end init from an empty data directory**
+
+```bash
+rm -rf ~/.local/share/mc-jarvis
+# Save the FFG product page to /tmp/ffg.html first (see Task 11 Step 6).
+mc-jarvis init --from-html /tmp/ffg.html
+mc-jarvis status
+uv run pytest tests/ -v -m integration
+```
+Expected: the whole pipeline from nothing to a working index; `status` shows ~4,298 cards, 72 identities, ~216 rules entries, and **`unmapped_glyphs` empty**
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/mc_jarvis/init.py src/mc_jarvis/update.py src/mc_jarvis/cli.py tests/test_init.py
+git commit -m "feat: init, update, and status"
+```
+
+---
+
+## Task 16: `SKILL.md` and `install-skill`
+
+Implements §7. The skill file is the single source of truth for the agent. `install-skill`'s guard rails are the kind that fail silently, so they get tests rather than trust.
+
+**Files:**
+- Create: `skill/mc-jarvis/SKILL.md`, `skill/mc-jarvis/references/browser-recipes.md`, `src/mc_jarvis/skill_install.py`
+- Modify: `src/mc_jarvis/cli.py`
+- Test: `tests/test_skill_install.py`
+
+**Interfaces:**
+- Produces:
+  - `skill_install.HARNESS_DIRS: dict[str, tuple[str, ...]]` — workspace paths
+  - `skill_install.GLOBAL_DIRS: dict[str, tuple[str, ...]]`
+  - `skill_install.check_workspace(path: Path) -> None` — raises `WorkspaceError`
+  - `skill_install.install(workspace: Path, *, link=False, global_=False) -> list[Placement]`
+  - `skill_install.Placement` — dataclass `harness: str`, `path: Path`, `mode: str`, `needs_trust: bool`
+  - `skill_install.WorkspaceError`
+  - `skill_install.run(args) -> int`
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_skill_install.py
+import subprocess
+from pathlib import Path
+import pytest
+from mc_jarvis import skill_install as si
+
+
+def test_home_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    with pytest.raises(si.WorkspaceError, match="home directory"):
+        si.check_workspace(tmp_path)
+
+
+def test_directory_inside_another_repository_is_refused(tmp_path):
+    outer = tmp_path / "outer"
+    (outer / "sub").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(outer)], check=True)
+    with pytest.raises(si.WorkspaceError, match="inside"):
+        si.check_workspace(outer / "sub")
+
+
+def test_a_plain_directory_is_accepted(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.check_workspace(ws)
+
+
+def test_install_places_the_skill_for_every_harness(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    placements = si.install(ws)
+    got = {p.path.relative_to(ws).as_posix() for p in placements}
+    assert got == {
+        ".agents/skills/mc-jarvis",
+        ".claude/skills/mc-jarvis",
+        ".codex/skills/mc-jarvis",
+    }
+    for p in placements:
+        assert (p.path / "SKILL.md").is_file()
+
+
+def test_install_copies_by_default(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    for p in si.install(ws):
+        assert not p.path.is_symlink()
+        assert p.mode == "copy"
+
+
+def test_link_mode_symlinks(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    for p in si.install(ws, link=True):
+        assert p.path.is_symlink()
+
+
+def test_install_initialises_git_so_the_boundary_is_defined(tmp_path):
+    """Ancestor walking is bounded by the repository root; without a git
+    root a workspace can be cut off from its own skill (spec §7)."""
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.install(ws)
+    assert (ws / ".git").is_dir()
+
+
+def test_reinstall_replaces_rather_than_nesting(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.install(ws)
+    si.install(ws)
+    target = ws / ".claude" / "skills" / "mc-jarvis"
+    assert not (target / "mc-jarvis").exists()
+
+
+def test_frontmatter_has_the_required_fields_and_no_allowed_tools():
+    text = (si.SKILL_SOURCE / "SKILL.md").read_text()
+    assert text.startswith("---")
+    front = text.split("---")[1]
+    assert "name: mc-jarvis" in front
+    assert "description:" in front
+    assert "compatibility:" in front
+    # Marked experimental with support varying between implementations,
+    # which is exactly what breaks a one-file-everywhere design (spec §7).
+    assert "allowed-tools" not in front
+
+
+def test_skill_md_stays_under_the_length_limit():
+    text = (si.SKILL_SOURCE / "SKILL.md").read_text()
+    assert len(text.splitlines()) < 500
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_skill_install.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.skill_install'`
+
+- [ ] **Step 3: Write `skill/mc-jarvis/SKILL.md`**
+
+Keep it under 500 lines; push per-harness browser recipes into `references/`.
+
+```markdown
+---
+name: mc-jarvis
+description: >-
+  Marvel Champions LCG assistant. Use when the user asks about Marvel
+  Champions cards, heroes, identities, encounter sets, deck legality, deck
+  statistics, or rules questions — including "is this legal", "what does
+  this keyword do", "which cards have X", and anything about a marvelcdb
+  deck.
+compatibility: Requires Python 3.10+ and the `mc-jarvis` command on PATH.
+license: MIT
+---
+
+# mc-jarvis
+
+You are Jarvis. Dry, precise, understated. Lead with the answer, then the
+reasoning. Never pad. No honorific unless the user asks for one.
+
+## The one rule
+
+**Every factual claim comes from a command, not from memory.** Card text,
+costs, legality, and rules all live in a local index. Your training data on
+this game is stale and the card pool changes with each release. Run the
+command.
+
+Rules answers must carry the entry name and page the command returned. An
+uncited ruling is worthless in an argument at the table.
+
+## Setup check
+
+If any command reports "no index", the user has not run `mc-jarvis init`.
+Tell them to run it from the folder they want as their deck workspace:
+
+    uv tool install mc-jarvis && mc-jarvis init
+
+If `init` needs the FFG product page, see `references/browser-recipes.md`.
+If any command fails unexpectedly, run `mc-jarvis doctor` and show the
+user its output — a missing prerequisite should be diagnosed, not guessed.
+
+## Commands
+
+Every command takes `--json` for machine consumption. Use it when you need
+to compute; use the default when you are quoting to the user.
+
+| Ask | Command |
+|---|---|
+| find cards | `mc-jarvis card search <query> [--aspect --type --cost --trait --limit]` |
+| one card in full | `mc-jarvis card show <name-or-code> [--explain]` |
+| a hero's kit | `mc-jarvis identity <name>` |
+| an encounter set | `mc-jarvis encounter <villain-or-set>` |
+| a rules term | `mc-jarvis rules show <term>` |
+| a rules question | `mc-jarvis rules search <text>` |
+| environment problems | `mc-jarvis doctor` |
+| index age and counts | `mc-jarvis status` |
+
+`card show` **lists candidates instead of guessing** when a name is
+ambiguous — 60 character names exist as both an identity and an ally, so
+"Black Panther" is genuinely three cards. Show the user the candidates and
+ask, or pick by code if context makes it obvious.
+
+`--explain` expands a card's keywords with their rules text and page
+cites. Use it whenever the user asks what a card actually does.
+
+## Reading the output
+
+- **Identities have more than two faces.** Angel has three; Ironheart has
+  six. `identity` returns all of them. Do not assume hero/alter-ego.
+- **Some cards sit outside the deck.** Permanent cards, hero-special decks,
+  and a few unmarked cards are excluded from deck counts. The index knows
+  which; you do not need to.
+- **Cost arrows.** `card show --explain` splits `pay cost → resolve effect`.
+  Timing text before the arrow is *not* a cost. Some clauses come back
+  flagged `ambiguous` — say so rather than asserting a split.
+- **Page-chunk sources.** Rules hits labelled `(page chunk)` come from
+  documents without an alphabetical index. They are searchable but less
+  precise. Say which document you are quoting.
+
+## Staleness
+
+Check `mc-jarvis status`. If the index is more than 14 days old, mention
+it once and offer `mc-jarvis update`. Do not nag, and never refresh
+without being asked.
+
+## What is not a command
+
+Deck coaching, cut/add advice, and team analysis are your judgement, built
+on command output. Gather the facts first — `deck stats`, `identity`,
+`card show --explain` — then reason. Never invent a card, a cost, or a
+rule to support a recommendation.
+```
+
+Also write `skill/mc-jarvis/references/browser-recipes.md` covering, one short section each: Claude Code (`claude-in-chrome` or Playwright MCP), Codex, opencode, pi, and the no-browser path (Save Page As → `--from-html`). Each section ends with the same command: `mc-jarvis init --from-html <file>`.
+
+- [ ] **Step 4: Write `skill_install.py`**
+
+```python
+"""Place the skill for every harness (spec §7)."""
+from __future__ import annotations
+
+import shutil
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+SKILL_NAME = "mc-jarvis"
+SKILL_SOURCE = Path(__file__).parent / "_bundled" / "skill" / SKILL_NAME
+
+# Three workspace directories cover four harnesses: .agents serves pi and
+# opencode; Claude Code and Codex each read only their own vendor path.
+HARNESS_DIRS = {
+    "pi, opencode": (".agents/skills",),
+    "Claude Code":  (".claude/skills",),
+    "Codex":        (".codex/skills",),
+}
+GLOBAL_DIRS = {
+    "pi, opencode": ("~/.agents/skills",),
+    "Claude Code":  ("~/.claude/skills",),
+    "Codex":        ("~/.codex/skills",),
+}
+NEEDS_TRUST = {"pi, opencode"}
+
+
+class WorkspaceError(RuntimeError):
+    pass
+
+
+@dataclass
+class Placement:
+    harness: str
+    path: Path
+    mode: str
+    needs_trust: bool
+
+
+def _git_root(path: Path) -> Path | None:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return Path(out.stdout.strip()) if out.returncode == 0 else None
+
+
+def check_workspace(path: Path) -> None:
+    """Ancestor walking is bounded by the repository root, so a workspace
+    at $HOME is effectively global for pi, and a workspace nested inside an
+    unrelated repository can be cut off from its own skill (spec §7)."""
+    path = path.resolve()
+    if path == Path.home().resolve():
+        raise WorkspaceError(
+            "refusing to install into your home directory: pi walks up to "
+            "the git root, so a skill here would load in every session. "
+            "Make a folder for your decks and run this there, or pass "
+            "--global if you genuinely want it everywhere.")
+    root = _git_root(path)
+    if root is not None and root != path:
+        raise WorkspaceError(
+            f"{path} is inside the repository at {root}. Harnesses stop "
+            f"walking up at the repository root, so the skill may not load "
+            f"here. Choose a workspace outside it.")
+
+
+def install(workspace: Path, *, link: bool = False,
+            global_: bool = False) -> list[Placement]:
+    if not SKILL_SOURCE.is_dir():
+        raise WorkspaceError(f"bundled skill not found at {SKILL_SOURCE}")
+
+    placements: list[Placement] = []
+    if global_:
+        targets = [(h, Path(d).expanduser()) for h, dirs in GLOBAL_DIRS.items()
+                   for d in dirs]
+    else:
+        workspace = workspace.resolve()
+        check_workspace(workspace)
+        if not (workspace / ".git").exists():
+            subprocess.run(["git", "init", "-q", str(workspace)], check=False)
+        targets = [(h, workspace / d) for h, dirs in HARNESS_DIRS.items()
+                   for d in dirs]
+
+    for harness, parent in targets:
+        parent.mkdir(parents=True, exist_ok=True)
+        dest = parent / SKILL_NAME
+        if dest.is_symlink() or dest.is_file():
+            dest.unlink()
+        elif dest.is_dir():
+            shutil.rmtree(dest)
+
+        if link:
+            dest.symlink_to(SKILL_SOURCE, target_is_directory=True)
+            mode = "link"
+        else:
+            shutil.copytree(SKILL_SOURCE, dest)
+            mode = "copy"
+
+        placements.append(Placement(harness, dest, mode,
+                                    harness in NEEDS_TRUST))
+    return placements
+
+
+def run(args) -> int:
+    from .cli import emit
+    workspace = Path.cwd()
+    try:
+        placements = install(workspace, link=args.link, global_=args.global_)
+    except WorkspaceError as exc:
+        print(f"mc-jarvis install-skill: {exc}")
+        return 1
+
+    if args.json:
+        emit([{"harness": p.harness, "path": str(p.path), "mode": p.mode,
+               "needs_trust": p.needs_trust} for p in placements],
+             as_json=True)
+        return 0
+
+    for p in placements:
+        print(f"{p.mode:<5} {p.harness:<14} {p.path}")
+    if any(p.needs_trust for p in placements):
+        print("\nSome harnesses load project skills only after you trust "
+              "the directory. If nothing activates, trust this folder in "
+              "your agent and restart it.")
+    print(f"\nAsk your agent a Marvel Champions question from "
+          f"{workspace} to check it works.")
+    return 0
+```
+
+Bundle the skill and configs into the wheel: add a build step (or a symlink for development) placing `skill/` at `src/mc_jarvis/_bundled/skill/`, `config/legality.yaml` at `src/mc_jarvis/_bundled/legality.yaml`, and `config/glyphs.yaml` at `src/mc_jarvis/_bundled/glyphs.yaml`.
+
+- [ ] **Step 5: Dispatch it** — in `cli.py` `_dispatch`: `if name == "install-skill": from . import skill_install; return skill_install.run(args)`
+
+- [ ] **Step 6: Run tests to verify they pass**
+
+Run: `uv run pytest tests/ -v -m "not integration"`
+Expected: PASS
+
+- [ ] **Step 7: Install into a real workspace and drive it through an agent**
+
+```bash
+mkdir -p ~/marvel-champions && cd ~/marvel-champions
+mc-jarvis install-skill
+ls -R .agents .claude .codex
+```
+Then open an agent in `~/marvel-champions` and ask, without naming any command: *"What does Overkill do?"*, *"Show me Ironheart's identity cards"*, *"Which Justice allies cost 2 or less?"*
+
+Expected: the agent finds and uses the skill, and the answers carry citations. **This is the real test of Task 16** — if the agent answers from its own memory instead of running a command, the SKILL.md wording is not strong enough.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add skill/ src/mc_jarvis/skill_install.py src/mc_jarvis/cli.py tests/test_skill_install.py
+git commit -m "feat: SKILL.md and workspace-scoped install-skill"
+```
+
+---
+
+## Done criteria
+
+- [ ] `uv run pytest tests/ -v` — all tests pass, unit and integration
+- [ ] `mc-jarvis doctor` exits 0
+- [ ] `mc-jarvis status` reports ~4,298 cards, 72 identities, ~216 rules entries, empty `unmapped_glyphs`
+- [ ] The setup audit reports exactly four identities, all covered
+- [ ] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing
+- [ ] An agent in the workspace answers a card question and a rules question with citations, without being told which command to run
