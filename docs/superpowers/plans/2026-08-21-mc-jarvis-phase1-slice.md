@@ -6291,6 +6291,77 @@ and add `"config/timing.yaml" = "src/mc_jarvis/_bundled/timing.yaml"` to the `fo
 
 ---
 
+## Task 18 (design): Designer rulings and supersession
+
+**Not scheduled in this plan.** Designed here because the constraint that makes it tractable was worked out with the user on 2026-08-22, and the reasoning should not have to be rediscovered.
+
+### The problem
+
+FFG designers issue rulings between Rules Reference versions. They are authoritative, they post-date the RR, and some of them say the RR is *wrong*:
+
+> "No, Sam Wilson would not take any excess damage from Overkill, though **we will need to update the Overkill rules to reflect this**." — 6 March 2026
+
+§9's rule — every rules answer cites the entry name and page — is necessary but not sufficient. **A citation to superseded text is still a wrong answer**, and worse than none, because it reads as authoritative.
+
+### The constraint that makes it small
+
+The naive shape is a growing corpus of every ruling ever issued. It is not, because **a new Rules Reference supersedes every ruling published before it**.
+
+Verified: that March 2026 Overkill ruling was incorporated into v1.8, and the RR says so itself in its change log — *"Page 31: Revised definition of 'overkill.'"*
+
+So the retained set is `rulings dated >= the publication date of the Rules Reference the user holds`. Measured 2026-08-22 against the live sources:
+
+| RR held | Active | Superseded |
+|---|---|---|
+| v1.7 (09 Jan 2026) — what archive.org's capture yields | 8 | 0 |
+| v1.8 (22 Jul 2026) — what FFG currently publishes | **0** | 8 |
+
+Two consequences. The corpus is **bounded by one release cycle**, and today it is *empty*. And the classification is **relative to the document the user actually has** — someone on v1.7 correctly sees eight outstanding rulings, and they supersede themselves on upgrade, with no version tracking beyond the RR's own date.
+
+### Verification, from the RR itself
+
+The presumption "a newer RR incorporates older rulings" is not taken on faith. The RR carries a **SUMMARY OF NOTABLE CHANGES** on page 1 that parses cleanly into `(page, description, quoted terms)` — 8 entries in v1.8. When a superseded ruling's subject matches a change-log term, that is positive confirmation; when it does not, the build records `presumed` rather than `confirmed`, so the difference stays visible.
+
+### Data model
+
+```sql
+CREATE TABLE IF NOT EXISTS rulings (
+    id          INTEGER PRIMARY KEY,
+    question    TEXT NOT NULL,
+    answer      TEXT NOT NULL,
+    author      TEXT,
+    ruled_on    TEXT NOT NULL,      -- ISO date
+    source_name TEXT NOT NULL,      -- attribution is not optional
+    source_url  TEXT NOT NULL,
+    status      TEXT NOT NULL       -- active | superseded
+);
+
+CREATE TABLE IF NOT EXISTS rr_changelog (
+    rr_version  TEXT NOT NULL,
+    page        TEXT,
+    description TEXT NOT NULL,
+    term        TEXT
+);
+```
+
+Only `active` rulings are retained at build time. `update` reports the transition — "3 rulings superseded by Rules Reference v1.9" — because that is exactly when a player's understanding needs to change.
+
+### Fail-safe
+
+If the RR's publication date cannot be determined, **every ruling is treated as active** and the build warns. Over-reporting a ruling is a mild annoyance; silently dropping a live one that contradicts the RR is the failure this feature exists to prevent.
+
+### Surfacing
+
+`rules show <term>` prints the RR entry and its page cite as it does now, then any active ruling touching that term, with its date and attribution. The RR citation is never replaced — the ruling is additive, and the player sees both and can judge. `rules search` covers both, labelled by source.
+
+### Open questions for the user
+
+- **Source dependence.** The rulings are curated by one community site. Core rules must work without it, so this is an opt-in source with graceful degradation, and a markup change must fail loudly rather than silently yield zero rulings.
+- **Attribution.** These are FFG designers' words, curated by a third party. Both get named on every ruling shown. Same distribution rule as everything else: fetched at init, never committed.
+- **Scope.** Whether to also ingest the site's rule changelog and keyword list, or only the dated rulings.
+
+---
+
 ## Done criteria
 
 - [ ] `uv run pytest tests/ -v` — all tests pass, unit and integration
@@ -6301,3 +6372,6 @@ and add `"config/timing.yaml" = "src/mc_jarvis/_bundled/timing.yaml"` to the `fo
 - [ ] An agent in the workspace answers a card question and a rules question with citations, without being told which command to run
 - [ ] `mc-jarvis timing` prints the ladder with a page cite on every rung
 - [ ] `timing.verify_citations` returns empty, and no prefix on a player card is unclassified
+
+---
+
