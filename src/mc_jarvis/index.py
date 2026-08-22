@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 
 class InvariantError(RuntimeError):
@@ -28,6 +28,14 @@ class BuildReport:
     reprints: int = 0
     warnings: list[str] = field(default_factory=list)
 
+
+# "Player-legal" is not simply "not encounter". `campaign` cards (146)
+# belong to a campaign's own pool rather than a constructed deck, and
+# `encounter` is the villain side. Verified 2026-08-22; spec §16's
+# "1,607 player-legal" excludes campaign, while a bare
+# `faction_code != 'encounter'` counts 2,154.
+PLAYER_FACTIONS = ("aggression", "justice", "leadership", "protection",
+                   "basic", "hero", "pool")
 
 COLUMNS = (
     "code name subname type_code faction_code pack_code set_code back_link "
@@ -215,7 +223,7 @@ def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
     )
     report.cards = len(rows)
     report.player_cards = sum(
-        1 for c in rows if c.get("faction_code") != "encounter")
+        1 for c in rows if c.get("faction_code") in PLAYER_FACTIONS)
 
     for name, table, cols in (
         ("packs.json", "packs", ("code", "name")),

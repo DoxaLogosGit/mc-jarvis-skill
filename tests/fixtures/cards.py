@@ -125,17 +125,17 @@ CONFIG_COVERING_EMBERLINE = {
 
 ARROW_CARDS = [
     card("arw01", "Simple Trade", type_code="event",
-         text="<b>Action:</b> Discard a card → draw a card."),
+         text="<b>Action</b>: Discard a card → draw a card."),
     card("arw02", "Timed Guard", type_code="upgrade",
-         text="<b>Interrupt:</b> When a character would take damage, "
+         text="<b>Interrupt</b>: When a character would take damage, "
               "exhaust an [[Aerial]] character you control → prevent 2 "
               "of that damage."),
     card("arw03", "Conditional Swing", type_code="upgrade",
-         text="<b>Action:</b> If you are in [[Tiny]] hero form, exhaust "
+         text="<b>Action</b>: If you are in [[Tiny]] hero form, exhaust "
               "Conditional Swing → deal 1 damage."),
     card("arw04", "Double Deal", type_code="event",
-         text="<b>Action:</b> Spend 1 resource → draw a card. "
-              "<b>Response:</b> After you draw, discard a card → heal 1."),
+         text="<b>Action</b>: Spend 1 resource → draw a card. "
+              "<b>Response</b>: After you draw, discard a card → heal 1."),
     card("arw05", "Sturdy Wall", type_code="ally", traits="Tech.",
          text="Toughness. Retaliate 1. Protects [[S.H.I.E.L.D.]] allies."),
 ]

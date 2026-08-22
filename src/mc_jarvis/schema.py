@@ -88,6 +88,31 @@ CREATE TABLE IF NOT EXISTS out_of_deck (
     note      TEXT
 );
 
+CREATE TABLE IF NOT EXISTS card_traits (
+    code  TEXT NOT NULL,
+    trait TEXT NOT NULL,
+    PRIMARY KEY (code, trait)
+);
+
+CREATE TABLE IF NOT EXISTS card_keywords (
+    code    TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (code, keyword)
+);
+
+CREATE TABLE IF NOT EXISTS cost_clauses (
+    code         TEXT NOT NULL,
+    ordinal      INTEGER NOT NULL,
+    ability_type TEXT,
+    qualifier    TEXT,       -- (defense), (attack), (thwart)
+    timing       TEXT,
+    cost         TEXT NOT NULL,
+    effect       TEXT NOT NULL,
+    ambiguous    INTEGER NOT NULL DEFAULT 0,
+    raw          TEXT NOT NULL,   -- verbatim; always what gets quoted back
+    PRIMARY KEY (code, ordinal)
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'
