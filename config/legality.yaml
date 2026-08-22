@@ -1,0 +1,7 @@
+# Hand-encoded deckbuilding rules (spec §10).
+# Task 8 populates `out_of_deck`; the deck-pipeline plan adds the rest.
+version: 1
+out_of_deck:
+  by_keyword: permanent
+  by_set_type: hero_special
+  exceptions: []

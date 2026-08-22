@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 *.egg-info/
 .playwright-mcp/
+.pytest_cache/
+src/mc_jarvis/_bundled/*
+!src/mc_jarvis/_bundled/.gitignore

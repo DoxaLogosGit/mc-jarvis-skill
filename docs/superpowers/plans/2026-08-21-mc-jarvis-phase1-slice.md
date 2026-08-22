@@ -109,6 +109,7 @@ Implements §5, §5.1, §6. This task locks two things that are expensive to ret
   - `paths.db_path() -> pathlib.Path` — `data_dir() / "mc.sqlite"`
   - `cli.build_parser() -> argparse.ArgumentParser`
   - `cli.emit(payload: object, as_json: bool) -> None` — prints JSON when `as_json`, else a human line-oriented rendering
+  - `cli.parse_args(argv) -> argparse.Namespace` — parses **and normalises subcommand aliases**; use this rather than `build_parser().parse_args`
   - `cli.main(argv: list[str] | None = None) -> int` — process exit code
 
 - [ ] **Step 1: Write the failing tests**
@@ -182,7 +183,7 @@ def test_json_flag_available_on_every_leaf_command():
 
 
 def test_hero_is_an_alias_for_identity():
-    args = cli.build_parser().parse_args(["hero", "Spider-Man"])
+    args = cli.parse_args(["hero", "Spider-Man"])
     assert args.command == "identity"
     assert args.name == "Spider-Man"
 
@@ -395,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
 _HANDLERS: dict[str, Any] = {}
 ```
 
-`identity`'s alias means `args.command` is `"identity"` for both spellings — argparse sets `dest` to the canonical name, which is what `test_hero_is_an_alias_for_identity` asserts.
+**argparse does *not* normalise a subcommand alias to its canonical name.** Verified 2026-08-22: `hero X` yields `args.command == "hero"`. `main` therefore maps it through an `ALIASES = {"hero": "identity"}` table before dispatch, so there is one name to match on.
 
 **`--owned` is declared but inert in this plan.** The collection lands in the deck-pipeline plan, so the flag exists here only to keep the command surface stable. A flag that silently does nothing is the "did you filter?" bug class spec §13 warns about, so it must refuse rather than be ignored. Add to `_dispatch`, before the handler lookup:
 

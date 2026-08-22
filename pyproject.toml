@@ -1,0 +1,34 @@
+[project]
+name = "mc-jarvis"
+version = "0.1.0"
+description = "An agent-agnostic assistant for Marvel Champions: The Card Game"
+requires-python = ">=3.10"
+dependencies = ["pypdf>=4.0", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.40"]
+dev = ["pytest>=8.0", "reportlab>=4.0"]
+
+[project.scripts]
+mc-jarvis = "mc_jarvis.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mc_jarvis"]
+
+# The skill and config ship inside the wheel so `uv tool install` users,
+# who have no checkout, can still run `install-skill` (spec §7). In a
+# checkout these paths are symlinks to the repo-root sources; force-include
+# resolves them to real files at build time.
+[tool.hatch.build.targets.wheel.force-include]
+"config/legality.yaml" = "src/mc_jarvis/_bundled/legality.yaml"
+"config/glyphs.yaml"   = "src/mc_jarvis/_bundled/glyphs.yaml"
+"config/timing.yaml"   = "src/mc_jarvis/_bundled/timing.yaml"
+"skill"                = "src/mc_jarvis/_bundled/skill"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires a built index; skipped when absent"]

@@ -1,0 +1,4 @@
+# Private-use icon codepoints -> readable tokens (spec §9).
+# Derived from the Rules Reference index in Task 13, then reviewed.
+version: 1
+glyphs: {}
