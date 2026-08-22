@@ -2,7 +2,7 @@
 
 **Tasks 1–15 and 17 of the Phase 1 plan are complete, committed, and green.**
 
-    280 tests passing — against a v1.8 index. On the v1.7 index `init`
+    284 tests passing — against a v1.8 index. On the v1.7 index `init`
     actually produces, two integration tests fail honestly (see below).
     4,379 cards · 69 identities · 287 rules entries (216 resolve) · 1,180
     card-rules links · 4,588 timing triggers
@@ -113,6 +113,23 @@ at `rules show Ability`. `--round` still works.
 **Open:** the timing config is v1.8-only. Supporting v1.7 means keying
 `expected_chart`, `aliases` and the rung mapping by version —
 `build_meta.rr_version` now records which one the index holds.
+
+## The same missing rulebook hid a second bug
+
+Learn to Play was stored but **never searchable**. The FTS table was
+filled with `entry_addressable = 1`, and page-chunked content is
+non-addressable by design — so all 24 pages went in the table and none
+into the index. 18 of them contain "villain"; `rules search` returned
+Rules Reference hits only. spec §9 requires the opposite, and
+`chunk_pages`' own docstring says so.
+
+Addressable-by-name and included-in-search are two properties, and they
+are now two columns. No test could catch this while the development index
+had no Learn to Play in it.
+
+**Open:** the development index is not what `init` produces — one rulebook
+instead of two, v1.8 instead of v1.7 — so every real-data gate from here
+runs against an index no user has. That is how both of these survived.
 
 ## Earlier work still standing
 
