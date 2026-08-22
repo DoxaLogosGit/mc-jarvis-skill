@@ -1,7 +1,66 @@
 # Hand-encoded deckbuilding rules (spec §10).
-# Task 8 populates `out_of_deck`; the deck-pipeline plan adds the rest.
+#
+# THIS PLAN populates only `out_of_deck`. Deck size, aspect purity, the
+# dual-aspect exception, basic allowances and the Deadpool `pool` case are
+# added in the deck-pipeline plan.
+#
+# Every entry under `exceptions` exists because no structured field marks
+# the card. The setup audit fails the build when an identity implies a
+# set-aside card that neither `permanent`, `hero_special`, nor this list
+# covers - so this file cannot silently fall behind a new release.
+
 version: 1
+
 out_of_deck:
-  by_keyword: permanent
-  by_set_type: hero_special
-  exceptions: []
+  # Structured mechanisms. Code reads the data, not these values; they are
+  # named here so the config documents all three in one place.
+  by_keyword: permanent            # spec §10 mechanism 1
+  by_set_type: hero_special        # spec §10 mechanism 2
+
+  # Mechanism 3: unmarked. Prose on the identity card is the only evidence.
+  # `identity` is the identity_key, which is the set_code.
+  exceptions:
+    - identity: rogue
+      cards: ["38002"]             # Touched
+      note: >-
+        Rogue's identity text instructs the player to find this card and set
+        it aside. Verified 2026-08-22: deck_limit 1, quantity 1, permanent
+        null, in the ordinary `rogue` set - structurally indistinguishable
+        from a normal signature upgrade, and the set contains no permanent
+        card that could stand in for it.
+    - identity: valk
+      cards: ["25002"]             # Death-Glow
+      note: >-
+        Brunnhilde's setup text names "Death Glow"; the card is named
+        "Death-Glow". Resolution cannot be by exact name match, which is
+        why the audit reports for review rather than resolving.
+        NOTE the identity key is `valk`, not `valkyrie` - a wrong key here
+        matches nothing and fails silently.
+
+  # Identities the setup audit flags whose set-aside cards are already
+  # handled by a structural mechanism. Listing them is not a formality:
+  # coverage is an explicit human acknowledgment, because inferring it
+  # from "this set contains some permanent card" would silently pass a
+  # hero that has both a permanent card and an unmarked set-aside card.
+  # Each `reason` is re-verified against the data at build time.
+  acknowledged:
+    - identity: iceman
+      reason: hero_special
+      note: Six Frostbite upgrades live in the `iceman_frostbite` set.
+    - identity: storm
+      reason: hero_special
+      note: The `storm_weather_deck` set.
+    - identity: doctor_strange
+      reason: hero_special
+      note: The `doctor_strange_invocation_deck` set.
+    - identity: daredevil
+      reason: hero_special
+      note: The `daredevil_sense_deck` set, in pack `fne`.
+    - identity: hercules
+      reason: hero_special
+      note: Both `hercules_labor_deck` and `hercules_gift_deck`.
+    - identity: ironheart
+      reason: identity_grouping
+      note: >-
+        "Set your other identities aside" refers to her other identity
+        cards, which identity grouping already keeps out of the deck.

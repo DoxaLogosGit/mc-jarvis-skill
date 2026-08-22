@@ -119,6 +119,7 @@ CONFIG_COVERING_EMBERLINE = {
         "by_set_type": "hero_special",
         "exceptions": [{"identity": "edge", "cards": ["ood03"],
                         "note": "test"}],
+        "acknowledged": [],
     },
 }
 

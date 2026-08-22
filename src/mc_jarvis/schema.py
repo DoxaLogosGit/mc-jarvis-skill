@@ -82,6 +82,12 @@ CREATE TABLE IF NOT EXISTS card_titles (
 );
 CREATE INDEX IF NOT EXISTS idx_card_titles_title ON card_titles(title);
 
+CREATE TABLE IF NOT EXISTS out_of_deck (
+    code      TEXT PRIMARY KEY,
+    mechanism TEXT NOT NULL,   -- permanent | hero_special | config | identity
+    note      TEXT
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'
