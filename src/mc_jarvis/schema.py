@@ -150,6 +150,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS rules_fts USING fts5(
     term, body, content='rules_entries', content_rowid='id'
 );
 
+CREATE TABLE IF NOT EXISTS card_rules_links (
+    code       TEXT NOT NULL,
+    term       TEXT NOT NULL,
+    source_doc TEXT NOT NULL,
+    PRIMARY KEY (code, term, source_doc)
+);
+CREATE INDEX IF NOT EXISTS idx_links_term ON card_rules_links(lower(term));
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'
