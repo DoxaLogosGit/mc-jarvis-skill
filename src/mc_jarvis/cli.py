@@ -120,6 +120,15 @@ def _dispatch(name: str, args) -> int:
     if name == "doctor":
         from . import doctor
         return doctor.handle(args)
+    if name == "init":
+        from . import init
+        return init.run(args)
+    if name == "update":
+        from . import update
+        return update.run(args)
+    if name == "status":
+        from . import update
+        return update.status(args)
     if name == "card":
         from . import cards
         if args.card_cmd == "search":

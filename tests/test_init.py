@@ -1,0 +1,209 @@
+import json
+
+import pytest
+
+from mc_jarvis import index, init, outofdeck, update
+from tests.fixtures import cards as fx
+# The rules pages are borrowed rather than re-invented. They were shaped
+# from the real Rules Reference index in Task 13, and a second fixture
+# written from memory would encode an assumption instead of the document
+# (Global Constraints).
+from tests.test_rules_chunk import GLYPH, PAGES, UNMAPPED
+
+
+@pytest.fixture
+def data_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path))
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(json.dumps(
+        fx.PACK + fx.MATCH_FAMILY + fx.OUT_OF_DECK + fx.ARROW_CARDS))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text(json.dumps(fx.SETS))
+    (tmp_path / "rules" / "txt").mkdir(parents=True)
+    return tmp_path
+
+
+@pytest.fixture
+def covered(monkeypatch):
+    monkeypatch.setattr(outofdeck, "load_config",
+                        lambda path=None: fx.CONFIG_COVERING_EMBERLINE)
+
+
+@pytest.fixture
+def rules_txt(data_root, monkeypatch):
+    """A rulebook that carries its own alphabetical index."""
+    monkeypatch.setattr(init, "INDEX_MIN_ENTRIES", 3)
+    (data_root / "rules" / "txt" / "rr.txt").write_text(
+        "\f".join(PAGES), encoding="utf-8")
+    return data_root
+
+
+def test_rebuild_runs_every_stage(data_root, covered):
+    conn = index.connect(data_root / "mc.sqlite")
+    counts = init.rebuild_index(conn, data_root)
+    for stage in ("cards", "player_cards", "fts", "identities",
+                  "out_of_deck", "traits", "keywords", "clauses",
+                  "play_limits", "deckbuilding_overrides"):
+        assert stage in counts, stage
+    assert counts["cards"] > 0
+
+
+def test_rebuild_is_idempotent(data_root, covered):
+    conn = index.connect(data_root / "mc.sqlite")
+    first = init.rebuild_index(conn, data_root)
+    second = init.rebuild_index(conn, data_root)
+    assert first == second
+
+
+def test_rebuild_records_build_metadata(data_root, covered):
+    conn = index.connect(data_root / "mc.sqlite")
+    init.rebuild_index(conn, data_root)
+    meta = {r["key"]: r["value"]
+            for r in conn.execute("SELECT key, value FROM build_meta")}
+    assert "built_at" in meta
+    assert meta["card_count"] == str(
+        conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0])
+
+
+def test_a_rulebook_with_an_index_is_entry_addressable(rules_txt, covered):
+    conn = index.connect(rules_txt / "mc.sqlite")
+    counts = init.rebuild_index(conn, rules_txt)
+    assert counts["rules_entries"] >= 4
+    addressable = conn.execute(
+        "SELECT COUNT(*) FROM rules_entries WHERE entry_addressable = 1"
+    ).fetchone()[0]
+    assert addressable >= 4
+
+
+def test_a_rulebook_without_an_index_is_chunked_by_page(data_root, covered):
+    """Learn to Play has no alphabetical index. It must still be
+    searchable, just not addressable by entry (spec §9)."""
+    (data_root / "rules" / "txt" / "ltp.txt").write_text(
+        "COVER\fHow to play: shuffle the encounter deck.\f"
+        "Then each player draws a hand.", encoding="utf-8")
+    conn = index.connect(data_root / "mc.sqlite")
+    counts = init.rebuild_index(conn, data_root)
+    assert counts["rules_entries"] > 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM rules_entries WHERE entry_addressable = 1"
+    ).fetchone()[0] == 0
+
+
+def test_glyphs_are_mapped_after_chunking_not_before(rules_txt, covered):
+    """Mapping whole pages before chunking silently breaks the chunker.
+
+    `apply_glyphs` swaps one private-use codepoint for a multi-word
+    bracketed token, which changes how both the index line and the body
+    header parse. This entry then resolves to no body at all, and against
+    the real Rules Reference the damage is wider: 13 of 217 terms are
+    stored as `Icon ([amplify])` rather than `Amplify Icon ([amplify])`,
+    and `parse_index` derives 0 glyph names instead of 13. The entry
+    count is identical either way, so nothing raises.
+    """
+    conn = index.connect(rules_txt / "mc.sqlite")
+    init.rebuild_index(conn, rules_txt)
+    body = conn.execute(
+        "SELECT body FROM rules_entries WHERE term LIKE 'Amplify Icon%'"
+    ).fetchone()["body"]
+    assert GLYPH not in body           # the codepoint was mapped
+    assert "amplify" in body           # ...to its token, in the real body
+
+
+def test_unmapped_glyphs_are_named_not_counted(rules_txt, covered):
+    """A codepoint the map does not cover must be reportable as a
+    codepoint, so it can be looked up and added."""
+    conn = index.connect(rules_txt / "mc.sqlite")
+    init.rebuild_index(conn, rules_txt)
+    reported = conn.execute(
+        "SELECT value FROM build_meta WHERE key = 'unmapped_glyphs'"
+    ).fetchone()["value"]
+    assert f"U+{ord(UNMAPPED):04X}" in reported
+
+
+def test_init_refuses_on_a_hard_doctor_failure(data_root, monkeypatch):
+    from mc_jarvis import doctor
+    monkeypatch.setattr(doctor, "has_fts5", lambda: False)
+
+    class Args:
+        json = False
+        from_html = None
+        browser = False
+    assert init.run(Args()) == 1
+
+
+def test_status_reports_a_missing_index(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path))
+
+    class Args:
+        json = False
+    assert update.status(Args()) == 1
+    assert "init" in capsys.readouterr().out
+
+
+def test_status_reports_counts_from_the_built_index(data_root, covered,
+                                                    capsys):
+    conn = index.connect(data_root / "mc.sqlite")
+    init.rebuild_index(conn, data_root)
+    conn.close()
+
+    class Args:
+        json = True
+    assert update.status(Args()) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["cards"] > 0
+    assert payload["stale"] is False
+    assert payload["built_at"]
+
+
+def test_status_calls_an_old_index_stale(data_root, covered, capsys,
+                                         monkeypatch):
+    conn = index.connect(data_root / "mc.sqlite")
+    init.rebuild_index(conn, data_root)
+    conn.close()
+    monkeypatch.setattr(
+        update, "_age_days",
+        lambda path: float(update.STALE_DAYS + 1))
+
+    class Args:
+        json = True
+    update.status(Args())
+    assert json.loads(capsys.readouterr().out)["stale"] is True
+
+
+def test_extracting_rules_text_is_a_no_op_without_pdfs(data_root):
+    assert init.extract_rules_text(data_root) == 0
+
+
+@pytest.mark.integration
+def test_real_entries_keep_the_words_before_a_mapped_glyph(real_index):
+    """The fixture cannot show this truncation; the real document can.
+
+    13 Rules Reference entries name an icon in their own title, and each
+    must keep the words that identify it. Mapping glyphs before chunking
+    clips every one of them to its last word -- `Icon ([amplify])`,
+    `Damage ([consequential-damage])`, `Resource ([mental])` -- which
+    raises nothing and leaves 13 entries unfindable by name.
+    """
+    named = [r["term"] for r in real_index.execute(
+        "SELECT term FROM rules_entries WHERE term LIKE '%([%'")]
+    # One per mapped codepoint in glyphs.yaml; a drop means terms are
+    # being lost, not that the document changed.
+    assert len(named) >= 12, named
+    for term in named:
+        prefix = term.split(" ([")[0]
+        assert prefix not in ("Icon", "Damage", "Resource"), term
+
+
+@pytest.mark.integration
+def test_the_real_rules_reference_carries_enough_index_to_be_addressable():
+    """The threshold that routes a rulebook to entry-chunking rather than
+    page-chunking. The Rules Reference gives 217; Learn to Play gives 0."""
+    from mc_jarvis import paths, pdf, rules_chunk
+    src = paths.data_dir() / "rules" / "pdf"
+    rr = src / "marvel-champions-rules-reference.pdf"
+    if not rr.exists():
+        pytest.skip("no Rules Reference PDF; run `mc-jarvis init`")
+    entries = rules_chunk.parse_index(pdf.extract_pages(rr)).entries
+    assert len(entries) > init.INDEX_MIN_ENTRIES
+    assert 200 < len(entries) < 260
