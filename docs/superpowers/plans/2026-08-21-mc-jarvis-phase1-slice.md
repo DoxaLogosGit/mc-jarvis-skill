@@ -5469,7 +5469,90 @@ The chart is **parsed from the rules**, so the ordering is not hand-encoded at a
 
 If FFG revises the chart or rewords an entry, the build says which rung went stale instead of serving a wrong answer. Same move as the setup audit in Task 8 — a checked config, not a trusted one.
 
-- [ ] **Step 1: Write `config/timing.yaml`**
+### What the real corpus changed — implemented 2026-08-22
+
+The draft above is kept for its reasoning. Nine things in it were wrong,
+and every one was found by running it against the real index rather than
+by reading it. Where the two disagree, the code is right.
+
+1. **A quoted timing trigger is a reference, not a trigger.** The rule is
+   in the same entry the chart comes from: *"the quoted text is not itself
+   a timing trigger, but is instead referring to other abilities with that
+   trigger."* The draft's `.strip('"')` gave 15 printings — `"Special"`,
+   `"Boost"`, `"Hero Interrupt"` and friends — an ability they do not
+   have. `timing_triggers` gained a `quoted` column; `canonical` names
+   what is referred to, so the flag is what separates having from
+   mentioning, and `_cards_with` filters on it.
+
+2. **`explain` reported no un-lettered rung.** The draft filtered on
+   `and r["sub"]`, so rung 1 (constant/delayed/lasting) and rung 5
+   (consequential damage) never appeared — contradicting what the draft's
+   own `SKILL.md` text promises. Simply dropping the filter is also wrong:
+   it surfaces the bare `Interrupts` and `Responses` category headers, and
+   a Response then "resolves after Responses". `orderable()` keeps a row
+   only if it is lettered or its rung has no lettered tier — **eight
+   slots**, which is the count that fails both bugs.
+
+3. **`Forced` is a modifier, not a prefix of its own.** `Forced Action` is
+   on 11 cards and classified as nothing. The full name is checked first
+   so `Forced Interrupt` and `Forced Response` keep their own rungs, then
+   `Forced ` is stripped and the remainder resolved. Consequence: `forced`
+   can no longer be `canonical.startswith("Forced")` — `Forced Action`'s
+   canonical is `Action`.
+
+4. **Parentheticals cannot be a fixed list.** `When Revealed (Norman
+   Osborn)` is a When Revealed; the draft's `elif m: return None` dropped
+   it. Any parenthetical is now kept verbatim provided the outer text
+   resolves, which also absorbs the mis-set `(Alter_Ego)` on 32070 with no
+   list to maintain.
+
+5. **One prefix can carry two abilities.** 59042 Hecate prints
+   `When Revealed/Defeated` — rung 3 and rung 2b. `classify_all` returns
+   one `Trigger` per ability and the build emits a row for each, so
+   `ordinal` counts triggers rather than bold matches. Listed explicitly
+   in `compounds:` rather than split on `/` by rule: one card is not
+   evidence for a convention.
+
+6. **`BOLD_RE` captures inner markup.** ~45 prefixes are
+   `<i>Give to the Tony Stark player.</i>`. Tags are stripped first.
+
+7. **`not_triggers` needed patterns, and patterns needed a guard.** Two
+   shapes cover ~50 printings (`Give to … player.`, `…'s Side Scheme.`).
+   `test_no_trigger_matches_a_not_trigger_pattern` asserts no key in
+   `triggers`, `outside_chart` or `aliases` matches either — that is what
+   makes them rules rather than the wildcard this task forbids.
+
+8. **Round Overview: 10 steps, 9 `See:` clauses, 1 wrapped list.** Step 10
+   names no glossary entry, so `assert all(s["see"])` fails on a correct
+   parse; step 6's list wraps onto a second line, so a line-by-line parse
+   silently keeps `Activation, Attack` and drops the rest. The body is
+   split on step boundaries and `see` is optional. The assertion that
+   catches the truncation is `len(steps[5]["see"]) == 3`.
+
+9. **Pages must come from the index.** The draft hard-coded `Ability` p.5
+   and `First Player` p.20; the indexed RR says **p.4** and **p.19**. All
+   `rr_page` keys are gone from `timing.yaml` and `timing.page` /
+   `timing.cite` read `rules_entries`, which also names a NULL page rather
+   than printing `p.None` (46 of 263 rows have none). And an off-chart
+   trigger cites the entry that governs it — `[RR Forced p.20]` for an
+   Action — not the chart it is absent from.
+
+Two bugs outside this task, both found by the second `update`:
+
+- **`timing_triggers` carried the schema's only foreign key to `cards`.**
+  `load_cards` truncates `cards`, so the second rebuild died with an
+  integrity error. Every other derived table has no FK for exactly this
+  reason.
+- **`_reset_if_stale` could not drop through a foreign key** either. It
+  now suspends `PRAGMA foreign_keys` for the teardown, so a future FK
+  cannot leave the reset half-done — the one state that function exists
+  to prevent.
+
+Also dropped: `parse_chart`'s `len(...) < 90` line-wrap repair. It never
+fires on the real chart, so it was untested logic guarding a case
+`verify_chart` already reports by name.
+
+- [x] **Step 1: Write `config/timing.yaml`**
 
 ```yaml
 # Trigger timing and priority. Added 2026-08-21.
@@ -5599,7 +5682,7 @@ tie_breaks:
       any order
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_timing.py
@@ -5809,12 +5892,12 @@ def test_round_structure_has_ten_steps(real_index):
     assert all(s["see"] for s in steps)
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_timing.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.timing'`
 
-- [ ] **Step 4: Add tables to `schema.py`**
+- [x] **Step 4: Add tables to `schema.py`**
 
 ```sql
 -- The RR's Simultaneous Timing Priority chart (ABILITY entry, p.5),
@@ -5850,7 +5933,7 @@ CREATE TABLE IF NOT EXISTS round_steps (
 );
 ```
 
-- [ ] **Step 5: Write `timing.py`**
+- [x] **Step 5: Write `timing.py`**
 
 ```python
 """Trigger timing and priority (added 2026-08-21; not in the original spec).
@@ -6207,7 +6290,7 @@ def handle(args) -> int:
     return 0
 ```
 
-- [ ] **Step 6: Add the command to `cli.py`**
+- [x] **Step 6: Add the command to `cli.py`**
 
 In `build_parser`, after `encounter`:
 
@@ -6227,7 +6310,7 @@ and in `_dispatch`:
         return timing.handle(args)
 ```
 
-- [ ] **Step 7: Wire it into the build**
+- [x] **Step 7: Wire it into the build**
 
 In `init.rebuild_index`, after `counts["rules_links"] = rules.build_links(conn)`:
 
@@ -6250,12 +6333,12 @@ In `init.rebuild_index`, after `counts["rules_links"] = rules.build_links(conn)`
 
 Add `import json` to `init.py`. Also add `timing_citations_broken` to the `status` payload in `update.py`, alongside `unmapped_glyphs`.
 
-- [ ] **Step 8: Run tests to verify they pass**
+- [x] **Step 8: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_timing.py -v -m "not integration"`
 Expected: PASS, 14 tests
 
-- [ ] **Step 9: Verify against the real corpus**
+- [x] **Step 9: Verify against the real corpus**
 
 ```bash
 uv run python -c "
@@ -6281,7 +6364,9 @@ Verified 2026-08-21 against the real PDF: the page-spanning chunker from Task 13
 
 **Every unclassified prefix is a decision, not a bug to suppress.** Read the list: if it is a real trigger, add it to `ladder` or `outside_ladder`; if it is bold flavour text, add it to `not_triggers`. Encounter-side prefixes (`Contents`, `Preparation`, `Standard Mode Only.`) are the expected bulk. Do not widen `not_triggers` with a wildcard.
 
-- [ ] **Step 10: Teach the skill about it**
+- [ ] **Step 10: Teach the skill about it** — deferred into Task 16,
+  which writes `SKILL.md` from scratch. Text below, corrected for the
+  findings above.
 
 Add to `SKILL.md`'s command table:
 
@@ -6315,9 +6400,16 @@ surprise people:
   every trigger**, and status-card Forced Interrupts outrank ordinary ones.
 - **Forced beats optional at the same tier**, and the first player breaks
   every remaining tie — including between abilities they do not control.
+- **A trigger in quotation marks is a reference, not a trigger.** A card
+  reading `"Boost"` is talking about Boost abilities; it does not have
+  one. `mc-jarvis timing` says so when it applies.
+
+Actions, Resources, Special and Setup are not on the chart at all — they
+are not tied to a triggering condition. `mc-jarvis timing "Hero Action"`
+cites the entry that governs them instead.
 ```
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/mc_jarvis/timing.py src/mc_jarvis/schema.py src/mc_jarvis/cli.py \
@@ -6409,14 +6501,24 @@ If the RR's publication date cannot be determined, **every ruling is treated as 
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/ -v` — all tests pass, unit and integration
-- [ ] `mc-jarvis doctor` exits 0
-- [ ] `mc-jarvis status` reports ~4,298 cards, 72 identities, ~216 rules entries, empty `unmapped_glyphs`
-- [ ] The setup audit reports exactly four identities, all covered
-- [ ] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing
-- [ ] An agent in the workspace answers a card question and a rules question with citations, without being told which command to run
-- [ ] `mc-jarvis timing` prints the ladder with a page cite on every rung
-- [ ] `timing.verify_citations` returns empty, and no prefix on a player card is unclassified
+Numbers here were written from the spec, before the corpus was measured.
+Corrected 2026-08-22 against the real index; the originals are kept in
+brackets because a criterion that fails as written is worse than none.
+
+- [x] `uv run pytest tests/ -v` — all tests pass, unit and integration (272)
+- [x] `mc-jarvis doctor` exits 0
+- [x] `mc-jarvis status` reports 4,379 cards [spec said ~4,298], 69
+      identities [72], 263 rules entries of which 216 resolve [~216], empty
+      `unmapped_glyphs`
+- [x] The setup audit reports exactly **eight** identities [four], all
+      covered — see `out_of_deck.acknowledged` in `config/legality.yaml`
+- [x] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing
+- [ ] An agent in the workspace answers a card question and a rules question with citations, without being told which command to run — **gated on Task 16**
+- [x] `mc-jarvis timing` prints the chart with a page cite, and an
+      off-chart trigger cites the entry that governs it rather than the
+      chart it is absent from
+- [x] `timing.verify_chart` and `timing.verify_citations` return empty, and
+      no bold prefix on any card is unclassified (4,586 rows)
 
 ---
 
