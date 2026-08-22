@@ -1,91 +1,94 @@
-# mc-jarvis — overnight run, 2026-08-22
+# mc-jarvis — state of play, 2026-08-22
 
-**Tasks 1–10 of the Phase 1 plan are complete, committed, and green.**
-The loop stopped at the planned boundary, not on an error.
+**Tasks 1–15 of the Phase 1 plan are complete, committed, and green.**
 
-    104 tests passing (86 unit + 18 integration)
-    4,379 cards indexed · 69 identities · 265 out-of-deck rows
-    1,053 cost-arrow clauses parsed
+    223 tests passing (176 unit + 47 integration)
+    4,379 cards · 69 identities · 287 rules entries · 1,180 card-rules links
+    unmapped_glyphs: empty
 
 ## Try it
 
-    uv run --extra dev python -c "from mc_jarvis.cli import main; main(['card','search','web','--limit','5'])"
+    mc-jarvis init          # from nothing: card data + rulebooks + index
+    mc-jarvis status
+    mc-jarvis update
 
-Working commands: `doctor`, `card search`, `card show`, `identity` / `hero`,
-`encounter`. Every one takes `--json`.
+`init` needs no browser — the rules manifest comes from archive.org. It
+warns when that capture is behind FFG, because `update` re-reads the same
+capture and cannot cure it.
 
-    card search "Sp//dr"                 punctuation is not FTS syntax
-    card show "Black Panther"            lists candidates, never guesses
-    card show "First Aid"                shows printings: core x3, ant x2, nebu x2
-    identity Ironheart                   six faces, hand size 4 -> 5 -> 6
-    encounter Rhino                      stages I/II/III, HP per hero
+Working: `doctor`, `init`, `update`, `status`, `card search`, `card show`,
+`identity` / `hero`, `encounter`, `rules show`, `rules search`. All take
+`--json`.
 
-`scripts/rebuild.py` rebuilds the index; `mc-jarvis init` lands in Task 15.
+## What is left
 
-## Why it stopped
+| Task | State |
+|---|---|
+| 16 `SKILL.md` + `install-skill` | not started — `SKILL.md` is still a placeholder |
+| 17 timing reference | not started — findings below, config not yet written |
+| 18 designer rulings | design only, deliberately unscheduled |
 
-**Task 11 needs you.** The FFG product page returns 403 to every HTTP
-client, so the rules manifest cannot be fetched without a real browser.
-Save the page to `/tmp/ffg.html` and Tasks 11–17 can run:
+**Do 17 before 16.** Task 16 *is* `SKILL.md`, so writing it before `timing`
+exists means writing it twice.
 
-    https://www.fantasyflightgames.com/en/products/marvel-champions-the-card-game/
+## Task 17: four corrections to the plan, verified against real data
 
-Task 11 is also flagged in the plan as its least-verified component: its
-fixture is built from an assumption about the page markup, and the plan
-says to look at the real page **before** writing the parser.
+Found 2026-08-22 while preparing the task. None is implemented yet.
 
-## Findings — seven corrections to the spec
+1. **The Round Overview yields 9 steps, not 10.** Step 10 — *"End the round.
+   Proceed to step one of the next game round."* — has no `See:` clause, so
+   the plan's regex skips it entirely. `see` must be optional, and the
+   plan's `assert all(s["see"] for s in steps)` is wrong: 9 of 10 name
+   entries.
 
-Each was caught by a real-data gate, not by a unit test, and each is
-recorded in the plan.
+2. **Step 6's `see` list wraps across a line and is silently truncated.**
+   The body reads `6. Villain and minions activate. See: Activation, Attack\n
+   (Enemy Activation), Scheme (Enemy Activation)`. Parsing line-by-line
+   captures `Activation, Attack` and drops the rest. Split the whole body on
+   `\n(?=\d{1,2}\.\s)` instead. **Assert step 6 resolves to three entries** —
+   that is the assertion that catches this, and no fixture would suggest it.
 
-1. **`duplicate_of` is inverted in §8.** The spec says it is encounter-only
-   and no player card uses it. 341 of 351 stubs resolve to *player* cards,
-   211 to `basic`. They are hero-pack reprints, and this is how player-side
-   reprints are marked. Unresolved they are 351 nameless rows.
+3. **Two page numbers in the plan are stale.** `Ability` is indexed at p.4
+   (plan says 5) and `First Player` at p.19 (plan says 20). Rather than
+   correct them, drop `rr_page` from `timing.yaml` and read the page from
+   `rules_entries`. That kills the whole drift class and keeps
+   `mc-jarvis timing` agreeing with `rules show Ability`. All 11 cited
+   entries have a non-NULL page; 46 rows in the table do not, so
+   `verify_citations` needs a guard that names a NULL rather than emitting
+   `p.None`.
 
-2. **"Own any pack containing a card and you have enough copies" is false.**
-   50 printings ship fewer than the deck limit — Ant-Man has 2 *First Aid*
-   against a limit of 3. The grouped form holds (0 violations). `--owned`
-   must resolve through `canonical_code`.
+4. **Two latent bugs in the plan's `timing.py` draft.** `parse_chart`'s
+   `len(...) < 90` wrap guard never fires on today's chart — untested logic.
+   And `explain()` filters on `and r["sub"]`, which excludes every
+   un-lettered rung, so rung 1 (constant/delayed/lasting) and rung 5
+   (consequential damage) never appear — contradicting what the plan's own
+   `SKILL.md` text promises.
 
-3. **§10's Sp//dr ordering constraint does not exist.** Under RR p.45 her
-   hero face and permanent support do not match at all — clause 1 needs
-   *both* cards to lack an alter-ego title. It is an artifact of name-equality
-   matching, which §8 warns against three paragraphs earlier.
+Confirmed present and correct: the chart parses out of the `ABILITY` body
+exactly as the plan describes, and all eight cited RR entries resolve.
 
-4. **The cost-arrow parse was silently broken.** Real markup puts the colon
-   outside the bold span (`<b>Interrupt</b>: When …`). Timing extraction
-   was **24 clauses where 281 belong** — ~260 cards would have reported
-   their trigger as something the player must pay.
+## Also landed this session
 
-5. **Audit coverage must be acknowledged, not inferred.** A hero with both
-   a permanent card and an unmarked set-aside card was silently passed.
-   Real data hid this; a fixture caught it. All eight flagged identities
-   are now listed explicitly, each reason re-verified at build time.
+**`docs/superpowers/specs/2026-08-22-scenario-assessment-design.md`** — the
+`assess` feature (villain + modular sets → threat profile, then deck
+cross-reference). Captured deliberately ahead of implementation; revisit
+after 15–17. Part 1 is plannable now, Part 2 is gated on the unwritten deck
+pipeline.
 
-6. **"Player-legal" is not `faction_code != 'encounter'`.** That counts
-   2,154 cards against §16's 1,607; `campaign` is not deck-legal.
-   `index.PLAYER_FACTIONS` names the seven that are.
+## Corrections this session made to the plan
 
-7. **Villains do not thwart.** They carry `scheme`, a roman-numeral
-   `stage`, and `health_per_hero` — the printed 14/15/16 is multiplied by
-   the player count. Printing it without saying so gives the wrong tracker
-   value.
+- **Glyph mapping must run after chunking, not before.** The plan's draft
+  `init.py` had it backwards. Measured on the real Rules Reference: 13 of
+  217 entries stored as `Icon ([amplify])` instead of
+  `Amplify Icon ([amplify])`, and 0 derived glyph names instead of 13. The
+  entry count is identical either way, so nothing raises.
+- **Both PDF backends agree** — 71 pages, 13 codepoints, 217 index entries,
+  46 redirects from `pdftotext` and `pypdf` alike — so no backend is pinned.
+- `scripts/rebuild.py` is gone; `mc-jarvis update` replaces it.
 
-## The pattern worth noticing
+## Stale bookkeeping still to fix
 
-Findings 4 and 5 are the same failure: **a fixture shaped from my
-assumption, and a test written to match the fixture.** Both passed while
-the feature was wrong. The plan now carries a Global Constraint requiring
-fixtures to be shaped from observed data, and every data-shaped task to
-end with a real-data gate that has a number you can fail.
-
-## Also fixed in the plan
-
-- `_bundled/` was referenced by three modules but created by no task — the
-  package would not have built at Task 1.
-- argparse does *not* normalise subcommand aliases; `hero` needed an
-  explicit table.
-- Schema changes now bump `SCHEMA_VERSION`, which drops and rebuilds the
-  derived index instead of failing with a bare "no such column".
+- The plan's checkboxes are all unticked; it records no progress.
+- The plan's **Done criteria carry superseded numbers** — "~4,298 cards, 72
+  identities", "the setup audit reports exactly four identities". Real data
+  gives 4,379 / 69 / **eight**. They will fail as written.
