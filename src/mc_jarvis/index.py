@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class InvariantError(RuntimeError):
@@ -41,7 +41,8 @@ COLUMNS = (
     "code name subname type_code faction_code pack_code set_code back_link "
     "double_sided is_unique permanent duplicate_of cost quantity "
     "resource_physical resource_mental resource_energy resource_wild "
-    "attack thwart defense recover health hand_size text flavor traits"
+    "attack thwart defense recover health health_per_hero scheme "
+    "stage hand_size text flavor traits"
 ).split()
 
 

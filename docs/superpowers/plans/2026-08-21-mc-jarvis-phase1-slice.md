@@ -36,6 +36,8 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9, §10 and §16.
 
+**Villains do not thwart, and their printed hit points are not their real hit points.** Task 10's draft schema had no `scheme`, `stage` or `health_per_hero` column, so `encounter` printed `THW None` for every villain. Villains carry `scheme` (Rhino 1 at every stage), `stage` as a roman numeral, and `health_per_hero: true` — the printed 14/15/16 is multiplied by the player count. Reporting the printed number without saying so gives a table the wrong tracker value, so both the encounter listing and `card show` state it.
+
 **Card-text markup has four shapes, not one, and three of them break a naive cost-arrow parse.** Found while implementing Task 9 against real cards:
 
 - The colon usually sits **outside** the bold span — `<b>Interrupt</b>: When …` — not inside it. Leaving it in front of the timing clause blocks the match and reports the whole trigger as a cost. Measured: timing extraction rose from **24 to 281** player clauses once the colon was stripped. Both `<b>Hero Action:</b>` and `<b>Hero Action</b>:` occur, so the parser must handle either.

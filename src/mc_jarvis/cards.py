@@ -105,6 +105,7 @@ def handle_search(args) -> int:
 FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
                   "deck_limit", "quantity", "canonical_code", "is_reprint",
                   "attack", "thwart", "defense", "recover", "health",
+                  "health_per_hero", "scheme", "stage",
                   "hand_size", "resource_physical", "resource_mental",
                   "resource_energy", "resource_wild", "flavor")
 
@@ -184,10 +185,13 @@ def _print_card(c: dict) -> None:
         line += ", permanent"
     print(line)
     stats = [(k, c.get(k)) for k in
-             ("attack", "thwart", "defense", "recover", "health", "hand_size")
-             if c.get(k) is not None]
+             ("attack", "thwart", "scheme", "defense", "recover", "health",
+              "hand_size") if c.get(k) is not None]
     if stats:
-        print("  " + "  ".join(f"{k.upper()[:3]} {v}" for k, v in stats))
+        line = "  " + "  ".join(f"{k.upper()[:3]} {v}" for k, v in stats)
+        if c.get("health_per_hero"):
+            line += "  (HP per hero)"
+        print(line)
     if c.get("traits"):
         print(f"  {c['traits']}")
     if c.get("text"):
@@ -269,4 +273,61 @@ def handle_identity(args) -> int:
     print(f"\nSignature set ({len(result['signature'])} cards):")
     for c in result["signature"]:
         print(f"  {c['code']:<8} {c['name']:<32} {c['type_code']}")
+    return 0
+
+
+def encounter(conn, name: str) -> dict:
+    """A villain's stages and an encounter set's contents.
+
+    Villain hit points scale with the number of players at the table
+    rather than living in separate rows, so the printed value is the base
+    and there is deliberately no --difficulty flag.
+    """
+    row = conn.execute(
+        "SELECT code, name FROM sets WHERE lower(code) = lower(?) "
+        "   OR lower(name) = lower(?)", (name, name)).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT s.code, s.name FROM sets s JOIN cards c "
+            "  ON c.set_code = s.code "
+            "WHERE lower(c.name) = lower(?) AND c.faction_code = 'encounter' "
+            "ORDER BY c.code LIMIT 1", (name,)).fetchone()
+    if row is None:
+        return {"set_code": None, "set_name": None,
+                "villain": [], "contents": []}
+
+    contents = [dict(r) for r in conn.execute(
+        f"SELECT {', '.join('cards.' + c for c in SUMMARY)}, "
+        f"       cards.quantity, cards.health, cards.health_per_hero, "
+        f"       cards.attack, cards.scheme, cards.stage, cards.defense, "
+        f"       cards.thwart "
+        f"FROM cards WHERE set_code = ? AND code = canonical_code "
+        f"ORDER BY code", (row["code"],))]
+    villain = [c for c in contents if c["type_code"] == "villain"]
+    return {"set_code": row["code"], "set_name": row["name"],
+            "villain": villain, "contents": contents}
+
+
+def handle_encounter(args) -> int:
+    conn = _open()
+    result = encounter(conn, args.name)
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if result["set_code"] else 1
+    if not result["set_code"]:
+        print(f"no encounter set matching {args.name!r}")
+        return 1
+    print(f"{result['set_name']}  [{result['set_code']}]")
+    if result["villain"]:
+        print("\nVillain stages:")
+        for v in result["villain"]:
+            hp = f"HP {v['health']}"
+            if v.get("health_per_hero"):
+                hp += " per hero"
+            stage = f"stage {v['stage']}" if v.get("stage") else ""
+            print(f"  {v['name']:<24} {stage:<10} {hp:<16} "
+                  f"ATK {v['attack']}  SCH {v['scheme']}")
+    print(f"\nSet contents ({len(result['contents'])} cards):")
+    for c in result["contents"]:
+        print(f"  {c['quantity']}x {c['name']:<32} {c['type_code']}")
     return 0

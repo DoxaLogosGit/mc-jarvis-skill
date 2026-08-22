@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS cards (
     defense             INTEGER,
     recover             INTEGER,
     health              INTEGER,
+    health_per_hero     INTEGER,   -- HP is multiplied by the player count
+    scheme              INTEGER,   -- villains scheme; they do not thwart
+    stage               TEXT,      -- I, II, III
     hand_size           INTEGER,
     text                TEXT,
     flavor              TEXT,
