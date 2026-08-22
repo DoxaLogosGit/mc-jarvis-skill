@@ -3190,9 +3190,34 @@ git commit -m "feat: encounter set and villain lookup"
 
 Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regardless of headers, so **`--from-html` is the default path**, not a fallback: it is the only one that works on an agent with no browser capability at all.
 
-> **This is the least-verified component in the plan.** Every other data-shaped task was checked against real data while planning; the FFG page was not, because it returns 403 to plain HTTP clients and no saved copy was available. `tests/fixtures/ffg_page.html` is therefore built from an *assumption* about the page's markup — precisely the shape that produced the `See also` failure in Task 13.
+> **Resolved 2026-08-22 — the browser requirement was avoidable.** The spec made `--from-html` the default, which means `init` needs a manual step on exactly the agents with no browser. It does not have to.
 >
-> **Do Step 6 before Step 1.** Save the real page first, look at how the title, size, and date actually sit relative to the anchor, and shape the fixture from what you see. If `_Collector` as written does not fit that markup, rewrite it — it is a guess, not a finding.
+> Measured:
+>
+> | Route | Result |
+> |---|---|
+> | FFG product page, direct | **403**, and JS-rendered — the list is not in the HTML |
+> | FFG CDN deep links | **200/206** — downloading needs no browser, only discovery did |
+> | archive.org CDX API | open, 97 snapshots since 2019 |
+> | archive.org snapshot (`id_`, gzip) | **87 PDF links** with title, size and date |
+> | archive.org `/save/` | times out; not automatable |
+> | third-party fan mirrors | re-hosted copies of old versions — worse on both counts |
+>
+> **The Wayback Machine is the default path.** It needs no browser and yields FFG's own CDN URLs, so the PDFs are still fetched from the publisher rather than a mirror. Its cost is currency: 2026 saw three snapshots, a 137-day median gap, and the 2026-07-21 capture carries Rules Reference **v17** while live is v18. So the snapshot date travels with the manifest and `status` reports it. The Rules Reference and Learn to Play change rarely, so a months-old capture still yields a working index, and `--from-html` / `--browser` remain for anyone who needs today's list.
+>
+> **The fixture-shape warning was justified.** The real markup puts size, title and date in labelled spans *inside* the anchor:
+>
+> ```html
+> <a class="support-item" href="….pdf">
+>   <span class="file-size">3.5 MB</span>
+>   <span class="title">Marvel Champions Rules Reference</span>
+>   <span class="date">09 Jan 2026</span>
+> </a>
+> ```
+>
+> The drafted `_Collector` read them from the text *following* the anchor and would have returned `None` for all three — silently disabling `diff`, and with it every revision check. `tests/fixtures/ffg_support.html` now mirrors this structure with invented titles.
+>
+> **archive.org rate-limits.** A burst of requests times out, and a bare failure reads as "no snapshot exists" — the wrong diagnosis, sending the user to find a browser they do not need. `_get` retries with backoff.
 
 **Files:**
 - Create: `src/mc_jarvis/manifest.py`
