@@ -4,7 +4,7 @@
 
     276 tests passing
     4,379 cards · 69 identities · 263 rules entries (216 resolve) · 1,180
-    card-rules links · 4,586 timing triggers
+    card-rules links · 4,588 timing triggers
     unmapped_glyphs: empty · unclassified prefixes: none
 
 ## Try it
