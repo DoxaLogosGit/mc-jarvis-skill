@@ -3751,6 +3751,40 @@ def test_unmapped_glyphs_are_preserved_and_reported():
     assert unmapped == {"\uf5ff"}
 
 
+def test_quoted_and_icon_headers_are_not_rejected():
+    """Requiring ^[A-Z] silently dropped 36 of 216 entries: every quoted
+    term and every icon entry."""
+    for header in ('\u201cAFTER\u201d', '\u201cAND\u201d', "ACCELERATION ICON ( )",
+                   "COST ARROW ICON ( \u2192)", "ALTER-EGO, ALTER-EGO FORM"):
+        assert rules_chunk.HEADER_RE.match(header), header
+
+
+def test_match_key_bridges_index_and_body_spellings():
+    k = rules_chunk.match_key
+    assert k("Delayed Effects") == k("DELAYED EFFECT")
+    assert k("Boost, Boost Icon (\uf520)") == k("BOOST")
+    assert k("Alter-Ego, Alter-Ego Form") == k("ALTER-EGO, ALTER-EGO FORM")
+    assert k("Golden Rules") == k("THE GOLDEN RULES")
+    assert k("Ability") != k("Abilities Reference")
+
+
+def test_bodies_do_not_overlap(pages):
+    """The earlier locator produced 106% coverage - entries running past
+    their end into the next one. A partition cannot."""
+    result = rules_chunk.parse_index(pages)
+    entries = [e for e in rules_chunk.chunk_entries(
+        pages, result, source_doc="rr") if e.page is not None and e.body]
+    joined = "".join(e.body for e in entries)
+    glossary = "".join(pages[2:])
+    assert len(joined.replace(" ", "")) <= len(glossary.replace(" ", ""))
+
+
+def test_extraction_report_names_what_it_could_not_resolve(pages):
+    result = rules_chunk.parse_index(pages)
+    rep = rules_chunk.extraction_report(pages, result)
+    assert rep["resolved"] + len(rep["unresolved"]) == rep["index_entries"]
+
+
 def test_an_entry_continues_across_a_page_break(pages):
     """ABILITY starts on p.4 and its timing chart is on p.5. Stopping at
     the page boundary would drop the chart without any error."""
@@ -3777,6 +3811,20 @@ def test_store_is_idempotent(tmp_path, pages):
     rules_chunk.store(conn, entries)
     n = rules_chunk.store(conn, entries)
     assert n == len(entries)
+
+
+@pytest.mark.integration
+def test_real_extraction_resolves_almost_every_entry(real_index):
+    """The gate from Task 13 Step 8, enforced. Measured 2026-08-21:
+    207 of 216 resolved at 91% coverage."""
+    row = real_index.execute(
+        "SELECT value FROM build_meta WHERE key = 'extraction_report'"
+    ).fetchone()
+    assert row is not None, "init did not write the extraction report"
+    import json as _j
+    rep = _j.loads(row["value"])
+    assert rep["resolved"] >= 205, rep["unresolved"]
+    assert rep["coverage"] >= 0.88, rep["coverage"]
 
 
 @pytest.mark.integration
@@ -3860,7 +3908,8 @@ GLYPH_NAME_RE = re.compile(r"^(.*?)\s*\(([\ue000-\uf8ff])\s*\)$")
 # wraps over several lines to the end of the entry. Verified 2026-08-21:
 # the tighter `See also:\s*(.+)$` matched nothing in the real document.
 SEE_ALSO_RE = re.compile(r"^[ \t]*See\s+also\s*:\s*(.+)\Z", re.M | re.S)
-HEADER_RE = re.compile(r"^[A-Z][A-Z0-9 ,'/&()-]{2,60}$")
+HEADER_RE = re.compile(
+    r"^[\u201c\"']?[A-Z][A-Z0-9 ,\u2019'\u201c\u201d/&()\u2192.\u2013\u2014-]{2,60}$")
 
 
 @dataclass
@@ -3911,53 +3960,78 @@ def parse_index(pages: list[str], *, scan_pages: int = 3) -> IndexResult:
     return result
 
 
-def _entry_page_bounds(pages: list[str], term: str, page: int) -> str:
-    """The index gives a printed page number; extractor page indices may be
-    offset. Locate the header near the stated page and read to the next
-    ALL-CAPS header.
+def _headers(pages: list[str], first: int = 3, last: int = 49
+             ) -> list[tuple[int, int, str]]:
+    """Every ALL-CAPS entry header in the glossary span, in document order.
 
-    Entries run past the end of a page: ABILITY begins on p.4 and its
-    Simultaneous Timing Priority chart is on p.5. Reading only the page the
-    index names would truncate the entry and silently drop the chart, so
-    the scan continues into following pages until it finds the next header.
+    HEADER_RE must admit a leading curly quote and glyphs inside the
+    header. Verified 2026-08-21: requiring `^[A-Z]` silently rejects
+    "AFTER", "AND", "CANNOT" and every icon entry such as
+    "ACCELERATION ICON ( )" - 36 of 216 entries lost with no error.
     """
-    header = term.upper()
-    header = GLYPH_NAME_RE.sub(lambda m: m.group(1).upper(), header).strip()
-    for offset in (0, 1, -1, 2, -2):
-        idx = page - 1 + offset
-        if not 0 <= idx < len(pages):
-            continue
-        lines = pages[idx].split("\n")
-        for line_no, line in enumerate(lines):
-            if not line.strip().upper().startswith(header[:24]):
-                continue
-            out: list[str] = []
-            rest = lines[line_no + 1:]
-            cursor = idx
-            while True:
-                for line2 in rest:
-                    if HEADER_RE.match(line2.strip()) and out:
-                        return "\n".join(out).strip()
-                    out.append(line2)
-                cursor += 1
-                if cursor >= len(pages):
-                    break
-                rest = pages[cursor].split("\n")
-            return "\n".join(out).strip()
-    return ""
+    out = []
+    for pi in range(first, min(last, len(pages))):
+        for li, line in enumerate(pages[pi].split("\n")):
+            s = line.strip()
+            if HEADER_RE.match(s) and not re.match(r"^RU ?L ?E ?S", s, re.I):
+                out.append((pi, li, s))
+    return out
+
+
+def _body_between(pages: list[str], heads: list[tuple[int, int, str]],
+                  i: int) -> str:
+    """One entry's body: from its header to the next header.
+
+    Partitioning the document this way makes overlap impossible. The
+    earlier approach - locating each index term independently and reading
+    until any header - produced 106% coverage, meaning entries ran past
+    their end into their neighbour while others came back empty.
+    """
+    pi, li, _ = heads[i]
+    nxt = heads[i + 1] if i + 1 < len(heads) else (len(pages), 0, None)
+    out: list[str] = []
+    for page_no in range(pi, min(nxt[0], len(pages) - 1) + 1):
+        lines = pages[page_no].split("\n")
+        start = li + 1 if page_no == pi else 0
+        stop = nxt[1] if page_no == nxt[0] else len(lines)
+        out += lines[start:stop]
+    return "\n".join(out).strip()
+
+
+def match_key(term: str) -> str:
+    """Normalise an index term or a body header to a comparable key.
+
+    The two spellings differ in ways that are invisible until they cost
+    you an entry: the index writes "Delayed Effects" where the body writes
+    "DELAYED EFFECT", "Boost, Boost Icon ( )" where the body writes
+    "BOOST", and icon glyphs appear in one and not the other.
+    """
+    s = PUA.sub("", term).replace("\u2192", "")
+    s = s.split(",")[0]                    # RR alphabetises before the comma
+    s = re.sub(r"\(.*?\)", "", s)          # "(Card Title)", "(Trait)"
+    s = re.sub(r"^the\s+", "", s.strip(), flags=re.I)
+    s = re.sub(r"[^a-z0-9]", "", s.lower())
+    return re.sub(r"s$", "", s)            # singular/plural
 
 
 def chunk_entries(pages: list[str], index: IndexResult, *,
                   source_doc: str) -> list[Entry]:
+    heads = _headers(pages)
+    bodies: dict[str, tuple[str, str]] = {}
+    for i, (_, _, header) in enumerate(heads):
+        bodies.setdefault(match_key(header),
+                          (header, _body_between(pages, heads, i)))
+
     entries = []
     for term, page in index.entries:
-        body = _entry_page_bounds(pages, term, page)
+        found = bodies.get(match_key(term))
+        body = found[1] if found else ""
         see_also: list[str] = []
         m = SEE_ALSO_RE.search(body)
         if m:
-            see_also = [s.strip() for s in re.split(r",|and", m.group(1))
-                        if s.strip()]
-            body = SEE_ALSO_RE.sub("", body).strip()
+            tail = " ".join(m.group(1).split())
+            see_also = [s.strip() for s in tail.split(",") if s.strip()]
+            body = body[:m.start()].strip()
         entries.append(Entry(term=term, body=body, page=page,
                              source_doc=source_doc, entry_addressable=True,
                              see_also=see_also))
@@ -3966,6 +4040,27 @@ def chunk_entries(pages: list[str], index: IndexResult, *,
                              source_doc=source_doc, entry_addressable=True,
                              see_also=[target]))
     return entries
+
+
+def extraction_report(pages: list[str], index: IndexResult) -> dict:
+    """What the chunker captured, and what it did not.
+
+    This exists because a rules index that silently drops entries is worse
+    than one that fails: every downstream answer stays confidently wrong.
+    `init` writes this to disk so a human can read the unresolved list.
+    """
+    entries = chunk_entries(pages, index, source_doc="_audit")
+    unresolved = [e.term for e in entries
+                  if e.entry_addressable and e.page is not None and not e.body]
+    glossary = re.sub(r"\s+", "", "".join(pages[3:49]))
+    captured = re.sub(r"\s+", "", "".join(
+        e.body for e in entries if e.page is not None))
+    return {
+        "index_entries": len(index.entries),
+        "resolved": len(index.entries) - len(unresolved),
+        "unresolved": unresolved,
+        "coverage": round(len(captured) / max(len(glossary), 1), 3),
+    }
 
 
 def chunk_pages(pages: list[str], *, source_doc: str) -> list[Entry]:
@@ -4082,23 +4177,43 @@ glyphs:
 
 **Verify this table against the script's output before committing** — the values above are what was observed on 2026-08-21 and the RR may have been revised since. Note that spec §9 and §16 say the range is U+F520–F530; it is U+F520–**F531**, and U+F523 and U+F529–U+F52C are unused.
 
-- [ ] **Step 8: Cross-check the index against the body headers**
+- [ ] **Step 8: Run the extraction audit and account for every unresolved entry**
+
+A rules index that silently drops entries is worse than one that fails, because every downstream answer stays confidently wrong. This step is the gate.
 
 ```bash
 uv run python -c "
-import re
+import json
 from mc_jarvis import pdf, rules_chunk
 pages = pdf.extract_pages('/tmp/rr.pdf', backend='pypdf')
 idx = rules_chunk.parse_index(pages)
-entries = rules_chunk.chunk_entries(pages, idx, source_doc='rules-reference')
-empty = [e.term for e in entries if e.entry_addressable and not e.body]
-print('entries with no body found:', len(empty))
-for t in empty[:20]: print('  ', t)
+rep = rules_chunk.extraction_report(pages, idx)
+print(json.dumps(rep, indent=2, ensure_ascii=False))
 "
 ```
-Expected: a small number. **Each one is a real defect** — the header locator failed to find that entry in the body. Fix `_entry_page_bounds` until the list is empty or every remainder is understood and recorded.
 
-- [ ] **Step 9: Commit**
+**Acceptance gate — all four must hold:**
+
+| Check | Threshold | Measured 2026-08-21 |
+|---|---|---|
+| `resolved` / `index_entries` | ≥ 205 of 216 | 207 |
+| `coverage` | ≥ 0.88 | 0.91 |
+| Body overlap | impossible by construction | partition |
+| Every `unresolved` term explained in writing | no exceptions | 9, all classified below |
+
+The nine unresolved entries measured on 2026-08-21, and why each is acceptable:
+
+- `Card Anatomy` — points into Appendix III (p.52), outside the glossary span. Not a glossary entry.
+- `Golden Rules`, `Grim Rule`, `In Play`, `Play Restrictions and Permissions` — the index term and the body header are worded differently. `match_key` already strips a leading "the"; extend it if you can do so without collapsing two distinct entries onto one key.
+- `Limit …`, `2 Ru l e s R e f eR e n c e Max, Maximum`, `Variable You, Your`, `Activation) Unique Icon` — two-column merge artifacts in `parse_index`, where adjacent index lines joined. Fix in `parse_index`, not here.
+
+**If your run produces a different list, do not widen the thresholds.** Read each entry, classify it, and either fix the matcher or write down why it is acceptable. Commit the classification alongside the code — the next person needs to know these were examined rather than tolerated.
+
+- [ ] **Step 9: Persist the audit so it stays visible**
+
+Have `init` write the report to `<data>/rules/extraction-report.json` and surface `resolved`/`index_entries` in `mc-jarvis status`. A regression after an FFG revision then shows up in a routine `status` rather than in a wrong ruling at a table.
+
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/mc_jarvis/rules_chunk.py src/mc_jarvis/schema.py config/glyphs.yaml tests/
