@@ -138,21 +138,79 @@ def test_capture_age_is_measured_in_days():
 
 
 # --- currency check against the community mirror ---
+#
+# The question these answer: what happens when the mirror changes shape?
+# Every failure must be nameable. Returning "no result" for both "you are
+# current" and "the check broke" is how a stale rulebook gets served with
+# confidence.
 
-MIRROR_HTML = """
+ROOT_HTML = """
+<nav><a href="/cards/">Cards</a><a href="/blog-feed/">Blog</a>
+<a href="https://mirror.invalid/latest-ffg-rulings-post-rrg-1-7/">Rulings</a>
+<a href="/community-resources/">Resources</a></nav>
+"""
+
+PAGE_HTML = """
 <h2>Current Rules Reference Guide</h2>
 <p><a href="https://mirror.invalid/uploads/2026/07/mc_rulesreference_v18.pdf">1.8</a></p>
 <h2>Prior Rules Reference Guides</h2>
 <p><a href="https://mirror.invalid/uploads/2020/04/mc_rulesreference_v11.pdf">1.1</a></p>
+<p><a href="https://mirror.invalid/uploads/2021/04/mc_rulesreference_v14.pdf">1.4</a></p>
 """
 
 
-def test_mirror_reports_only_the_current_version():
-    """The page also carries a full historical archive; only the section
-    headed "Current Rules Reference Guide" is read."""
-    m = manifest.current_rr_from_mirror(MIRROR_HTML)
-    assert m.version == "1.8"
-    assert "v18" in m.url
+def test_the_rulings_page_is_found_by_nav_label_not_a_fixed_url():
+    """The rulings URL encodes the RR version it post-dates, so it
+    changes with each release; the nav label does not."""
+    url = manifest.find_rulings_page(ROOT_HTML)
+    assert url.endswith("/latest-ffg-rulings-post-rrg-1-7/")
+
+
+def test_a_changed_rulings_url_is_followed_automatically():
+    moved = ROOT_HTML.replace("post-rrg-1-7", "post-rrg-1-9")
+    assert "post-rrg-1-9" in manifest.find_rulings_page(moved)
+
+
+def test_current_version_is_read_from_the_page():
+    look = manifest.current_rr_from_mirror(page_html=PAGE_HTML)
+    assert look.ok and look.version == "1.8"
+
+
+def test_a_renamed_heading_does_not_break_the_check():
+    """Strategy 1 reads FFG's filename convention, so it survives any
+    change to the page's headings."""
+    renamed = PAGE_HTML.replace("Current Rules Reference Guide",
+                                "The Newest Rulebook")
+    look = manifest.current_rr_from_mirror(page_html=renamed)
+    assert look.ok and look.version == "1.8"
+
+
+def test_a_missing_nav_link_is_named_not_swallowed():
+    stripped = ROOT_HTML.replace(">Rulings<", ">Judgements<")
+    look = manifest.current_rr_from_mirror(home_html=stripped)
+    assert look.status == "nav_missing"
+    assert "redesigned" in look.detail
+
+
+def test_an_unrecognisable_page_is_named_not_swallowed():
+    look = manifest.current_rr_from_mirror(page_html="<p>coming soon</p>")
+    assert look.status == "unparsed"
+    assert "markup" in look.detail
+
+
+def test_disagreeing_strategies_refuse_to_guess():
+    """If the labelled section names an older version than the highest
+    one linked on the page, picking either silently is how a stale
+    rulebook gets served with confidence."""
+    conflicting = """
+<h2>Current Rules Reference Guide</h2>
+<p><a href="https://mirror.invalid/uploads/2021/04/mc_rulesreference_v14.pdf">1.4</a></p>
+<h2>Prior Rules Reference Guides</h2>
+<p><a href="https://mirror.invalid/uploads/2026/07/mc_rulesreference_v18.pdf">1.8</a></p>
+"""
+    look = manifest.current_rr_from_mirror(page_html=conflicting)
+    assert look.status == "disagree"
+    assert "not guessing" in look.detail
 
 
 def test_version_is_recoverable_from_ffgs_filename():
@@ -166,49 +224,48 @@ def test_version_is_recoverable_from_ffgs_filename():
 def _manifest_with(rr_url):
     return manifest.ManifestResult(
         docs=[manifest.RuleDoc(title="Marvel Champions Rules Reference",
-                               url=rr_url, slug="marvel-champions-rules-reference")],
+                               url=rr_url,
+                               slug="marvel-champions-rules-reference")],
         source="wayback", captured="2026-07-21")
 
 
 def test_a_behind_manifest_reports_a_usable_alternative():
-    """Having the current rulebook matters more than which host served
-    it, so being behind reports where to get it, not just that you are."""
-    mirror = manifest.current_rr_from_mirror(MIRROR_HTML)
+    mirror = manifest.current_rr_from_mirror(page_html=PAGE_HTML)
     result = manifest.check_rr_currency(
         _manifest_with(".../mc_rulesreference_v17-web.pdf"), mirror)
-    assert result["have"] == "1.7"
-    assert result["current"] == "1.8"
+    assert result["status"] == "behind"
+    assert (result["have"], result["current"]) == ("1.7", "1.8")
     assert result["url"].endswith(".pdf")
-    assert result["source_name"]
 
 
 def test_a_current_manifest_reports_nothing():
-    mirror = manifest.current_rr_from_mirror(MIRROR_HTML)
+    mirror = manifest.current_rr_from_mirror(page_html=PAGE_HTML)
     assert manifest.check_rr_currency(
         _manifest_with(".../mc_rulesreference_v18_compressed.pdf"),
         mirror) is None
 
 
+def test_a_broken_oracle_never_reads_as_a_clean_bill_of_health():
+    """The whole point. A site redesign must not look like "you are up
+    to date"."""
+    broken = manifest.current_rr_from_mirror(page_html="<p>hello</p>")
+    result = manifest.check_rr_currency(
+        _manifest_with(".../mc_rulesreference_v17-web.pdf"), broken)
+    assert result is not None
+    assert result["status"] == "unknown"
+    assert "unparsed" in result["detail"]
+
+
 def test_a_newer_manifest_than_the_mirror_reports_nothing():
-    """The mirror is a sanity check, not an authority. If FFG is ahead of
-    it, that is fine."""
-    mirror = manifest.current_rr_from_mirror(MIRROR_HTML)
+    """The mirror is a sanity check, not an authority."""
+    mirror = manifest.current_rr_from_mirror(page_html=PAGE_HTML)
     assert manifest.check_rr_currency(
         _manifest_with(".../mc_rulesreference_v19.pdf"), mirror) is None
 
 
-def test_an_unreachable_mirror_is_not_an_error():
-    """Every path must work with this source down."""
-    assert manifest.current_rr_from_mirror("<html>unrelated</html>") is None
-
-
 @pytest.mark.integration
-def test_the_real_mirror_agrees_the_archived_manifest_is_behind():
-    """Measured 2026-08-22: archive.org's capture yields v1.7 while FFG
-    publishes v1.8, and the mirror is what makes that visible."""
-    result = manifest.fetch_from_wayback()
-    check = manifest.check_rr_currency(result)
-    if check is None:
-        pytest.skip("archive capture is current; nothing to compare")
-    assert check["current"] > check["have"]
-    assert check["url"].endswith(".pdf")
+def test_the_real_site_resolves_through_its_nav():
+    look = manifest.current_rr_from_mirror()
+    assert look.status in ("ok", "unreachable"), look.detail
+    if look.ok:
+        assert look.version and look.url.endswith(".pdf")

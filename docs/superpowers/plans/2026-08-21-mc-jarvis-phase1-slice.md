@@ -3253,9 +3253,23 @@ Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regar
 >
 > It does not have to be trusted anyway, because **the Rules Reference states its own version on page 1**. `rules_chunk.declared_version` reads it and `verify_version` refuses to index a file whose self-declared version differs from what it was listed as. A swapped or mislabelled file fails loudly, whatever host served it.
 >
-> The dependency is deliberately narrow: `current_rr_from_mirror` reads **one version string and one URL**, from the section headed "Current Rules Reference Guide" only — the same page's historical archive and translations are ignored. Everything else still comes from FFG's manifest. `check_rr_currency` compares that against the version encoded in FFG's own filename (`mc_rulesreference_v18…` → 1.8) and reports where to get the newer file rather than merely complaining. An unreachable or restructured mirror returns `None`; no path depends on it.
+> **What happens when the mirror changes shape.** It will: the rulings URL encodes the Rules Reference version it post-dates (`.../latest-ffg-rulings-post-rrg-1-7/`), so it changes with every release — the exact event the check exists to detect.
 >
-> The mirror is a sanity check, not an authority: when FFG is *ahead* of it, nothing is reported.
+> Two things make that survivable. **Resolution follows the site's nav label, not a URL**: the label "Rulings" has been stable for years while the URL behind it has not, so `find_rulings_page` reads the nav and follows it. And **version detection has two independent strategies** — the highest version among all Rules Reference links, read from FFG's own filename convention (`mc_rulesreference_v18…` → 1.8), and the link under the heading "Current Rules Reference Guide". The first survives any heading or layout change.
+>
+> **Every failure is named.** An earlier version returned `None` for all of them, which made "the mirror says you are current" and "the mirror could not be read" indistinguishable — so a site redesign would silently disable the check while `status` kept reporting a healthy index. That is the same silent-failure class as the `See also` bug. Now:
+>
+> | Breakage | `lookup.status` | `check_rr_currency` |
+> |---|---|---|
+> | nav label renamed | `nav_missing` | `unknown` + detail |
+> | page markup replaced | `unparsed` | `unknown` + detail |
+> | strategies disagree | `disagree` | `unknown` + detail |
+> | site unreachable | `unreachable` | `unknown` + detail |
+> | working, manifest behind | `ok` | `behind` + where to get it |
+>
+> `check_rr_currency` returns `None` **only** when the manifest is genuinely current. A broken oracle can never read as a clean bill of health. Disagreement between the two strategies is reported rather than resolved, because picking one silently is how a stale rulebook gets served with confidence.
+>
+> > The mirror is a sanity check, not an authority: when FFG is *ahead* of it, nothing is reported.
 >
 > **archive.org rate-limits.** A burst of requests times out, and a bare failure reads as "no snapshot exists" — the wrong diagnosis, sending the user to find a browser they do not need. `_get` retries with backoff.
 

@@ -293,57 +293,148 @@ def newer_snapshot_available(result: ManifestResult) -> str | None:
     return iso if iso > result.captured else None
 
 
-# A community-maintained page that labels the current Rules Reference by
-# version. Used as a currency oracle, and as a fallback download when the
-# archived FFG manifest is behind.
+# A community-maintained site that tracks the current Rules Reference.
+# Used as a currency oracle and fallback download when the archived FFG
+# manifest is behind.
 #
 # Verified 2026-08-22: its copy of Rules Reference v1.8 is byte-identical
-# to the file served by FFG's own CDN - same length, same SHA-256. It is a
-# faithful mirror rather than a re-encode, so preferring a current copy
-# from here over a stale one from the archive costs nothing in fidelity.
+# to the file served by FFG's own CDN - same length, same SHA-256. A
+# faithful mirror, not a re-encode.
 #
-# The dependency is deliberately narrow: one version string and one URL.
-# Everything else still comes from FFG's manifest, and every code path
-# works with this source unreachable.
+# Resolution follows the site's NAV LABEL, not a fixed URL. The rulings
+# URL encodes the Rules Reference version it post-dates
+# (".../latest-ffg-rulings-post-rrg-1-7/") and therefore changes with
+# each release, while the nav label "Rulings" has been stable for years.
+# Hardcoding the URL would break on exactly the event we are trying to
+# detect.
 MIRROR_NAME = "Hall of Heroes"
-MIRROR_URL = "https://hallofheroeslcg.com/latest-ffg-rulings-post-rrg-1-7/"
+MIRROR_HOME = "https://hallofheroeslcg.com/"
+MIRROR_NAV_LABEL = "rulings"
 MIRROR_SECTION = "Current Rules Reference Guide"
 
-_VERSION_LABEL_RE = re.compile(r"^\s*(\d+\.\d+)\s*$")
+_VERSION_LABEL_RE = re.compile(r"^\s*v?(\d+\.\d+)\s*$", re.I)
+_RR_FILENAME_RE = re.compile(r"rulesreference[_-]?v(\d)(\d+)", re.I)
+_LINK_RE = re.compile(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.S | re.I)
 
 
 @dataclass
-class MirrorRR:
-    version: str
-    url: str
+class MirrorLookup:
+    """Result of consulting the mirror.
+
+    `status` is the point of this type. An earlier version returned None
+    for every failure, so "the mirror says you are current" and "the
+    mirror could not be read" were indistinguishable - and a site
+    redesign would silently disable the check while the tool kept
+    reporting a healthy index. Each failure now has a name, and `doctor`
+    reports it.
+    """
+    status: str            # ok | nav_missing | unreachable | unparsed | disagree
+    version: str | None = None
+    url: str | None = None
+    page_url: str | None = None
+    detail: str = ""
     source_name: str = MIRROR_NAME
 
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
 
-def current_rr_from_mirror(html_text: str | None = None) -> MirrorRR | None:
-    """The Rules Reference version the mirror currently lists.
 
-    Reads only the section headed "Current Rules Reference Guide", whose
-    first PDF link is labelled with a bare version number. Anything else
-    on the page - the historical archive, translations - is ignored.
-    """
-    if html_text is None:
+def _text_of(fragment: str) -> str:
+    return " ".join(re.sub(r"<[^>]+>", " ", fragment).split())
+
+
+def find_rulings_page(home_html: str | None = None) -> str | None:
+    """Follow the nav label rather than a remembered URL."""
+    if home_html is None:
         try:
-            html_text = _get(MIRROR_URL, timeout=45).decode(
+            home_html = _get(MIRROR_HOME, timeout=45).decode(
                 "utf-8", errors="replace")
         except Exception:
             return None
+    for url, label in _LINK_RE.findall(home_html):
+        if _text_of(label).strip().lower() == MIRROR_NAV_LABEL:
+            return url
+    return None
 
+
+def _versions_on_page(html_text: str) -> list[tuple[tuple[int, ...], str, str]]:
+    """Every Rules Reference version linked on the page.
+
+    Read from FFG's own filename convention, so it survives any change to
+    the page's headings or layout.
+    """
+    out = []
+    for url, _ in _LINK_RE.findall(html_text):
+        m = _RR_FILENAME_RE.search(url)
+        if m:
+            version = f"{m.group(1)}.{m.group(2)}"
+            out.append((_version_key(version), version, url))
+    return sorted(out)
+
+
+def _labelled_current(html_text: str) -> tuple[str, str] | None:
     start = html_text.find(MIRROR_SECTION)
     if start == -1:
         return None
-    window = html_text[start:start + 1500]
-    for url, label in re.findall(
-            r'href="([^"]+\.pdf)"[^>]*>(.*?)</a>', window, re.S | re.I):
-        text = " ".join(re.sub(r"<[^>]+>", " ", label).split())
-        m = _VERSION_LABEL_RE.match(text)
+    for url, label in _LINK_RE.findall(html_text[start:start + 2000]):
+        m = _VERSION_LABEL_RE.match(_text_of(label))
         if m:
-            return MirrorRR(version=m.group(1), url=url)
+            return m.group(1), url
     return None
+
+
+def current_rr_from_mirror(page_html: str | None = None,
+                           home_html: str | None = None) -> MirrorLookup:
+    """The Rules Reference version the mirror currently lists.
+
+    Two independent strategies, because a page can be redesigned:
+
+      1. the highest version among all Rules Reference links, read from
+         FFG's filename convention - survives heading changes;
+      2. the link under the heading "Current Rules Reference Guide".
+
+    Agreement is the normal case. Disagreement is reported rather than
+    guessed at, because picking one silently is how a stale rulebook gets
+    served with confidence.
+    """
+    page_url = None
+    if page_html is None:
+        page_url = find_rulings_page(home_html)
+        if page_url is None:
+            return MirrorLookup(
+                "nav_missing", page_url=MIRROR_HOME,
+                detail=f"no nav link labelled {MIRROR_NAV_LABEL!r} on "
+                       f"{MIRROR_HOME}; the site may have been redesigned")
+        try:
+            page_html = _get(page_url, timeout=45).decode(
+                "utf-8", errors="replace")
+        except Exception as exc:
+            return MirrorLookup("unreachable", page_url=page_url,
+                                detail=f"could not fetch {page_url}: {exc}")
+
+    by_filename = _versions_on_page(page_html)
+    labelled = _labelled_current(page_html)
+
+    if not by_filename and not labelled:
+        return MirrorLookup(
+            "unparsed", page_url=page_url,
+            detail="no Rules Reference links found on the rulings page; "
+                   "its markup has probably changed")
+
+    if by_filename:
+        _, version, url = by_filename[-1]
+        if labelled and labelled[0] != version:
+            return MirrorLookup(
+                "disagree", page_url=page_url,
+                detail=f"the highest linked version is {version} but the "
+                       f'"{MIRROR_SECTION}" section names '
+                       f"{labelled[0]}; not guessing which is current")
+        return MirrorLookup("ok", version=version, url=url,
+                            page_url=page_url)
+
+    version, url = labelled
+    return MirrorLookup("ok", version=version, url=url, page_url=page_url)
 
 
 def _version_key(version: str) -> tuple[int, ...]:
@@ -360,23 +451,33 @@ def rr_version_from_filename(url: str) -> str | None:
 
 
 def check_rr_currency(result: ManifestResult,
-                      mirror: MirrorRR | None = None) -> dict | None:
+                      mirror: MirrorLookup | None = None) -> dict | None:
     """Compare the manifest's Rules Reference against the mirror's.
 
-    Returns None when the manifest is current or the check is impossible.
-    Having the current rulebook matters more than which host served it,
-    so when the manifest is behind this reports a usable alternative
-    rather than only a complaint.
+    Returns None only when the manifest is genuinely current. Every other
+    outcome - behind, or the check could not run - comes back as a dict
+    with a `status`, so a broken oracle can never read as a clean bill of
+    health.
     """
     rr = next((d for d in result.docs
                if d.slug == "marvel-champions-rules-reference"), None)
     if rr is None:
-        return None
+        return {"status": "unknown",
+                "detail": "no Rules Reference in the manifest"}
+
     have = rr_version_from_filename(rr.url)
+    if not have:
+        return {"status": "unknown",
+                "detail": f"cannot read a version from {rr.url}"}
+
     mirror = mirror if mirror is not None else current_rr_from_mirror()
-    if not have or mirror is None:
-        return None
+    if not mirror.ok:
+        return {"status": "unknown", "have": have,
+                "detail": f"{mirror.source_name} check unavailable "
+                          f"({mirror.status}): {mirror.detail}"}
+
     if _version_key(mirror.version) <= _version_key(have):
         return None
-    return {"have": have, "current": mirror.version, "url": mirror.url,
-            "source_name": mirror.source_name}
+
+    return {"status": "behind", "have": have, "current": mirror.version,
+            "url": mirror.url, "source_name": mirror.source_name}
