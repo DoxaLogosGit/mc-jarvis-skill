@@ -291,3 +291,92 @@ def newer_snapshot_available(result: ManifestResult) -> str | None:
         return None
     iso = f"{latest[:4]}-{latest[4:6]}-{latest[6:8]}"
     return iso if iso > result.captured else None
+
+
+# A community-maintained page that labels the current Rules Reference by
+# version. Used as a currency oracle, and as a fallback download when the
+# archived FFG manifest is behind.
+#
+# Verified 2026-08-22: its copy of Rules Reference v1.8 is byte-identical
+# to the file served by FFG's own CDN - same length, same SHA-256. It is a
+# faithful mirror rather than a re-encode, so preferring a current copy
+# from here over a stale one from the archive costs nothing in fidelity.
+#
+# The dependency is deliberately narrow: one version string and one URL.
+# Everything else still comes from FFG's manifest, and every code path
+# works with this source unreachable.
+MIRROR_NAME = "Hall of Heroes"
+MIRROR_URL = "https://hallofheroeslcg.com/latest-ffg-rulings-post-rrg-1-7/"
+MIRROR_SECTION = "Current Rules Reference Guide"
+
+_VERSION_LABEL_RE = re.compile(r"^\s*(\d+\.\d+)\s*$")
+
+
+@dataclass
+class MirrorRR:
+    version: str
+    url: str
+    source_name: str = MIRROR_NAME
+
+
+def current_rr_from_mirror(html_text: str | None = None) -> MirrorRR | None:
+    """The Rules Reference version the mirror currently lists.
+
+    Reads only the section headed "Current Rules Reference Guide", whose
+    first PDF link is labelled with a bare version number. Anything else
+    on the page - the historical archive, translations - is ignored.
+    """
+    if html_text is None:
+        try:
+            html_text = _get(MIRROR_URL, timeout=45).decode(
+                "utf-8", errors="replace")
+        except Exception:
+            return None
+
+    start = html_text.find(MIRROR_SECTION)
+    if start == -1:
+        return None
+    window = html_text[start:start + 1500]
+    for url, label in re.findall(
+            r'href="([^"]+\.pdf)"[^>]*>(.*?)</a>', window, re.S | re.I):
+        text = " ".join(re.sub(r"<[^>]+>", " ", label).split())
+        m = _VERSION_LABEL_RE.match(text)
+        if m:
+            return MirrorRR(version=m.group(1), url=url)
+    return None
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in re.findall(r"\d+", version))
+
+
+def rr_version_from_filename(url: str) -> str | None:
+    """FFG encodes the version in the filename: mc_rulesreference_v18…"""
+    m = re.search(r"rulesreference[_-]?v(\d)(\d+)", url, re.I)
+    if m:
+        return f"{m.group(1)}.{m.group(2)}"
+    m = re.search(r"marvelrrg(\d)(\d+)", url, re.I)
+    return f"{m.group(1)}.{m.group(2)}" if m else None
+
+
+def check_rr_currency(result: ManifestResult,
+                      mirror: MirrorRR | None = None) -> dict | None:
+    """Compare the manifest's Rules Reference against the mirror's.
+
+    Returns None when the manifest is current or the check is impossible.
+    Having the current rulebook matters more than which host served it,
+    so when the manifest is behind this reports a usable alternative
+    rather than only a complaint.
+    """
+    rr = next((d for d in result.docs
+               if d.slug == "marvel-champions-rules-reference"), None)
+    if rr is None:
+        return None
+    have = rr_version_from_filename(rr.url)
+    mirror = mirror if mirror is not None else current_rr_from_mirror()
+    if not have or mirror is None:
+        return None
+    if _version_key(mirror.version) <= _version_key(have):
+        return None
+    return {"have": have, "current": mirror.version, "url": mirror.url,
+            "source_name": mirror.source_name}

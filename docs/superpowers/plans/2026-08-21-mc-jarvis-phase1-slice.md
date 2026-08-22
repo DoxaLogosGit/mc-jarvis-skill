@@ -3242,6 +3242,21 @@ Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regar
 >
 > Two things soften the impact, neither of which excuses hiding it. The Rules Reference is revised roughly twice a year, so most of the time the capture is current. And Task 18's rulings are classified against the RR the user actually holds — so a v1.7 user correctly sees the eight post-1.7 rulings as active, which is precisely the gap their document has.
 >
+> **A community mirror closes the currency gap, and it is verifiable.** The archived FFG manifest can be a version behind; a page that tracks the current Rules Reference by version fixes that. The obvious objection — trusting a third-party copy of the rulebook — was tested rather than argued:
+>
+> ```
+> 7254a7e9…c76595   31,422,242 bytes   Hall of Heroes copy of v1.8
+> 7254a7e9…c76595   31,422,242 bytes   FFG's own CDN
+> ```
+>
+> Byte-identical. A faithful mirror, not a re-encode, so preferring a current copy from there over a stale one from the archive costs nothing in fidelity.
+>
+> It does not have to be trusted anyway, because **the Rules Reference states its own version on page 1**. `rules_chunk.declared_version` reads it and `verify_version` refuses to index a file whose self-declared version differs from what it was listed as. A swapped or mislabelled file fails loudly, whatever host served it.
+>
+> The dependency is deliberately narrow: `current_rr_from_mirror` reads **one version string and one URL**, from the section headed "Current Rules Reference Guide" only — the same page's historical archive and translations are ignored. Everything else still comes from FFG's manifest. `check_rr_currency` compares that against the version encoded in FFG's own filename (`mc_rulesreference_v18…` → 1.8) and reports where to get the newer file rather than merely complaining. An unreachable or restructured mirror returns `None`; no path depends on it.
+>
+> The mirror is a sanity check, not an authority: when FFG is *ahead* of it, nothing is reported.
+>
 > **archive.org rate-limits.** A burst of requests times out, and a bare failure reads as "no snapshot exists" — the wrong diagnosis, sending the user to find a browser they do not need. `_get` retries with backoff.
 
 **Files:**

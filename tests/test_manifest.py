@@ -135,3 +135,80 @@ def test_capture_age_is_measured_in_days():
     import datetime as dt
     week = (dt.date.today() - dt.timedelta(days=7)).isoformat()
     assert manifest.capture_age_days(_wayback(week)) == 7
+
+
+# --- currency check against the community mirror ---
+
+MIRROR_HTML = """
+<h2>Current Rules Reference Guide</h2>
+<p><a href="https://mirror.invalid/uploads/2026/07/mc_rulesreference_v18.pdf">1.8</a></p>
+<h2>Prior Rules Reference Guides</h2>
+<p><a href="https://mirror.invalid/uploads/2020/04/mc_rulesreference_v11.pdf">1.1</a></p>
+"""
+
+
+def test_mirror_reports_only_the_current_version():
+    """The page also carries a full historical archive; only the section
+    headed "Current Rules Reference Guide" is read."""
+    m = manifest.current_rr_from_mirror(MIRROR_HTML)
+    assert m.version == "1.8"
+    assert "v18" in m.url
+
+
+def test_version_is_recoverable_from_ffgs_filename():
+    f = manifest.rr_version_from_filename
+    assert f(".../mc_rulesreference_v17-web.pdf") == "1.7"
+    assert f(".../mc_rulesreference_v18_compressed.pdf") == "1.8"
+    assert f(".../marvelrrg10.pdf") == "1.0"
+    assert f(".../learn_to_play.pdf") is None
+
+
+def _manifest_with(rr_url):
+    return manifest.ManifestResult(
+        docs=[manifest.RuleDoc(title="Marvel Champions Rules Reference",
+                               url=rr_url, slug="marvel-champions-rules-reference")],
+        source="wayback", captured="2026-07-21")
+
+
+def test_a_behind_manifest_reports_a_usable_alternative():
+    """Having the current rulebook matters more than which host served
+    it, so being behind reports where to get it, not just that you are."""
+    mirror = manifest.current_rr_from_mirror(MIRROR_HTML)
+    result = manifest.check_rr_currency(
+        _manifest_with(".../mc_rulesreference_v17-web.pdf"), mirror)
+    assert result["have"] == "1.7"
+    assert result["current"] == "1.8"
+    assert result["url"].endswith(".pdf")
+    assert result["source_name"]
+
+
+def test_a_current_manifest_reports_nothing():
+    mirror = manifest.current_rr_from_mirror(MIRROR_HTML)
+    assert manifest.check_rr_currency(
+        _manifest_with(".../mc_rulesreference_v18_compressed.pdf"),
+        mirror) is None
+
+
+def test_a_newer_manifest_than_the_mirror_reports_nothing():
+    """The mirror is a sanity check, not an authority. If FFG is ahead of
+    it, that is fine."""
+    mirror = manifest.current_rr_from_mirror(MIRROR_HTML)
+    assert manifest.check_rr_currency(
+        _manifest_with(".../mc_rulesreference_v19.pdf"), mirror) is None
+
+
+def test_an_unreachable_mirror_is_not_an_error():
+    """Every path must work with this source down."""
+    assert manifest.current_rr_from_mirror("<html>unrelated</html>") is None
+
+
+@pytest.mark.integration
+def test_the_real_mirror_agrees_the_archived_manifest_is_behind():
+    """Measured 2026-08-22: archive.org's capture yields v1.7 while FFG
+    publishes v1.8, and the mirror is what makes that visible."""
+    result = manifest.fetch_from_wayback()
+    check = manifest.check_rr_currency(result)
+    if check is None:
+        pytest.skip("archive capture is current; nothing to compare")
+    assert check["current"] > check["have"]
+    assert check["url"].endswith(".pdf")
