@@ -232,3 +232,26 @@ def test_status_reports_resolved_entries_not_just_rows(
     payload = json.loads(capsys.readouterr().out)
     assert payload["rules_resolved"] == 216
     assert "rules_entries" in payload
+
+
+def test_status_names_a_missing_rulebook(tmp_path, monkeypatch, capsys):
+    """`update` only re-extracts what is on disk, so a data directory that
+    never completed an `init` stays a rulebook short indefinitely. No total
+    reveals which one is absent - it has to be named."""
+    from types import SimpleNamespace
+
+    from mc_jarvis import index, paths, rules_chunk, update
+
+    db = tmp_path / "mc.sqlite"
+    conn = index.connect(db)
+    rules_chunk.store(conn, [rules_chunk.Entry(
+        "Ability", "text", 4, "marvel-champions-rules-reference")])
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(paths, "db_path", lambda: db)
+    assert update.status(SimpleNamespace(json=False)) == 0
+    out = capsys.readouterr().out
+    assert "learn-to-play" in out
+    assert "marvel-champions-rules-reference" not in out.split(
+        "No rules indexed from:")[1]

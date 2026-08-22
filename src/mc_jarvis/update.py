@@ -69,13 +69,20 @@ def status(args) -> int:
         "stale": age > STALE_DAYS,
         "cards": count("cards"),
         "identities": count("identities"),
-        # 263 rows, but 46 are redirects and one is a page pointer.
-        # Reporting only the total reads as "263 terms you can look up",
-        # which is not true. `rules_resolved` is the build's own count of
-        # index entries that resolved to text - the number that means
-        # something - not a second figure recomputed from the table.
+        # A complete index holds 287 rows across two rulebooks: 217 Rules
+        # Reference index entries (216 resolve) plus 46 redirects, and 24
+        # page-chunks of Learn to Play. Reporting only the total reads as
+        # "287 terms you can look up", which is not true. `rules_resolved`
+        # is the build's own count, not a second figure computed here.
         "rules_entries": count("rules_entries"),
         "rules_resolved": int(meta.get("rules_resolved") or 0),
+        "rr_version": meta.get("rr_version") or "unknown",
+        # Naming the documents, not just counting rows: a data directory
+        # that never completed an `init` holds only the Rules Reference,
+        # and no total reveals which rulebook is absent.
+        "rules_docs": {r["source_doc"]: r["n"] for r in conn.execute(
+            "SELECT source_doc, COUNT(*) n FROM rules_entries "
+            "GROUP BY source_doc ORDER BY source_doc")},
         "unmapped_glyphs": meta.get("unmapped_glyphs", ""),
         "timing_triggers": count("timing_triggers"),
         "timing_broken": json.loads(meta.get("timing_broken") or "[]"),
@@ -90,6 +97,12 @@ def status(args) -> int:
         if payload["unmapped_glyphs"]:
             print(f"\nUnmapped icon codepoints: "
                   f"{payload['unmapped_glyphs']} — add them to glyphs.yaml")
+        missing = [d for d in ("marvel-champions-rules-reference",
+                               "learn-to-play")
+                   if d not in payload["rules_docs"]]
+        if missing:
+            print(f"\nNo rules indexed from: {', '.join(missing)}\n"
+                  f"`update` cannot fetch a rulebook — run `mc-jarvis init`")
         if payload["timing_broken"]:
             print("\nThe timing reference no longer matches the rules it "
                   "is built from:")

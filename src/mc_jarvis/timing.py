@@ -358,6 +358,40 @@ def verify_citations(conn) -> list[str]:
     return broken
 
 
+def rr_version(conn) -> str | None:
+    row = conn.execute(
+        "SELECT value FROM build_meta WHERE key = 'rr_version'").fetchone()
+    return (row["value"] or None) if row else None
+
+
+def blocked(conn) -> list[str]:
+    """Why this reference must not answer against the indexed rulebook.
+
+    The chart and the prefix mapping are version-specific, and the RR has
+    changed both between releases: v1.7 lists eight flat rungs and puts
+    "When Defeated" alongside Boost, while v1.8 lists five rungs with
+    lettered tiers and makes it a Forced Interrupt. Answering from the
+    wrong one produces a confident, cited, wrong ruling - which is worse
+    than no answer at all.
+    """
+    return verify_chart(conn) + verify_citations(conn)
+
+
+def _refuse(conn, problems: list[str]) -> int:
+    version = rr_version(conn) or "unknown"
+    print(f"The timing reference does not match the Rules Reference in "
+          f"this index (version {version}), so it will not answer:\n")
+    for b in problems:
+        print(f"  {b}")
+    print("\nTrigger ordering is version-specific, so answering anyway "
+          "would cite your rulebook for a rule it does not contain.\n"
+          "`mc-jarvis timing --round` still works - the game round is "
+          "parsed separately.\n"
+          "`mc-jarvis rules show Ability` gives the chart as your own "
+          "rulebook prints it.")
+    return 1
+
+
 # --- build -----------------------------------------------------------
 
 def build(conn: sqlite3.Connection) -> int:
@@ -462,7 +496,18 @@ def handle(args) -> int:
                 print(f"    see: {', '.join(s['see'])}")
         return 0
 
+    # The round structure is parsed from its own entry and does not depend
+    # on the chart, so it is still answerable when the chart is not.
+    problems = blocked(conn)
+
     if getattr(args, "trigger", None):
+        if problems:
+            if args.json:
+                emit({"query": args.trigger, "canonical": None,
+                      "blocked": problems,
+                      "rr_version": rr_version(conn)}, as_json=True)
+                return 1
+            return _refuse(conn, problems)
         result = explain(conn, args.trigger)
         if args.json:
             emit(result, as_json=True)
@@ -494,6 +539,13 @@ def handle(args) -> int:
             for c in result["cards"][:8]:
                 print(f"    {c['code']:<8} {c['name']:<28} {c['raw_prefix']}")
         return 0
+
+    if problems:
+        if args.json:
+            emit({"chart": [], "blocked": problems,
+                  "rr_version": rr_version(conn)}, as_json=True)
+            return 1
+        return _refuse(conn, problems)
 
     rows = chart(conn)
     tie_breaks = [dict(tb, rr_page=page(conn, tb["rr_entry"]))

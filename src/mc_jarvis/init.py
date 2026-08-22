@@ -90,8 +90,14 @@ def _rebuild_rules(conn: sqlite3.Connection,
     unmapped: set[str] = set()
     resolved = 0
 
+    rr_version: str | None = None
     for path in sorted(txt_dir.glob("*.txt")):
         pages = path.read_text(encoding="utf-8").split("\f")
+        if "rules-reference" in path.stem:
+            # Which Rules Reference this index holds. Everything version
+            # -sensitive keys off it, and a rules tool that will not say
+            # which rulebook it is answering from is not much use.
+            rr_version = rules_chunk.declared_version(pages)
         idx = rules_chunk.parse_index(pages)
         if len(idx.entries) > INDEX_MIN_ENTRIES:
             doc = rules_chunk.chunk_entries(pages, idx, source_doc=path.stem)
@@ -113,8 +119,14 @@ def _rebuild_rules(conn: sqlite3.Connection,
          " ".join(sorted(f"U+{ord(c):04X}" for c in unmapped))))
     conn.commit()
 
+    conn.execute(
+        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+        ("rr_version", rr_version or ""))
+    conn.commit()
+
     return {"rules_entries": rules_chunk.store(conn, entries) if entries else 0,
             "rules_resolved": resolved,
+            "rr_version": rr_version or "unknown",
             "unmapped_glyphs": len(unmapped)}
 
 

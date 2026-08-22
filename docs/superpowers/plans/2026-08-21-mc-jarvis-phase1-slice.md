@@ -5035,6 +5035,53 @@ git commit -m "feat: init, update, and status"
 
 ---
 
+### Audited 2026-08-22: what a real `init` produces, and what it breaks
+
+Task 15 was committed with "verified from an empty data directory". It was
+— but not against the data directory the project had been developing on,
+and the two disagree in ways that hid a wrong-answer bug for a whole task.
+
+**A complete `init` fetches two rulebooks and yields 287 rules entries**
+(263 Rules Reference rows + 24 Learn to Play page-chunks). The development
+data directory had only 263, because it never had `manifest.json` and so
+never completed an `init` — the Rules Reference PDF had been placed by
+hand during earlier exploration. `update` cannot repair this: the rulebook
+fetch lives in `init.run`, and `update` only re-extracts what is already
+on disk. **`status` said nothing about a missing source document** through
+many runs.
+
+**Worse, the hand-placed copy was a different edition.** The development
+directory held **v1.8** (71 pages, obtained via the mirror). `init` from
+the archive.org capture gives **v1.7** (68 pages) — which is what every
+user gets today. So Task 17 was built, gated and declared complete against
+a Rules Reference that no user's `init` produces.
+
+**The two editions do not agree on the rules.** v1.7 prints eight flat
+rungs; v1.8 prints five with lettered sub-tiers. And the ordering itself
+changed: in v1.7 **"When Defeated" sits on rung 5 beside Boost and When
+Revealed**; in v1.8 it is a Forced Interrupt at rung 2b. On a v1.7 index,
+`mc-jarvis timing "When Defeated"` reported the v1.8 answer **and cited
+the user's own rulebook for it** — a confident, cited, wrong ruling, which
+is the worst output this tool can produce.
+
+`verify_chart` and `verify_citations` caught the mismatch exactly as
+designed, and both `init` and `status` reported it. `timing` served the
+answer anyway. It now refuses: `timing.blocked()` gates the chart and
+per-trigger modes, names the mismatch and the indexed version, and points
+at `rules show Ability`. `--round` still answers, because the Round
+Overview is parsed from its own entry.
+
+Two further consequences, both open:
+
+- **The timing config is v1.8-only.** `expected_chart`, `aliases` and the
+  `triggers` rung mapping all encode v1.8. Supporting v1.7 means keying
+  them by the RR version the index holds, which `build_meta.rr_version`
+  now records.
+- **The integration suite is version-dependent.** Against v1.7 it reports
+  two honest failures: the timing chart, and rules-extraction coverage at
+  0.859 against a 0.88 gate measured on v1.8. "276 tests passing" was true
+  of the development index only.
+
 ## Task 16: `SKILL.md` and `install-skill`
 
 Implements §7. The skill file is the single source of truth for the agent. `install-skill`'s guard rails are the kind that fail silently, so they get tests rather than trust.
@@ -5561,11 +5608,13 @@ measurement recorded: the longest span that classifies is 29 characters
 and the shortest bolded sentence is 41, so it sits in an 11-character
 empty band, and an integration test re-measures both ends.
 
-And `status` reported `rules_entries: 263` with no resolved count, which
-reads as "263 terms you can look up" when 46 are redirects and one is a
-page pointer. It now also carries `rules_resolved`, taken from the build's
-own count rather than recomputed — two different numbers under one name is
-the confusion, not the cure.
+And `status` reported `rules_entries` with no resolved count, which reads
+as "every one of these is a term you can look up" when 46 are redirects,
+one is a page pointer, and 24 are page-chunks of Learn to Play. It now
+also carries `rules_resolved`, taken from the build's own count rather
+than recomputed — two different numbers under one name is the confusion,
+not the cure — and `rr_version`, because a rules tool that will not say
+which rulebook it is answering from is not much use.
 
 Also dropped: `parse_chart`'s `len(...) < 90` line-wrap repair. It never
 fires on the real chart, so it was untested logic guarding a case
@@ -6527,8 +6576,10 @@ brackets because a criterion that fails as written is worse than none.
 - [x] `uv run pytest tests/ -v` — all tests pass, unit and integration (272)
 - [x] `mc-jarvis doctor` exits 0
 - [x] `mc-jarvis status` reports 4,379 cards [spec said ~4,298], 69
-      identities [72], 263 rules entries of which 216 resolve [~216], empty
-      `unmapped_glyphs`
+      identities [72], **287** rules entries of which 216 resolve [~216],
+      empty `unmapped_glyphs`. 287 is two rulebooks: 263 rows from the
+      Rules Reference and 24 page-chunks of Learn to Play. An index
+      holding only 263 is missing a rulebook — see the note under Task 15.
 - [x] The setup audit reports exactly **eight** identities [four], all
       covered — see `out_of_deck.acknowledged` in `config/legality.yaml`
 - [x] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing

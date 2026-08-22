@@ -424,6 +424,34 @@ def test_unknown_trigger_is_reported_not_guessed(conn):
     assert timing.explain(conn, "Bamf")["canonical"] is None
 
 
+def test_a_matching_rulebook_is_not_blocked(conn):
+    assert timing.blocked(conn) == []
+
+
+def test_a_mismatched_chart_blocks_every_answer(conn):
+    """The v1.7 Rules Reference lists eight flat rungs and puts "When
+    Defeated" alongside Boost; v1.8 lists five rungs with lettered tiers
+    and makes it a Forced Interrupt. Answering from the wrong one gives a
+    confident, cited, wrong ruling - the worst output this tool can
+    produce, and worse than no answer."""
+    conn.execute("UPDATE rules_entries SET body = 'Rewritten.' "
+                 "WHERE term = 'Ability'")
+    conn.commit()
+    timing.build(conn)
+    assert timing.blocked(conn)
+
+
+def test_the_round_survives_a_blocked_chart(conn):
+    """The Round Overview is parsed from its own entry, so it is still
+    answerable when the chart is not."""
+    conn.execute("UPDATE rules_entries SET body = 'Rewritten.' "
+                 "WHERE term = 'Ability'")
+    conn.commit()
+    timing.build(conn)
+    assert timing.blocked(conn)
+    assert len(timing.round_structure(conn)) == 10
+
+
 # --- the game round --------------------------------------------------
 
 def test_round_structure_has_ten_steps(conn):
