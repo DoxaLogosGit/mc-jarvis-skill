@@ -12,7 +12,9 @@
 
 **Scope boundary.** This plan is Phase 1's spine only. Deliberately **out of scope**, to be planned after this slice has been exercised against real data: `deck fetch` / `deck check` / `deck stats`, the full `config/legality.yaml`, `collection set/show` and `--owned` filtering, and the decklist regression corpus. This plan ships only the minimal `legality.yaml` the setup audit needs (Task 8). Phase 2 (coaching, `team`, `mcp`) and Phase 3 (`meta`, build-from-scratch) are separate plans.
 
-**First testable checkpoint is Task 5** — after it, `mc-jarvis card search` answers real queries against all 4,298 real cards. Stop and exercise it before continuing.
+**First testable checkpoint is Task 5** — after it, `mc-jarvis card search` answers real queries against the whole card corpus. Stop and exercise it before continuing.
+
+**Task 17 is an addition to the spec, not an implementation of it.** The timing reference — trigger ordering and the game round — was requested after the spec was approved. It is placed last because it depends on both the rules index (Task 13) and card-text parsing (Task 9), but it is independent of Tasks 6–12 and could move earlier if it is wanted sooner.
 
 ## Global Constraints
 
@@ -37,6 +39,14 @@ Confirmed by direct inspection on 2026-08-21, while planning. These supersede or
 **The setup audit flags eight identities, not four.** Spec §10's table lists Bobby Drake, Riri Williams, Rogue and Brunnhilde. Running the patterns in this plan's `SETUP_PATTERNS` also returns Matt Murdock, Stephen Strange, Hercules, and Ororo Munroe, all via `begins the game with`. All eight are coverable; see Task 8.
 
 **A `hero_special` set is a different set from its identity's**, so it cannot be found by `set_code` — identity `iceman` pairs with set `iceman_frostbite`. Pack code is the reliable join: verified exact for all six hero_special sets, matching nothing else.
+
+**The Rules Reference has no timing entry.** `Timing` is a redirect pointing at four other entries, and trigger-priority rules are spread across `Forced` (p.20), `Interrupt` (p.25), `Response` (p.38), `First Player` (p.20), `Simultaneous Resolution` (p.40) and three `When …` entries (p.48). The closest thing to a reference table is the **Round Overview on p.4** — ten numbered steps, each naming the glossary entries that govern it, which parses cleanly into a table. Task 17 assembles both.
+
+**`When Revealed`, `When Defeated` and `When Completed` are each defined by the RR as equivalent to a `Forced Interrupt`.** They are aliases, not separate priority tiers — which is why the ladder has six rungs rather than nine.
+
+**A bold prefix is not always a timing trigger, and a trigger is not always the whole prefix.** 112 distinct bold prefixes appear in card text. `Boost` (428 occurrences), `Contents`, `Preparation` and the mode markers are bold text with no trigger semantics, while `Hero Action` (573), `Alter-Ego Action` (151) and `Hero Interrupt` (150) are a **form qualifier plus a trigger** and must be split. `When Revealed (Hero)` puts the qualifier in parentheses instead.
+
+**Appendix VI defines Game Environments** — Current, Legacy and Limited — which is what marvelcdb's `format` field encodes. §10 notes `format: "legacy"` as a corpus-filtering concern; the RR is where the term is defined, and the deck-pipeline plan should read that appendix before encoding aspect and card-pool rules.
 
 **Valkyrie's set code is `valk`, not `valkyrie`.** Touched is `38002` (set `rogue`); Death-Glow is `25002` (set `valk`). Neither carries `permanent`, and neither set contains any permanent card — so nothing but a config entry can cover them.
 
@@ -70,7 +80,9 @@ Confirmed by direct inspection on 2026-08-21, while planning. These supersede or
 | `src/mc_jarvis/init.py` | `init` orchestration |
 | `src/mc_jarvis/update.py` | `update` and `status` |
 | `src/mc_jarvis/skill_install.py` | `install-skill`: detect, place, report |
+| `src/mc_jarvis/timing.py` | Trigger ordering, the round structure, and citation verification |
 | `config/legality.yaml` | Minimal: out-of-deck exceptions only (grows in the next plan) |
+| `config/timing.yaml` | The trigger ladder, each rung carrying the RR phrase that establishes it |
 | `config/glyphs.yaml` | Derived glyph → token mapping |
 | `skill/mc-jarvis/SKILL.md` | The agent brief |
 | `tests/fixtures/` | Hand-invented cards and rules text; no FFG content |
@@ -218,6 +230,7 @@ packages = ["src/mc_jarvis"]
 [tool.hatch.build.targets.wheel.force-include]
 "config/legality.yaml" = "src/mc_jarvis/_bundled/legality.yaml"
 "config/glyphs.yaml"   = "src/mc_jarvis/_bundled/glyphs.yaml"
+"config/timing.yaml"   = "src/mc_jarvis/_bundled/timing.yaml"
 "skill"                = "src/mc_jarvis/_bundled/skill"
 
 [tool.pytest.ini_options]
@@ -418,6 +431,7 @@ mkdir -p src/mc_jarvis/_bundled
 # reads them through links so an edit takes effect without a rebuild.
 ln -sfn ../../../config/legality.yaml src/mc_jarvis/_bundled/legality.yaml
 ln -sfn ../../../config/glyphs.yaml   src/mc_jarvis/_bundled/glyphs.yaml
+ln -sfn ../../../config/timing.yaml   src/mc_jarvis/_bundled/timing.yaml
 ln -sfn ../../../skill                src/mc_jarvis/_bundled/skill
 printf '*\n!.gitignore\n' > src/mc_jarvis/_bundled/.gitignore
 ```
@@ -5083,6 +5097,820 @@ git commit -m "feat: SKILL.md and workspace-scoped install-skill"
 
 ---
 
+## Task 17: The timing reference
+
+**Not in the original spec — added 2026-08-21.** Trigger ordering is the hardest thing in the game to get right at the table, and it is the one question `rules show <term>` answers badly: the RR has **no single timing entry**. `Timing` is a redirect pointing at four others, and the ordering rules are spread across `Forced` (p.20), `Interrupt` (p.25), `Response` (p.38), `First Player` (p.20), `Simultaneous Resolution` (p.40), and three `When …` entries (p.48). A player mid-game cannot assemble that.
+
+**The finding that makes this tractable:** `When Revealed`, `When Defeated`, and `When Completed` are each defined by the RR as *equivalent to a `Forced Interrupt`*. Three of the six triggers people confuse are aliases of a fourth, so the ladder has fewer rungs than it appears to.
+
+**Files:**
+- Create: `src/mc_jarvis/timing.py`, `config/timing.yaml`
+- Modify: `src/mc_jarvis/schema.py`, `src/mc_jarvis/cardtext.py`, `src/mc_jarvis/init.py`, `src/mc_jarvis/cli.py`, `skill/mc-jarvis/SKILL.md`
+- Test: `tests/test_timing.py`
+
+**Interfaces:**
+- Consumes: `rules_chunk.store` output (`rules_entries`), `cardtext.build`
+- Produces:
+  - `timing.load_config(path=None) -> dict`
+  - `timing.classify(prefix: str) -> Trigger | None` — splits a bold prefix into qualifier, forced flag, and canonical trigger
+  - `timing.Trigger` — dataclass `raw: str`, `qualifier: str | None`, `forced: bool`, `canonical: str`, `rung: int | None`, `kind: str`
+  - `timing.ladder(conn) -> list[dict]` — the ordering, each rung with its RR citation
+  - `timing.explain(conn, trigger: str) -> dict`
+  - `timing.round_structure(conn) -> list[dict]`
+  - `timing.build(conn) -> int` — populates `timing_triggers` and `round_steps`
+  - `timing.verify_citations(conn) -> list[str]` — quotes no longer found in the indexed RR
+  - `timing.handle(args) -> int`
+
+### Why the config is trustworthy
+
+The ladder is hand-encoded, which makes it the same risk class as `legality.yaml`. The mitigation is different and stronger: **every rung carries the exact RR phrase that establishes it**, and a test asserts that phrase is still present in the indexed rules body. If FFG rewords an entry, the test fails and names the rung. That converts a trusted config into a checked one — the same move as the setup audit in Task 8.
+
+- [ ] **Step 1: Write `config/timing.yaml`**
+
+```yaml
+# Trigger timing and priority (RR v18). Added 2026-08-21.
+#
+# Each rung's `quote` is the exact phrase from the Rules Reference that
+# establishes it. `timing.verify_citations` asserts every quote is still
+# present in the indexed RR body, so a rewording upstream fails loudly
+# instead of leaving this file quietly wrong.
+#
+# Quotes must be copied verbatim from the RR, including its spacing.
+# Do not paraphrase: the test matches on normalised whitespace, not
+# meaning, and a paraphrase will fail.
+
+version: 1
+
+# Bold prefixes that qualify a trigger without being one. The printed
+# prefix is `<qualifier> <trigger>`, e.g. "Hero Action".
+qualifiers: ["Hero", "Alter-Ego", "First Player", "Mission"]
+
+# Bold text that is not a triggered ability at all. Without this list the
+# parser records "Boost" (428 occurrences) as a timing trigger.
+not_triggers:
+  - Boost
+  - Contents
+  - Preparation
+  - Standard Mode Only.
+  - Expert Mode Only.
+
+# Aliases resolve to a canonical trigger. The RR defines each of these as
+# equivalent to a Forced Interrupt, which is why they share its rung.
+aliases:
+  When Revealed:
+    canonical: Forced Interrupt
+    rr_entry: When Revealed Abilities
+    rr_page: 48
+    quote: >-
+      A when revealed ability is a type of triggered ability, indicated by
+      the bold
+  When Defeated:
+    canonical: Forced Interrupt
+    rr_entry: When Defeated Abilities
+    rr_page: 48
+    quote: >-
+      is equivalent to the following trigger
+  When Completed:
+    canonical: Forced Interrupt
+    rr_entry: When Completed Abilities
+    rr_page: 48
+    quote: >-
+      When a main scheme is complete, all
+
+# The ladder, for a single triggering condition. Lower rung resolves first.
+ladder:
+  - rung: 1
+    trigger: Interrupt ("would")
+    kind: interrupt
+    rr_entry: Interrupt
+    rr_page: 25
+    quote: >-
+      Interrupts that use the word
+    note: >-
+      A "would" interrupt resolves before its triggering condition even
+      initiates, rather than merely before it resolves.
+  - rung: 2
+    trigger: Forced Interrupt
+    kind: interrupt
+    forced: true
+    rr_entry: Forced
+    rr_page: 20
+    quote: >-
+      forced interrupts take priority and initiate before non-forced
+      interrupts
+    note: >-
+      When Revealed, When Defeated and When Completed all resolve here.
+  - rung: 3
+    trigger: Interrupt
+    kind: interrupt
+    rr_entry: Interrupt
+    rr_page: 25
+    quote: >-
+      resolves immediately before that triggering condition resolves
+  - rung: 4
+    trigger: (the triggering condition resolves)
+    kind: boundary
+    rr_entry: Triggering Condition
+    rr_page: 45
+    quote: null
+  - rung: 5
+    trigger: Forced Response
+    kind: response
+    forced: true
+    rr_entry: Forced
+    rr_page: 20
+    quote: >-
+      forced responses take priority and initiate before non-forced
+      responses
+  - rung: 6
+    trigger: Response
+    kind: response
+    rr_entry: Response
+    rr_page: 38
+    quote: >-
+      may be resolved after the specified triggering condition occurs
+
+# Triggers that sit outside the ladder because they are not tied to a
+# triggering condition.
+outside_ladder:
+  - trigger: Action
+    kind: action
+    rr_entry: Forced
+    rr_page: 20
+    note: >-
+      Played during the player phase. A Forced Action may be triggered
+      whenever a non-forced action could be, but must resolve before the
+      player phase can end.
+  - trigger: Resource
+    kind: resource
+    rr_entry: Resource Ability
+    rr_page: 38
+  - trigger: Special
+    kind: special
+    rr_entry: Special
+    rr_page: 40
+    quote: >-
+      may only be resolved through the explicit instruction of another
+      card ability
+  - trigger: Setup
+    kind: setup
+    rr_entry: Setup (Triggered Ability)
+    rr_page: 40
+
+# Tie-breaks, applied after the ladder.
+tie_breaks:
+  - rule: >-
+      The first player has the first opportunity at each rung; opportunities
+      then proceed in player order.
+    rr_entry: First Player
+    rr_page: 20
+    quote: >-
+      The first player has the first opportunity to use
+  - rule: >-
+      If two or more forced abilities would initiate at the same moment,
+      the first player chooses the order — regardless of who controls them.
+    rr_entry: Forced
+    rr_page: 20
+    quote: >-
+      the first player determines the order in which the abilities initiate
+  - rule: >-
+      Each forced ability resolves as completely as possible before the
+      next forced ability on the same triggering condition initiates.
+    rr_entry: Forced
+    rr_page: 20
+    quote: >-
+      must resolve as completely as possible before the next forced ability
+  - rule: >-
+      If two effects with the same bold trigger would resolve
+      simultaneously, the first player chooses the order.
+    rr_entry: Simultaneous Resolution
+    rr_page: 40
+    quote: >-
+      the first player determines the order in which the effects resolve
+  - rule: >-
+      One effect causing several triggering conditions lets responses to
+      each be resolved in any order.
+    rr_entry: Response
+    rr_page: 38
+    quote: >-
+      responses to each of those triggering conditions can be resolved in
+      any order
+```
+
+- [ ] **Step 2: Write the failing test**
+
+```python
+# tests/test_timing.py
+import pytest
+from mc_jarvis import cardtext, index, rules_chunk, timing
+
+
+@pytest.fixture
+def conn(tmp_path):
+    c = index.connect(tmp_path / "mc.sqlite")
+    rules_chunk.store(c, [
+        rules_chunk.Entry(
+            "Forced",
+            "Forced is a bold trigger word. For any given triggering "
+            "condition, forced interrupts take priority and initiate "
+            "before non-forced interrupts, and forced responses take "
+            "priority and initiate before non-forced responses. If two "
+            "or more forced abilities would initiate at the same moment, "
+            "the first player determines the order in which the abilities "
+            "initiate. Each forced ability must resolve as completely as "
+            "possible before the next forced ability may initiate.",
+            20, "rules-reference"),
+        rules_chunk.Entry(
+            "Interrupt",
+            "An interrupt ability resolves immediately before that "
+            "triggering condition resolves. Interrupts that use the word "
+            "'would' resolve before its triggering condition initiates.",
+            25, "rules-reference"),
+        rules_chunk.Entry(
+            "Response",
+            "Response abilities may be resolved after the specified "
+            "triggering condition occurs. If single effect causes multiple "
+            "triggering conditions to occur, responses to each of those "
+            "triggering conditions can be resolved in any order.",
+            38, "rules-reference"),
+        rules_chunk.Entry(
+            "When Revealed Abilities",
+            "A when revealed ability is a type of triggered ability, "
+            "indicated by the bold 'When Revealed' timing trigger.",
+            48, "rules-reference"),
+    ])
+    return c
+
+
+def test_plain_trigger_classifies(conn):
+    t = timing.classify("Response")
+    assert t.canonical == "Response"
+    assert t.forced is False
+    assert t.qualifier is None
+    assert t.rung == 6
+
+
+def test_forced_is_a_modifier_not_a_trigger(conn):
+    t = timing.classify("Forced Response")
+    assert t.forced is True
+    assert t.canonical == "Forced Response"
+    assert t.rung == 5
+    assert t.rung < timing.classify("Response").rung
+
+
+def test_form_qualifier_is_split_from_the_trigger(conn):
+    """"Hero Action" is a form restriction on an Action, not its own
+    trigger. 459 player cards print this prefix."""
+    t = timing.classify("Hero Action")
+    assert t.qualifier == "Hero"
+    assert t.canonical == "Action"
+
+
+def test_alter_ego_qualifier(conn):
+    assert timing.classify("Alter-Ego Interrupt").canonical == "Interrupt"
+    assert timing.classify("Alter-Ego Interrupt").qualifier == "Alter-Ego"
+
+
+def test_when_revealed_resolves_to_forced_interrupt(conn):
+    """The RR defines all three as Forced Interrupt equivalents, so they
+    share its rung rather than forming tiers of their own."""
+    for alias in ("When Revealed", "When Defeated", "When Completed"):
+        t = timing.classify(alias)
+        assert t.canonical == "Forced Interrupt", alias
+        assert t.rung == 2, alias
+
+
+def test_parenthetical_qualifier_is_handled(conn):
+    t = timing.classify("When Revealed (Hero)")
+    assert t.canonical == "Forced Interrupt"
+    assert t.qualifier == "Hero"
+
+
+def test_bold_text_that_is_not_a_trigger_is_rejected(conn):
+    """Boost appears on 428 cards as bold text and is not a triggered
+    ability. Without the not_triggers list it would enter the ladder."""
+    for s in ("Boost", "Contents", "Expert Mode Only.", "Nonsense"):
+        assert timing.classify(s) is None, s
+
+
+def test_interrupts_all_precede_responses(conn):
+    rungs = {r["trigger"]: r["rung"] for r in timing.ladder(conn)}
+    assert rungs["Forced Interrupt"] < rungs["Interrupt"]
+    assert rungs["Interrupt"] < rungs["Forced Response"]
+    assert rungs["Forced Response"] < rungs["Response"]
+
+
+def test_every_ladder_rung_carries_a_citation(conn):
+    for rung in timing.ladder(conn):
+        assert rung["rr_entry"]
+        assert rung["rr_page"]
+
+
+def test_citations_verify_against_the_indexed_rules(conn):
+    """Every quote in timing.yaml must still be present in the RR. This is
+    what makes a hand-encoded ordering trustworthy."""
+    assert timing.verify_citations(conn) == []
+
+
+def test_a_reworded_rules_entry_fails_loudly(conn):
+    conn.execute("UPDATE rules_entries SET body = 'Rewritten.' "
+                 "WHERE term = 'Forced'")
+    conn.commit()
+    broken = timing.verify_citations(conn)
+    assert broken
+    assert any("Forced" in b for b in broken)
+
+
+def test_explain_reports_what_beats_what(conn):
+    result = timing.explain(conn, "Response")
+    assert result["rung"] == 6
+    assert "Forced Response" in [b["trigger"] for b in result["resolves_after"]]
+    assert result["resolves_before"] == []
+
+
+def test_explain_accepts_an_alias(conn):
+    assert timing.explain(conn, "When Defeated")["canonical"] \
+        == "Forced Interrupt"
+
+
+def test_unknown_trigger_is_reported_not_guessed(conn):
+    assert timing.explain(conn, "Bamf")["canonical"] is None
+
+
+@pytest.mark.integration
+def test_real_corpus_triggers_are_classified(real_index):
+    """Every bold prefix on a player card either classifies or is on the
+    not_triggers list. A new release adding a trigger fails here."""
+    rows = real_index.execute(
+        "SELECT DISTINCT raw_prefix FROM timing_triggers "
+        "WHERE canonical IS NULL").fetchall()
+    assert rows == [], [r["raw_prefix"] for r in rows]
+
+
+@pytest.mark.integration
+def test_real_citations_verify(real_index):
+    assert timing.verify_citations(real_index) == []
+
+
+@pytest.mark.integration
+def test_round_structure_has_ten_steps(real_index):
+    steps = timing.round_structure(real_index)
+    assert len(steps) == 10
+    assert steps[0]["step"] == 1
+    assert all(s["see"] for s in steps)
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_timing.py -v -m "not integration"`
+Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.timing'`
+
+- [ ] **Step 4: Add tables to `schema.py`**
+
+```sql
+CREATE TABLE IF NOT EXISTS timing_triggers (
+    code       TEXT NOT NULL REFERENCES cards(code),
+    ordinal    INTEGER NOT NULL,
+    raw_prefix TEXT NOT NULL,   -- exactly as printed
+    qualifier  TEXT,            -- Hero, Alter-Ego, First Player, Mission
+    forced     INTEGER NOT NULL DEFAULT 0,
+    canonical  TEXT,            -- NULL when unclassifiable: a loud failure
+    rung       INTEGER,
+    PRIMARY KEY (code, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_timing_canonical
+    ON timing_triggers(canonical);
+
+-- The RR's Round Overview (p.4): ten steps, each naming the glossary
+-- entries that govern it. Parsed, not hand-copied.
+CREATE TABLE IF NOT EXISTS round_steps (
+    step        INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    see         TEXT NOT NULL,   -- comma-separated RR entry names
+    source_doc  TEXT NOT NULL
+);
+```
+
+- [ ] **Step 5: Write `timing.py`**
+
+```python
+"""Trigger timing and priority (added 2026-08-21; not in the original spec).
+
+The RR has no single timing entry — `Timing` is a redirect to four others,
+and the ordering rules live in Forced (p.20), Interrupt (p.25), Response
+(p.38), First Player (p.20) and Simultaneous Resolution (p.40). This module
+assembles them into one ladder and keeps every rung tied to its citation.
+"""
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+CONFIG_PATH = Path(__file__).parent / "_bundled" / "timing.yaml"
+_CONFIG: dict | None = None
+
+PAREN_RE = re.compile(r"^(.*?)\s*\((.*?)\)\s*$")
+ROUND_STEP_RE = re.compile(
+    r"^\s*(\d{1,2})\.\s*(.+?)\.\s*See\s*:\s*(.+?)\s*$", re.I)
+
+
+@dataclass
+class Trigger:
+    raw: str
+    qualifier: str | None
+    forced: bool
+    canonical: str
+    rung: int | None
+    kind: str
+
+
+def load_config(path: Path | None = None) -> dict:
+    global _CONFIG
+    if path is not None:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    if _CONFIG is None:
+        _CONFIG = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+    return _CONFIG
+
+
+def _norm(s: str) -> str:
+    return " ".join((s or "").split()).strip().rstrip(":").strip()
+
+
+def _rungs(config: dict) -> dict[str, dict]:
+    out = {r["trigger"]: r for r in config["ladder"]}
+    out.update({r["trigger"]: r for r in config["outside_ladder"]})
+    return out
+
+
+def classify(prefix: str) -> Trigger | None:
+    """Split a printed bold prefix into qualifier, forced flag, and the
+    canonical trigger it resolves to. Returns None for bold text that is
+    not a triggered ability — `Boost` is bold on 428 cards."""
+    config = load_config()
+    raw = _norm(prefix).strip('"').strip("“”")
+    if not raw:
+        return None
+    if raw in config["not_triggers"]:
+        return None
+
+    qualifier = None
+
+    # "When Revealed (Hero)" -> qualifier in parentheses
+    m = PAREN_RE.match(raw)
+    body = raw
+    if m and m.group(2) in config["qualifiers"]:
+        body, qualifier = m.group(1).strip(), m.group(2)
+    elif m:
+        return None
+
+    # Leading form qualifier: "Hero Action", "Alter-Ego Interrupt"
+    for q in sorted(config["qualifiers"], key=len, reverse=True):
+        if body.startswith(q + " "):
+            qualifier = qualifier or q
+            body = body[len(q) + 1:].strip()
+            break
+
+    aliases = config["aliases"]
+    if body in aliases:
+        canonical = aliases[body]["canonical"]
+    else:
+        canonical = body
+
+    forced = canonical.startswith("Forced ") or canonical == "Forced"
+    rungs = _rungs(config)
+    entry = rungs.get(canonical)
+    if entry is None:
+        return None
+
+    return Trigger(raw=raw, qualifier=qualifier, forced=forced,
+                   canonical=canonical, rung=entry.get("rung"),
+                   kind=entry["kind"])
+
+
+def ladder(conn=None) -> list[dict]:
+    return [dict(r) for r in load_config()["ladder"]]
+
+
+def explain(conn, trigger: str) -> dict:
+    t = classify(trigger)
+    if t is None:
+        return {"query": trigger, "canonical": None,
+                "message": f"{trigger!r} is not a timing trigger this "
+                           f"reference knows. Try `mc-jarvis timing` for "
+                           f"the full ladder."}
+    rungs = ladder()
+    mine = next((r for r in rungs if r["trigger"] == t.canonical), None)
+    before = [r for r in rungs if mine and r["rung"] > mine["rung"]
+              and r["kind"] != "boundary"]
+    after = [r for r in rungs if mine and r["rung"] < mine["rung"]
+             and r["kind"] != "boundary"]
+    config = load_config()
+    return {
+        "query": trigger,
+        "canonical": t.canonical,
+        "qualifier": t.qualifier,
+        "forced": t.forced,
+        "rung": t.rung,
+        "kind": t.kind,
+        "aliased_from": trigger if _norm(trigger) in config["aliases"] else None,
+        "resolves_before": before,
+        "resolves_after": after,
+        "tie_breaks": config["tie_breaks"],
+        "cards": _cards_with(conn, t.canonical) if conn is not None else [],
+    }
+
+
+def _cards_with(conn, canonical: str, limit: int = 15) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT DISTINCT c.code, c.name, t.raw_prefix "
+        "FROM timing_triggers t JOIN cards c ON c.code = t.code "
+        "WHERE t.canonical = ? ORDER BY c.code LIMIT ?",
+        (canonical, limit))]
+
+
+def verify_citations(conn) -> list[str]:
+    """Every quote in timing.yaml must still appear in the indexed RR.
+
+    This is what makes a hand-encoded ordering trustworthy: if FFG rewords
+    an entry, this names the rung that went stale instead of leaving the
+    reference quietly wrong.
+    """
+    config = load_config()
+    broken: list[str] = []
+
+    sources: list[tuple[str, dict]] = []
+    for r in config["ladder"] + config["outside_ladder"]:
+        sources.append((f"ladder:{r['trigger']}", r))
+    for name, r in config["aliases"].items():
+        sources.append((f"alias:{name}", r))
+    for i, r in enumerate(config["tie_breaks"]):
+        sources.append((f"tie_break:{i}", r))
+
+    for label, entry in sources:
+        quote = entry.get("quote")
+        if not quote:
+            continue
+        row = conn.execute(
+            "SELECT body FROM rules_entries WHERE lower(term) = lower(?) "
+            "LIMIT 1", (entry["rr_entry"],)).fetchone()
+        if row is None:
+            broken.append(f"{label}: no RR entry named "
+                          f"{entry['rr_entry']!r}")
+            continue
+        if _norm(quote).lower() not in _norm(row["body"]).lower():
+            broken.append(f"{label}: quote no longer found in "
+                          f"{entry['rr_entry']!r} (p.{entry['rr_page']})")
+    return broken
+
+
+def build(conn: sqlite3.Connection) -> int:
+    from .cardtext import BOLD_RE
+
+    conn.execute("DELETE FROM timing_triggers")
+    rows = []
+    for card in conn.execute(
+            "SELECT code, text FROM cards WHERE text IS NOT NULL"):
+        for i, prefix in enumerate(BOLD_RE.findall(card["text"] or "")):
+            norm = _norm(prefix)
+            if not norm or len(norm) > 40:
+                continue
+            t = classify(norm)
+            if t is None and norm in load_config()["not_triggers"]:
+                continue
+            rows.append((card["code"], i, norm,
+                         t.qualifier if t else None,
+                         int(t.forced) if t else 0,
+                         t.canonical if t else None,
+                         t.rung if t else None))
+    conn.executemany(
+        "INSERT OR REPLACE INTO timing_triggers "
+        "(code, ordinal, raw_prefix, qualifier, forced, canonical, rung) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+    _build_round_steps(conn)
+    conn.commit()
+    return len(rows)
+
+
+def _build_round_steps(conn) -> None:
+    """Parse the RR's Round Overview (p.4) rather than hand-copying it."""
+    row = conn.execute(
+        "SELECT body, source_doc FROM rules_entries "
+        "WHERE lower(term) = 'round overview' LIMIT 1").fetchone()
+    conn.execute("DELETE FROM round_steps")
+    if row is None:
+        return
+    steps = []
+    for line in row["body"].split("\n"):
+        m = ROUND_STEP_RE.match(" ".join(line.split()))
+        if m:
+            steps.append((int(m.group(1)), m.group(2).strip(),
+                          m.group(3).strip(), row["source_doc"]))
+    conn.executemany(
+        "INSERT OR REPLACE INTO round_steps "
+        "(step, description, see, source_doc) VALUES (?, ?, ?, ?)", steps)
+
+
+def round_structure(conn) -> list[dict]:
+    return [{"step": r["step"], "description": r["description"],
+             "see": [s.strip() for s in r["see"].split(",") if s.strip()],
+             "source_doc": r["source_doc"]}
+            for r in conn.execute(
+                "SELECT * FROM round_steps ORDER BY step")]
+
+
+def handle(args) -> int:
+    from .cards import _open
+    from .cli import emit
+    conn = _open()
+
+    if getattr(args, "round", False):
+        steps = round_structure(conn)
+        if args.json:
+            emit(steps, as_json=True)
+            return 0
+        if not steps:
+            print("round structure not indexed — is the Rules Reference "
+                  "fetched? run `mc-jarvis status`")
+            return 1
+        for s in steps:
+            print(f"{s['step']:>2}. {s['description']}")
+            print(f"    see: {', '.join(s['see'])}")
+        return 0
+
+    if getattr(args, "trigger", None):
+        result = explain(conn, args.trigger)
+        if args.json:
+            emit(result, as_json=True)
+            return 0 if result["canonical"] else 1
+        if not result["canonical"]:
+            print(result["message"])
+            return 1
+        print(f"{args.trigger}  ->  {result['canonical']}"
+              f"{'  (rung ' + str(result['rung']) + ')' if result['rung'] else ''}")
+        if result["aliased_from"]:
+            print(f"  The RR defines this as equivalent to "
+                  f"{result['canonical']}.")
+        if result["qualifier"]:
+            print(f"  Form restriction: {result['qualifier']}")
+        if result["resolves_after"]:
+            print("\n  Resolves after: "
+                  + ", ".join(r["trigger"] for r in result["resolves_after"]))
+        if result["resolves_before"]:
+            print("  Resolves before: "
+                  + ", ".join(r["trigger"] for r in result["resolves_before"]))
+        if result["cards"]:
+            print(f"\n  Example cards:")
+            for c in result["cards"][:8]:
+                print(f"    {c['code']:<8} {c['name']:<28} "
+                      f"{c['raw_prefix']}")
+        return 0
+
+    rows = ladder()
+    if args.json:
+        emit({"ladder": rows, "tie_breaks": load_config()["tie_breaks"]},
+             as_json=True)
+        return 0
+    print("For a single triggering condition, in resolution order:\n")
+    for r in rows:
+        cite = f"[RR {r['rr_entry']} p.{r['rr_page']}]"
+        print(f"{r['rung']}. {r['trigger']:<28} {cite}")
+        if r.get("note"):
+            print(f"     {r['note']}")
+    print("\nTie-breaks:")
+    for tb in load_config()["tie_breaks"]:
+        print(f"  - {tb['rule']}")
+        print(f"    [RR {tb['rr_entry']} p.{tb['rr_page']}]")
+    return 0
+```
+
+- [ ] **Step 6: Add the command to `cli.py`**
+
+In `build_parser`, after `encounter`:
+
+```python
+    tim = _leaf(sub, "timing", "trigger ordering and the game round")
+    tim.add_argument("trigger", nargs="?", default=None,
+                     help="a timing trigger, e.g. Response, When Defeated")
+    tim.add_argument("--round", action="store_true",
+                     help="show the game round structure instead")
+```
+
+and in `_dispatch`:
+
+```python
+    if name == "timing":
+        from . import timing
+        return timing.handle(args)
+```
+
+- [ ] **Step 7: Wire it into the build**
+
+In `init.rebuild_index`, after `counts["rules_links"] = rules.build_links(conn)`:
+
+```python
+    from . import timing
+    counts["timing_triggers"] = timing.build(conn)
+    broken = timing.verify_citations(conn)
+    if broken:
+        # Not fatal: the card index is still correct and useful. But the
+        # timing reference is now quoting rules text that no longer says
+        # what it claims, so say so rather than serving it silently.
+        conn.execute(
+            "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+            ("timing_citations_broken", json.dumps(broken)))
+        print("WARNING: the timing reference cites rules text that has "
+              "changed:")
+        for b in broken:
+            print(f"  {b}")
+```
+
+Add `import json` to `init.py`. Also add `timing_citations_broken` to the `status` payload in `update.py`, alongside `unmapped_glyphs`.
+
+- [ ] **Step 8: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_timing.py -v -m "not integration"`
+Expected: PASS, 14 tests
+
+- [ ] **Step 9: Verify against the real corpus**
+
+```bash
+uv run python -c "
+from mc_jarvis import index, paths, timing
+conn = index.connect(paths.db_path())
+print('triggers indexed:', timing.build(conn))
+print('broken citations:', timing.verify_citations(conn) or 'none')
+print()
+for r in conn.execute('SELECT raw_prefix, COUNT(*) n FROM timing_triggers '
+                      'WHERE canonical IS NULL GROUP BY raw_prefix '
+                      'ORDER BY n DESC LIMIT 20'):
+    print(f'  UNCLASSIFIED  {r[\"raw_prefix\"]:<30} {r[\"n\"]}')
+"
+mc-jarvis timing
+mc-jarvis timing "When Defeated"
+mc-jarvis timing "Hero Action"
+mc-jarvis timing --round
+```
+
+Expected: zero broken citations; the ladder prints with a page cite on every rung; `When Defeated` reports itself as a Forced Interrupt.
+
+**Every unclassified prefix is a decision, not a bug to suppress.** Read the list: if it is a real trigger, add it to `ladder` or `outside_ladder`; if it is bold flavour text, add it to `not_triggers`. Encounter-side prefixes (`Contents`, `Preparation`, `Standard Mode Only.`) are the expected bulk. Do not widen `not_triggers` with a wildcard.
+
+- [ ] **Step 10: Teach the skill about it**
+
+Add to `SKILL.md`'s command table:
+
+```markdown
+| trigger ordering | `mc-jarvis timing [<trigger>] [--round]` |
+```
+
+and a section:
+
+```markdown
+## Timing questions
+
+"Does my Response happen before their Forced Response?" is the question
+players get wrong most often, and the Rules Reference has no single entry
+that answers it — the rules are spread over six entries.
+
+Run `mc-jarvis timing` for the ordering, or `mc-jarvis timing <trigger>`
+for one trigger with its citation and example cards. Quote the rung and
+the page.
+
+Two things worth stating whenever they come up, because both surprise
+people:
+
+- **When Revealed, When Defeated, and When Completed are all Forced
+  Interrupts.** They are not separate tiers. The RR defines each as
+  equivalent to a Forced Interrupt, so they resolve together at that rung.
+- **Forced beats optional at the same tier**, and the first player breaks
+  every remaining tie — including between abilities they do not control.
+```
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add src/mc_jarvis/timing.py src/mc_jarvis/schema.py src/mc_jarvis/cli.py \
+        src/mc_jarvis/init.py src/mc_jarvis/update.py config/timing.yaml \
+        skill/ tests/test_timing.py
+git commit -m "feat: timing reference with RR-cited trigger ordering"
+```
+
+Add the `_bundled` link for the new config, alongside the two from Task 1 Step 8:
+
+```bash
+ln -sfn ../../../config/timing.yaml src/mc_jarvis/_bundled/timing.yaml
+```
+
+and add `"config/timing.yaml" = "src/mc_jarvis/_bundled/timing.yaml"` to the `force-include` block in `pyproject.toml`.
+
+---
+
 ## Done criteria
 
 - [ ] `uv run pytest tests/ -v` — all tests pass, unit and integration
@@ -5091,3 +5919,5 @@ git commit -m "feat: SKILL.md and workspace-scoped install-skill"
 - [ ] The setup audit reports exactly four identities, all covered
 - [ ] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing
 - [ ] An agent in the workspace answers a card question and a rules question with citations, without being told which command to run
+- [ ] `mc-jarvis timing` prints the ladder with a page cite on every rung
+- [ ] `timing.verify_citations` returns empty, and no prefix on a player card is unclassified
