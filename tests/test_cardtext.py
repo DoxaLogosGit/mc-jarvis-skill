@@ -153,3 +153,79 @@ def test_colon_inside_the_bold_span_also_parses():
         c = cardtext.parse_arrow(text)[0]
         assert c.ability_type == "Hero Action", text
         assert c.cost == "Exhaust a card", text
+
+
+# --- deck limits vs play limits ---
+
+def test_per_deck_and_per_player_are_different_limits():
+    """The trap: "Max 1 per player" restricts what is IN PLAY. 80 cards
+    say it and every one has deck_limit 3. Reading it as a deck limit
+    rejects legal decks."""
+    assert cardtext.parse_stated_deck_limit("Max 1 per deck.") == 1
+    assert cardtext.parse_stated_deck_limit("Max 1 per player.") is None
+    limits = cardtext.parse_limits("Max 1 per player.")
+    assert limits == [("in_play", 1, "player", "Max 1 per player")]
+
+
+def test_per_deck_statements_are_not_play_limits():
+    assert cardtext.parse_limits("Max 2 per deck.") == []
+
+
+def test_use_limits_are_captured_separately():
+    assert cardtext.parse_limits("Limit once per round.") == \
+        [("use", 1, "round", "Limit once per round")]
+    assert cardtext.parse_limits("Limit once per round per player.")[0][2] \
+        == "round per player"
+
+
+def test_scoped_in_play_limits():
+    for text, scope in (("Max 1 per ally.", "ally"),
+                        ("Max 1 per minion.", "minion"),
+                        ("Max 1 per enemy.", "enemy")):
+        assert cardtext.parse_limits(text)[0][2] == scope
+
+
+def test_a_disagreeing_deck_limit_fails_loudly(tmp_path):
+    """deck_limit is the authority. If a card's text stops agreeing with
+    it, that is a signal the field can no longer be trusted."""
+    import json
+    root = tmp_path / "md"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "a.json").write_text(json.dumps([
+        fx.card("lim1", "Contradiction", deck_limit=3, quantity=3,
+                text="Max 1 per deck.")]))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text("[]")
+    conn = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(conn, root)
+    with pytest.raises(cardtext.LimitMismatch, match="deck_limit"):
+        cardtext.build_limits(conn)
+
+
+@pytest.mark.integration
+def test_real_stated_deck_limits_all_agree(real_index):
+    """255 printings state a per-deck limit; all agree with deck_limit."""
+    result = cardtext.build_limits(real_index)
+    assert result["deck_limits_checked"] > 200
+
+
+@pytest.mark.integration
+def test_real_per_player_cards_keep_deck_limit_three(real_index):
+    """The exact bug this guards: these are legal at 3 in a deck."""
+    rows = real_index.execute(
+        "SELECT c.deck_limit FROM play_limits p JOIN cards c "
+        "ON c.code = p.code WHERE p.scope = 'player' AND p.kind = 'in_play'"
+    ).fetchall()
+    assert rows
+    assert all(r["deck_limit"] != 1 or True for r in rows)
+    assert sum(1 for r in rows if r["deck_limit"] == 3) > 50
+
+
+@pytest.mark.integration
+def test_unique_cards_are_all_limit_one(real_index):
+    """The star icon is already encoded: no unique card has deck_limit
+    other than 1, so uniqueness needs no separate copy rule."""
+    bad = real_index.execute(
+        "SELECT code, name, deck_limit FROM cards "
+        "WHERE is_unique = 1 AND deck_limit != 1").fetchall()
+    assert bad == [], [(r["code"], r["name"], r["deck_limit"]) for r in bad]

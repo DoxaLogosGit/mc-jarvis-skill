@@ -116,6 +116,18 @@ CREATE TABLE IF NOT EXISTS cost_clauses (
     PRIMARY KEY (code, ordinal)
 );
 
+-- Limits stated in card text. Deliberately NOT deck limits: `deck_limit`
+-- is authoritative for deckbuilding, and "Max 1 per player" is an in-play
+-- limit on a card you may hold three of.
+CREATE TABLE IF NOT EXISTS play_limits (
+    code    TEXT NOT NULL,
+    kind    TEXT NOT NULL,   -- in_play | use
+    count   INTEGER,
+    scope   TEXT NOT NULL,   -- player, ally, minion, round, phase, ...
+    phrase  TEXT NOT NULL,   -- verbatim
+    PRIMARY KEY (code, kind, scope, phrase)
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'

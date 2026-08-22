@@ -36,6 +36,18 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9, §10 and §16.
 
+**Copy limits stated in card text: `deck_limit` is authoritative, and scraping the text is the bug.** Measured 2026-08-22:
+
+| Phrase | Cards | What `deck_limit` says |
+|---|---|---|
+| "Max N per deck" | 255 printings | Agrees with the stated N on **every one** |
+| "Max N per player" | 80 cards | **3** — it is an in-play limit, not a deck limit |
+| unique (star icon) | 653 | Always 1; zero exceptions |
+
+So the structured fields already carry every deckbuilding limit, and the star icon needs no separate rule. **The danger runs the other way**: a validator that reads "Max 1" out of card text and applies it as a deck limit rejects 80 legal cards, each of which may legitimately appear three times.
+
+`cardtext.build_limits` therefore does two separate things. It **verifies** stated per-deck limits against `deck_limit` and raises `LimitMismatch` on any disagreement — turning a measurement into a standing check, so if the field ever stops being trustworthy the build says so. And it records in-play and use limits in `play_limits`, which `deck check` must never consult: 110 cards are "max 1 per player", 50 "limit once per round", plus scopes for ally, minion, character, enemy and scheme. `card show` prints deck limit and play limits as separate lines for the same reason.
+
 **Unique-matching has four scopes, not one, and the spec only describes the first.** §8 quotes RR p.45's deckbuilding sentence and stops there. Read in full (RR p.45-46, verified 2026-08-22), the rule governs four different situations with different answers:
 
 | Scope | Rule | Effect |

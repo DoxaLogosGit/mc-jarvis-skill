@@ -10,5 +10,6 @@ counts = {"cards": report.cards, "player": report.player_cards,
 config = outofdeck.load_config()
 counts["out_of_deck"] = outofdeck.classify(conn, config, strict=True)
 counts.update(cardtext.build(conn))
+counts.update(cardtext.build_limits(conn))
 for k, v in counts.items():
     print(f"  {k}: {v}")

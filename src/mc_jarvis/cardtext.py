@@ -194,3 +194,85 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
     conn.commit()
     return {"traits": len(traits), "keywords": len(keywords),
             "clauses": len(clauses)}
+
+
+# Limits stated in card text. The distinction between them is the whole
+# point: "Max 1 per deck" is a deckbuilding limit that `deck_limit`
+# already encodes, while "Max 1 per player" restricts how many may be in
+# play - and 80 cards saying it have deck_limit 3. Reading a text "Max 1"
+# as a deck limit wrongly rejects legal decks.
+PER_DECK_RE = re.compile(r"max(?:imum of)?\s+(\d+)\s+per\s+deck", re.I)
+IN_PLAY_RE = re.compile(
+    r"max(?:imum of)?\s+(\d+)\s*(?:\[\[)?([\w\- ]*?)(?:\]\])?\s*"
+    r"(?:cards?\s+)?per\s+(player|ally|minion|character|enemy|scheme|"
+    r"side scheme|hero)\b", re.I)
+USE_RE = re.compile(
+    r"limit\s+(once|twice|\d+\s+times?)\s+per\s+(round|phase|turn|activation)"
+    r"(\s+per\s+player)?", re.I)
+
+
+class LimitMismatch(RuntimeError):
+    """A card states a per-deck limit that `deck_limit` does not agree
+    with. Verified 2026-08-22: 70 cards state one and all 70 agree, so a
+    disagreement means the structured field can no longer be trusted for
+    deckbuilding."""
+
+
+def parse_stated_deck_limit(text: str | None) -> int | None:
+    if not text:
+        return None
+    m = PER_DECK_RE.search(TAG_RE.sub("", text))
+    return int(m.group(1)) if m else None
+
+
+def parse_limits(text: str | None) -> list[tuple[str, int | None, str, str]]:
+    """Play-time limits: `(kind, count, scope, verbatim phrase)`.
+
+    Deck limits are deliberately excluded - `deck_limit` owns those.
+    """
+    if not text:
+        return []
+    plain = " ".join(TAG_RE.sub("", text).split())
+    out: list[tuple[str, int | None, str, str]] = []
+    for m in IN_PLAY_RE.finditer(plain):
+        qualifier = " ".join(m.group(2).split()).lower()
+        scope = m.group(3).lower()
+        out.append(("in_play", int(m.group(1)),
+                    f"{qualifier} per {scope}".strip() if qualifier
+                    else scope, m.group(0).strip()))
+    for m in USE_RE.finditer(plain):
+        word = m.group(1).lower()
+        count = {"once": 1, "twice": 2}.get(word)
+        if count is None:
+            digits = re.match(r"(\d+)", word)
+            count = int(digits.group(1)) if digits else None
+        scope = m.group(2).lower() + (" per player" if m.group(3) else "")
+        out.append(("use", count, scope, m.group(0).strip()))
+    return out
+
+
+def build_limits(conn: sqlite3.Connection) -> dict[str, int]:
+    """Populate play_limits, and assert stated per-deck limits agree with
+    `deck_limit` rather than re-deriving them from prose."""
+    conn.execute("DELETE FROM play_limits")
+    rows: list[tuple] = []
+    checked = 0
+    for r in conn.execute(
+            "SELECT code, name, text, deck_limit FROM cards "
+            "WHERE text IS NOT NULL AND text != ''"):
+        stated = parse_stated_deck_limit(r["text"])
+        if stated is not None:
+            checked += 1
+            if r["deck_limit"] != stated:
+                raise LimitMismatch(
+                    f"{r['code']} ({r['name']}) says 'Max {stated} per deck' "
+                    f"but deck_limit is {r['deck_limit']}; deck_limit is the "
+                    f"authority for deckbuilding and no longer agrees")
+        rows.extend((r["code"], kind, count, scope, phrase)
+                    for kind, count, scope, phrase in parse_limits(r["text"]))
+
+    conn.executemany(
+        "INSERT OR IGNORE INTO play_limits "
+        "(code, kind, count, scope, phrase) VALUES (?, ?, ?, ?, ?)", rows)
+    conn.commit()
+    return {"play_limits": len(rows), "deck_limits_checked": checked}

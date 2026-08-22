@@ -210,6 +210,17 @@ def handle_show(args) -> int:
     if "card" in result:
         for face in result["faces"]:
             _print_card(face)
+        limits = [dict(r) for r in conn.execute(
+            "SELECT kind, count, scope, phrase FROM play_limits "
+            "WHERE code = ? ORDER BY kind, scope",
+            (result["card"]["code"],))]
+        card = result["card"]
+        if card.get("deck_limit"):
+            print(f"\n  Deck limit: {card['deck_limit']}"
+                  + ("  (unique)" if card.get("is_unique") else ""))
+        for lim in limits:
+            label = "in play" if lim["kind"] == "in_play" else "use"
+            print(f"  Limit ({label}): {lim['phrase']}")
         packs = result["printings"]
         if len(packs) > 1:
             print("\n  Printings: " + ", ".join(
