@@ -131,3 +131,93 @@ def matches(conn, code_a: str, code_b: str) -> bool:
     a_all = a["title"] | a_secondary
     b_all = b["title"] | b_secondary
     return bool(a_secondary & b_all) or bool(b_secondary & a_all)
+
+
+# RR p.45-46 define four distinct scopes for matching, and they do not
+# agree with each other. Verified against the Rules Reference 2026-08-22.
+VILLAIN_TYPES = ("villain",)
+
+
+def matching_pairs(conn, codes) -> list[tuple[str, str]]:
+    """Every matching pair within a set of cards.
+
+    This is the deckbuilding scope: "During deckbuilding, a player cannot
+    include multiple matching cards in their deck. The identity is
+    included in this evaluation." (RR p.45)
+    """
+    codes = list(dict.fromkeys(codes))
+    # Faces of one identity always share titles with each other. They are
+    # one card, so they never conflict - without this, every hero reports
+    # a collision with their own alter-ego.
+    owner = {r["code"]: r["identity_key"] for r in conn.execute(
+        "SELECT code, identity_key FROM identity_faces")}
+    out = []
+    for i, a in enumerate(codes):
+        for b in codes[i + 1:]:
+            if a in owner and owner[a] == owner.get(b):
+                continue
+            if matches(conn, a, b):
+                out.append((a, b))
+    return out
+
+
+def _type_of(conn, code: str) -> str | None:
+    row = conn.execute(
+        "SELECT type_code FROM cards WHERE code = ?", (code,)).fetchone()
+    return row["type_code"] if row else None
+
+
+def blocks_entering_play(conn, code: str, in_play: list[str]) -> list[str]:
+    """Which in-play cards stop `code` from entering play (RR p.46).
+
+    "A non-villain card in an out-of-play state that matches a card in
+    play cannot enter play." This spans the whole table, not one player:
+    if the Nebula identity is in play, Gamora's signature Nebula ally
+    cannot enter play from any deck.
+
+    Villains are exempt as the card entering play. RR p.45 also permits a
+    scenario whose villain matches a chosen identity, so a matching
+    villain never blocks and is never blocked.
+    """
+    if _type_of(conn, code) in VILLAIN_TYPES:
+        return []
+    return [other for other in in_play
+            if _type_of(conn, other) not in VILLAIN_TYPES
+            and matches(conn, code, other)]
+
+
+def identities_conflict(conn, identity_keys) -> list[tuple[str, str]]:
+    """Identity pairs that cannot be chosen together (RR p.45).
+
+    "When choosing identities during setup, players cannot choose
+    identities that match." Compared face-to-face, since every face
+    contributes its titles to the identity.
+    """
+    keys = list(dict.fromkeys(identity_keys))
+    faces = {}
+    for key in keys:
+        faces[key] = [r["code"] for r in conn.execute(
+            "SELECT code FROM identity_faces WHERE identity_key = ?", (key,))]
+
+    out = []
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            if any(matches(conn, fa, fb)
+                   for fa in faces[a] for fb in faces[b]):
+                out.append((a, b))
+    return out
+
+
+def villain_matches_identity(conn, villain_code: str,
+                             identity_key: str) -> bool:
+    """Whether a villain matches a chosen identity.
+
+    Reported, never enforced: RR p.45 says "The players may choose a
+    scenario even if one or more villains match one or more chosen
+    identities." So Nebula may face the Nebula villain. Worth surfacing
+    as a flavour note, not as an error.
+    """
+    return any(matches(conn, villain_code, face)
+               for face in [r["code"] for r in conn.execute(
+                   "SELECT code FROM identity_faces WHERE identity_key = ?",
+                   (identity_key,))])

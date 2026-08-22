@@ -36,6 +36,23 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9, §10 and §16.
 
+**Unique-matching has four scopes, not one, and the spec only describes the first.** §8 quotes RR p.45's deckbuilding sentence and stops there. Read in full (RR p.45-46, verified 2026-08-22), the rule governs four different situations with different answers:
+
+| Scope | Rule | Effect |
+|---|---|---|
+| Deckbuilding | No matching cards in one deck, identity included | Enforced |
+| Identity selection | "players cannot choose identities that match" at setup | Enforced across players |
+| Entering play | "A non-villain card in an out-of-play state that matches a card in play cannot enter play" | Enforced across the **whole table** |
+| Scenario choice | "players may choose a scenario even if one or more villains match one or more chosen identities" | **Explicitly permitted** |
+
+Three consequences the deck and team plans must carry:
+
+- **The play scope spans every player.** If the Nebula identity is in play, Gamora's signature Nebula ally cannot enter play — from any deck. `identity.blocks_entering_play` answers this and is what `team` should use.
+- **Villains are exempt in both directions.** A Nebula player may face the Nebula villain. Reporting that as an error would be wrong; `identity.villain_matches_identity` exists to surface it as a note.
+- **There is a remedy the tool should offer.** RR Appendix I (p.50): a player whose identity-specific card matches another player's chosen identity "may replace the matching card in their deck with a card with the Team-Up keyword that names both their own identity and the other player's identity." So the Gamora/Nebula collision has a legal fix, and `team` should suggest it rather than just reporting a conflict.
+
+**The alter-ego title decides cases that look identical.** Clause one fires only when **both** cards have no subtitle and no alter-ego title. So the Jessica Jones identity matches the Jessica Jones minion (her alter-ego is also Jessica Jones), while the Daredevil identity does **not** match the Daredevil minion (his is Matt Murdock) — same card types, opposite answers. Equally, Daredevil "Matt Murdock" is illegal in a Daredevil deck while the plain Daredevil ally is legal, because nothing on it says Matt Murdock.
+
 **Villains do not thwart, and their printed hit points are not their real hit points.** Task 10's draft schema had no `scheme`, `stage` or `health_per_hero` column, so `encounter` printed `THW None` for every villain. Villains carry `scheme` (Rhino 1 at every stage), `stage` as a roman numeral, and `health_per_hero: true` — the printed 14/15/16 is multiplied by the player count. Reporting the printed number without saying so gives a table the wrong tracker value, so both the encounter listing and `card show` state it.
 
 **Card-text markup has four shapes, not one, and three of them break a naive cost-arrow parse.** Found while implementing Task 9 against real cards:

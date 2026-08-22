@@ -87,3 +87,65 @@ def test_real_black_panther_heroes_do_not_match(real_index):
     assert identity.matches(real_index, "01040a", "51001a") is False
     assert identity.matches(real_index, "01040a", "23012") is True
     assert identity.matches(real_index, "01040a", "51002") is True
+
+
+# --- the four matching scopes (RR p.45-46), verified 2026-08-22 ---
+
+@pytest.mark.integration
+def test_deckbuilding_scope_daredevil(real_index):
+    """The subtitle is what makes it illegal. Daredevil "Matt Murdock"
+    cannot go in a Daredevil / Matt Murdock deck; the plain Daredevil
+    ally can, because nothing on it says Matt Murdock."""
+    pairs = identity.matching_pairs(
+        real_index, ["60001a", "60001b", "01058", "31014"])
+    flat = {frozenset(p) for p in pairs}
+    assert frozenset({"60001a", "01058"}) in flat      # subtitle matches
+    assert frozenset({"60001a", "31014"}) not in flat  # no subtitle: legal
+
+
+@pytest.mark.integration
+def test_an_identitys_own_faces_never_conflict(real_index):
+    assert identity.matching_pairs(real_index, ["60001a", "60001b"]) == []
+
+
+@pytest.mark.integration
+def test_rr_clause_one_example_ally_and_minion(real_index):
+    """The RR's own example: the Jessica Jones ally and the Jessica Jones
+    minion match, because neither has a subtitle or alter-ego title."""
+    assert identity.matches(real_index, "01059", "56185") is True
+
+
+@pytest.mark.integration
+def test_alter_ego_title_decides_the_minion_case(real_index):
+    """Jessica Jones's alter-ego is also Jessica Jones, so her identity
+    matches the minion. Daredevil's is Matt Murdock, so his does not -
+    clause one needs BOTH cards to lack a subtitle and alter-ego title."""
+    assert identity.matches(real_index, "61001a", "56185") is True
+    assert identity.matches(real_index, "60001a", "56189") is False
+
+
+@pytest.mark.integration
+def test_play_scope_spans_the_whole_table(real_index):
+    """RR p.46: a non-villain card matching a card in play cannot enter
+    play - from any player's deck. Gamora's signature Nebula ally is
+    blocked while the Nebula identity is in play, and vice versa."""
+    assert identity.blocks_entering_play(
+        real_index, "18002", ["22001a", "22001b"])
+    assert identity.blocks_entering_play(
+        real_index, "22002", ["18001a", "18001b"])
+
+
+@pytest.mark.integration
+def test_a_villain_never_blocks_and_is_never_blocked(real_index):
+    """RR p.45 explicitly permits a scenario whose villain matches a
+    chosen identity, so Nebula may face the Nebula villain."""
+    assert identity.villain_matches_identity(real_index, "16088", "nebu")
+    assert identity.blocks_entering_play(real_index, "16088", ["22001a"]) == []
+
+
+@pytest.mark.integration
+def test_identity_selection_scope(real_index):
+    """RR p.45: players cannot choose matching identities at setup."""
+    assert identity.identities_conflict(real_index, ["nebu", "gam"]) == []
+    conflict = identity.identities_conflict(real_index, ["daredevil", "echo"])
+    assert isinstance(conflict, list)
