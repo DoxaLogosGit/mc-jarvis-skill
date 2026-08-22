@@ -124,6 +124,8 @@ def _dispatch(name: str, args) -> int:
         from . import cards
         if args.card_cmd == "search":
             return cards.handle_search(args)
+        if args.card_cmd == "show":
+            return cards.handle_show(args)
     print(f"mc-jarvis: '{name}' is not implemented yet", file=sys.stderr)
     return 3
 

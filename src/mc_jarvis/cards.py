@@ -100,3 +100,124 @@ def handle_search(args) -> int:
         print(f"{h['code']:<8} {h['name']:<34} "
               f"{h['faction_code']:<12} {h['type_code']:<10} {cost}")
     return 0
+
+
+FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
+                  "deck_limit", "quantity", "canonical_code", "is_reprint",
+                  "attack", "thwart", "defense", "recover", "health",
+                  "hand_size", "resource_physical", "resource_mental",
+                  "resource_energy", "resource_wild", "flavor")
+
+
+def _row(conn, code) -> dict | None:
+    r = conn.execute(
+        f"SELECT {', '.join(FULL)} FROM cards WHERE code = ?",
+        (code,)).fetchone()
+    return dict(r) if r else None
+
+
+def _faces(conn, card: dict) -> list[dict]:
+    """A card and every face linked to it, in code order.
+
+    `back_link` points hero -> alter-ego and is null on extra forms, so
+    the walk follows it in both directions (spec §8).
+    """
+    seen: set[str] = set()
+    queue = [card["code"]]
+    out: list[dict] = []
+    while queue:
+        code = queue.pop()
+        if code in seen:
+            continue
+        seen.add(code)
+        row = _row(conn, code)
+        if not row:
+            continue
+        out.append(row)
+        if row.get("back_link"):
+            queue.append(row["back_link"])
+        for other in conn.execute(
+                "SELECT code FROM cards WHERE back_link = ?", (code,)):
+            queue.append(other["code"])
+    return sorted(out, key=lambda r: r["code"])
+
+
+def printings(conn, canonical_code: str) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT code, pack_code, quantity FROM cards "
+        "WHERE canonical_code = ? ORDER BY code", (canonical_code,))]
+
+
+def show(conn, ident: str) -> dict:
+    """One card, or the candidates when a name is ambiguous.
+
+    Never guesses: 60 character names exist as both an identity face and
+    an ally, so "Black Panther" is genuinely several cards (spec §8).
+    """
+    exact = _row(conn, ident)
+    if exact:
+        canon = _row(conn, exact["canonical_code"]) or exact
+        return {"card": canon, "faces": _faces(conn, canon),
+                "printings": printings(conn, canon["code"])}
+
+    matches = [dict(r) for r in conn.execute(
+        f"SELECT {', '.join(SUMMARY)} FROM cards "
+        f"WHERE lower(name) = lower(?) AND code = canonical_code "
+        f"ORDER BY code", (ident,))]
+
+    if len(matches) == 1:
+        card = _row(conn, matches[0]["code"])
+        return {"card": card, "faces": _faces(conn, card),
+                "printings": printings(conn, card["code"])}
+    return {"ambiguous": matches}
+
+
+def _print_card(c: dict) -> None:
+    title = c["name"] + (f" - {c['subname']}" if c.get("subname") else "")
+    print(f"\n{title}  [{c['code']}]")
+    line = f"  {c['faction_code']} {c['type_code']}"
+    if c.get("cost") is not None:
+        line += f", cost {c['cost']}"
+    if c.get("is_unique"):
+        line += ", unique"
+    if c.get("permanent"):
+        line += ", permanent"
+    print(line)
+    stats = [(k, c.get(k)) for k in
+             ("attack", "thwart", "defense", "recover", "health", "hand_size")
+             if c.get(k) is not None]
+    if stats:
+        print("  " + "  ".join(f"{k.upper()[:3]} {v}" for k, v in stats))
+    if c.get("traits"):
+        print(f"  {c['traits']}")
+    if c.get("text"):
+        print(f"  {c['text']}")
+
+
+def handle_show(args) -> int:
+    conn = _open()
+    result = show(conn, args.name)
+    if getattr(args, "explain", False) and "card" in result:
+        from . import rules
+        result["keywords"] = rules.explain(conn, result["card"]["code"])
+    if args.json:
+        emit(result, as_json=True)
+        return 0 if "card" in result else 1
+    if "card" in result:
+        for face in result["faces"]:
+            _print_card(face)
+        packs = result["printings"]
+        if len(packs) > 1:
+            print("\n  Printings: " + ", ".join(
+                f"{p['pack_code']} x{p['quantity']}" for p in packs))
+        for kw in result.get("keywords", []):
+            print(f"\n  {kw['term']} (p.{kw['page']}) - {kw['body']}")
+        return 0
+    if not result["ambiguous"]:
+        print(f"no card named {args.name!r}")
+        return 1
+    print(f"{args.name!r} matches several cards - pick one by code:")
+    for c in result["ambiguous"]:
+        print(f"  {c['code']:<8} {c['name']:<30} "
+              f"{c['type_code']:<10} {c['faction_code']}")
+    return 1
