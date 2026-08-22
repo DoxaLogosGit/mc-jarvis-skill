@@ -97,3 +97,41 @@ def test_archived_urls_still_resolve_on_ffgs_cdn():
     req = urllib.request.Request(rr.url, headers={"Range": "bytes=0-64"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         assert resp.status in (200, 206)
+
+
+# --- currency: the archive path can be behind on a FRESH install ---
+
+def _wayback(captured):
+    return manifest.ManifestResult(docs=[], source="wayback",
+                                   captured=captured)
+
+
+def test_a_recent_capture_raises_no_warning():
+    import datetime as dt
+    today = dt.date.today().isoformat()
+    assert manifest.currency_warning(_wayback(today)) is None
+
+
+def test_an_old_capture_warns_and_says_update_will_not_help():
+    """The failure mode is not ordinary staleness: `update` re-reads the
+    same capture, so it cannot cure this. The message must say so."""
+    import datetime as dt
+    old = (dt.date.today() - dt.timedelta(days=60)).isoformat()
+    warning = manifest.currency_warning(_wayback(old))
+    assert warning
+    assert "update" in warning and "cannot see them" in warning
+    assert "--from-html" in warning
+
+
+def test_a_browser_or_html_manifest_is_never_warned_about():
+    """Those paths read the live page, so they are current by definition."""
+    for source in ("html", "browser"):
+        result = manifest.ManifestResult(docs=[], source=source)
+        assert manifest.currency_warning(result) is None
+        assert manifest.capture_age_days(result) is None
+
+
+def test_capture_age_is_measured_in_days():
+    import datetime as dt
+    week = (dt.date.today() - dt.timedelta(days=7)).isoformat()
+    assert manifest.capture_age_days(_wayback(week)) == 7

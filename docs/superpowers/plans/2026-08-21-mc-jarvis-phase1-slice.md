@@ -3229,6 +3229,19 @@ Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regar
 >
 > **Not built in this plan, and the reasons are worth stating.** It is a third-party curation of official rulings, which raises questions the PDF pipeline does not: reliance on one community site staying up and keeping its markup, attribution, and the distribution principle (fetch at init, never ship — same as everything else). It also needs a different chunker and a supersession model that can say "the RR says X, but a later ruling says Y". That is a feature, not a parser tweak. It belongs in the rules-pipeline plan as a designed task with the user's call on scope, not as a silent addition here.
 >
+> **The archive path can be behind on a *fresh* install, and `update` does not cure it.** This is not ordinary staleness. `update` re-reads the same archived capture, so the manifest stays behind until archive.org crawls the page again — a 137-day median gap in 2026. Measured 2026-08-22:
+>
+> ```
+> today                       2026-08-22
+> newest archive.org capture  2026-07-21
+> RR it yields                v1.7  (09 Jan 2026)
+> RR FFG actually publishes   v1.8  (22 Jul 2026)
+> ```
+>
+> The capture predates v1.8 by one day, so a correct install done today is a full version behind, and no amount of `update` changes that. **Serving it silently is the defect; saying so is the fix.** `manifest.currency_warning` reports the capture age and states plainly that `update` cannot see newer rulebooks, naming `--from-html` as the remedy. `newer_snapshot_available` lets `update` re-query CDX and take a fresher capture when one exists.
+>
+> Two things soften the impact, neither of which excuses hiding it. The Rules Reference is revised roughly twice a year, so most of the time the capture is current. And Task 18's rulings are classified against the RR the user actually holds — so a v1.7 user correctly sees the eight post-1.7 rulings as active, which is precisely the gap their document has.
+>
 > **archive.org rate-limits.** A burst of requests times out, and a bare failure reads as "no snapshot exists" — the wrong diagnosis, sending the user to find a browser they do not need. `_get` retries with backoff.
 
 **Files:**

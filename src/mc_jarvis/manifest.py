@@ -241,3 +241,53 @@ def diff(old: list[RuleDoc], new: list[RuleDoc]) -> list[tuple[str, str]]:
         elif prev.date != doc.date or prev.url != doc.url:
             changes.append((doc.slug, "revised"))
     return changes
+
+
+# How long a wayback-sourced manifest may sit before the tool stops
+# treating it as representative. 2026 saw three snapshots of the product
+# page, a 137-day median gap, so a capture is routinely weeks behind.
+CAPTURE_STALE_DAYS = 21
+
+
+def capture_age_days(result: ManifestResult) -> int | None:
+    if result.source != "wayback" or not result.captured:
+        return None
+    import datetime as _dt
+    captured = _dt.date.fromisoformat(result.captured)
+    return (_dt.date.today() - captured).days
+
+
+def currency_warning(result: ManifestResult) -> str | None:
+    """Say when the manifest may be behind FFG, and what to do about it.
+
+    This is not ordinary staleness that `update` cures. `update` re-reads
+    the same archived capture, so a manifest sourced from the Wayback
+    Machine stays behind until archive.org crawls the page again -
+    which in 2026 meant a 137-day median gap. Measured 2026-08-22: the
+    newest capture predates Rules Reference v1.8 by a single day, so a
+    correct, fresh install yields v1.7 and `update` will not change that.
+
+    Serving that silently is the problem. Saying so is the fix.
+    """
+    age = capture_age_days(result)
+    if age is None or age < CAPTURE_STALE_DAYS:
+        return None
+    return (
+        f"The rules manifest comes from an archive.org capture taken "
+        f"{age} days ago ({result.captured}). FFG may have published or "
+        f"revised rulebooks since, and `mc-jarvis update` cannot see them "
+        f"- it re-reads the same capture. To pick up the current list, "
+        f"save the product page from a browser and run:\n"
+        f"  mc-jarvis init --from-html <file>\n"
+        f"  {PRODUCT_PAGE}")
+
+
+def newer_snapshot_available(result: ManifestResult) -> str | None:
+    """A capture newer than the one this manifest came from, if any."""
+    if result.source != "wayback" or not result.captured:
+        return None
+    latest = latest_snapshot()
+    if not latest:
+        return None
+    iso = f"{latest[:4]}-{latest[4:6]}-{latest[6:8]}"
+    return iso if iso > result.captured else None
