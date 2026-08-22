@@ -2,8 +2,9 @@
 
 **Tasks 1–15 and 17 of the Phase 1 plan are complete, committed, and green.**
 
-    276 tests passing
-    4,379 cards · 69 identities · 263 rules entries (216 resolve) · 1,180
+    280 tests passing — against a v1.8 index. On the v1.7 index `init`
+    actually produces, two integration tests fail honestly (see below).
+    4,379 cards · 69 identities · 287 rules entries (216 resolve) · 1,180
     card-rules links · 4,588 timing triggers
     unmapped_glyphs: empty · unclassified prefixes: none
 
@@ -82,11 +83,36 @@ time — the first run passed:
   identities"). Now 4,379 / 69 / **eight**, with the originals kept in
   brackets, and the met ones ticked.
 - Task 17's steps are ticked; earlier tasks' checkboxes are still unticked.
-- **This report previously said 287 rules entries. It is 263** — 216
-  addressable glossary entries, 46 redirects, one page pointer.
-- `mc-jarvis status` now prints `rules_resolved` alongside
-  `rules_entries`. The total on its own read as "263 terms you can look
-  up", which is not what it means.
+- **The 287 in this report was right; my "correction" to 263 was wrong**
+  and is reverted. 287 is a complete index: 263 Rules Reference rows plus
+  24 page-chunks of Learn to Play. 263 was this machine missing a
+  rulebook.
+- `mc-jarvis status` now prints `rules_resolved`, `rr_version`, and the
+  rulebooks actually indexed, and names a missing one. The total on its
+  own said nothing about either.
+
+## The audit found a wrong-answer bug — read this first
+
+`init` from an empty directory fetches **two** rulebooks and gives **v1.7**
+of the Rules Reference. The development directory had one rulebook and
+**v1.8**, placed by hand, and had never completed an `init` — it has no
+`manifest.json`. Everything in Task 17 was built and gated against an
+edition no user's `init` produces.
+
+The two editions disagree on the rules, not just the layout. v1.7 lists
+eight flat rungs and puts **"When Defeated" on rung 5 beside Boost**; v1.8
+lists five rungs with lettered tiers and makes it a **Forced Interrupt at
+2b**. So on a real user's index, `mc-jarvis timing "When Defeated"` gave
+the v1.8 answer and **cited the user's own rulebook for it**.
+
+`verify_chart` and `verify_citations` caught it, and `init` and `status`
+both reported it. `timing` answered anyway. It now refuses when its own
+verification fails, names the mismatch and the indexed version, and points
+at `rules show Ability`. `--round` still works.
+
+**Open:** the timing config is v1.8-only. Supporting v1.7 means keying
+`expected_chart`, `aliases` and the rung mapping by version —
+`build_meta.rr_version` now records which one the index holds.
 
 ## Earlier work still standing
 

@@ -162,6 +162,16 @@ The consequence for the collection work in the next plan: ownership is binary pe
 
 ---
 
+> **Checkbox status, reconciled 2026-08-22.** Tasks 1–15 and 17 are ticked
+> from their commits: each landed with its tests and its real-data gate.
+> Task 16 is the only one not started.
+>
+> A tick means the task's own gate passed **against the development index,
+> which held Rules Reference v1.8**. It is not a claim that the task holds
+> on a v1.7 index, which is what `init` produces today — see the audit note
+> above Task 16. Task 15 is the standing reminder that a green task and a
+> correct outcome are different things.
+
 ## Task 1: Package scaffold, data paths, and the CLI seam
 
 Implements §5, §5.1, §6. This task locks two things that are expensive to retrofit: the `--json` seam and the explicit-verb argparse structure.
@@ -181,7 +191,7 @@ Implements §5, §5.1, §6. This task locks two things that are expensive to ret
   - `cli.parse_args(argv) -> argparse.Namespace` — parses **and normalises subcommand aliases**; use this rather than `build_parser().parse_args`
   - `cli.main(argv: list[str] | None = None) -> int` — process exit code
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_paths.py
@@ -266,12 +276,12 @@ def test_no_args_prints_help_and_fails():
     assert cli.main([]) == 2
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/ -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis'`
 
-- [ ] **Step 3: Write `pyproject.toml`**
+- [x] **Step 3: Write `pyproject.toml`**
 
 ```toml
 [project]
@@ -310,7 +320,7 @@ testpaths = ["tests"]
 markers = ["integration: requires a built index; skipped when absent"]
 ```
 
-- [ ] **Step 4: Write `paths.py`**
+- [x] **Step 4: Write `paths.py`**
 
 ```python
 """Data directory resolution. Never alongside the package (spec §5)."""
@@ -343,7 +353,7 @@ def db_path() -> Path:
     return data_dir() / "mc.sqlite"
 ```
 
-- [ ] **Step 5: Write `cli.py`**
+- [x] **Step 5: Write `cli.py`**
 
 Note the `_leaf` helper: it adds `--json` to every leaf parser, which is what keeps the flag from drifting as commands are added in later tasks. Commands not yet implemented raise `SystemExit(3)` with a clear message rather than a traceback.
 
@@ -483,17 +493,17 @@ def test_owned_refuses_rather_than_silently_ignoring():
     assert cli.main(["card", "search", "web", "--owned"]) == 3
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v`
 Expected: PASS, 11 tests
 
-- [ ] **Step 7: Verify the console script installs**
+- [x] **Step 7: Verify the console script installs**
 
 Run: `uv tool install --editable . && mc-jarvis --help && mc-jarvis doctor; echo "exit=$?"`
 Expected: help text listing every command; `doctor` prints the not-implemented message and `exit=3`
 
-- [ ] **Step 8: Create the bundled-asset directory**
+- [x] **Step 8: Create the bundled-asset directory**
 
 Three modules resolve paths into `src/mc_jarvis/_bundled/` — `outofdeck.CONFIG_PATH`, `rules_chunk.GLYPHS_PATH`, and `skill_install.SKILL_SOURCE` — and the wheel ships it. Create it now, as scaffolding, so no later task depends on a directory nothing makes.
 
@@ -526,7 +536,7 @@ def test_every_bundled_asset_path_resolves():
 
 This test fails until Tasks 8, 13, and 16 create the three sources. That is intentional — mark it `@pytest.mark.xfail(strict=False)` now and remove the marker in Task 16.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add pyproject.toml src/ tests/ .gitignore
@@ -553,7 +563,7 @@ Implements §6. Requirements are checked at runtime because this runs under agen
   - `doctor.has_fts5() -> bool`
   - `doctor.handle(args) -> int` — 0 when all hard checks pass, 1 otherwise. Reads `args.network` (default True) so tests and offline machines exercise the same path without reaching the network.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_doctor.py
@@ -599,12 +609,12 @@ def test_handle_returns_nonzero_only_on_hard_failure(monkeypatch, tmp_path):
     assert doctor.handle(Args()) == 1
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_doctor.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.doctor'`
 
-- [ ] **Step 3: Write `doctor.py`**
+- [x] **Step 3: Write `doctor.py`**
 
 ```python
 """Runtime prerequisite checks (spec §6)."""
@@ -749,7 +759,7 @@ def handle(args) -> int:
     return 1 if any(c.hard and not c.ok for c in checks) else 0
 ```
 
-- [ ] **Step 4: Register the handler in `cli.py`**
+- [x] **Step 4: Register the handler in `cli.py`**
 
 Replace the empty `_HANDLERS` dict at the bottom of `cli.py`. Import inside the function to keep `cli` import-light and avoid a circular import with `doctor`.
 
@@ -773,17 +783,17 @@ def main(argv: list[str] | None = None) -> int:
 
 Delete the `_HANDLERS` dict and the old handler lookup in `main`.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v`
 Expected: PASS
 
-- [ ] **Step 6: Verify against the real environment**
+- [x] **Step 6: Verify against the real environment**
 
 Run: `mc-jarvis doctor; echo "exit=$?"`
 Expected: `python`, `sqlite-fts5`, `pdf-backend`, `data-dir` all `ok`; `index` shows `not built`; `exit=0`
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/doctor.py src/mc_jarvis/cli.py tests/test_doctor.py
@@ -807,7 +817,7 @@ Implements §6 and §11 step 1. The tarball is 1.5 MB and needs no `git`.
   - `sources.fetch_card_data(dest: Path, *, url: str = CARD_DATA_URL) -> FetchReport`
   - `sources.FetchReport` — dataclass with `pack_files: int`, `bytes_downloaded: int`, `dest: Path`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 The test builds its own tarball, so it needs no network and no FFG content.
 
@@ -878,12 +888,12 @@ def test_real_tarball_has_the_expected_shape(tmp_path):
     assert report.bytes_downloaded < 5_000_000
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_sources.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.sources'`
 
-- [ ] **Step 3: Write `sources.py`**
+- [x] **Step 3: Write `sources.py`**
 
 `tarfile` extraction of a downloaded archive is the classic path-traversal sink, so members are validated before any write. Python 3.12 has `filter="data"` but the floor is 3.10, so the check is explicit.
 
@@ -956,17 +966,17 @@ def fetch_card_data(dest: Path, *, url: str = CARD_DATA_URL) -> FetchReport:
                        bytes_downloaded=len(blob), dest=dest)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_sources.py -v -m "not integration"`
 Expected: PASS, 3 tests
 
-- [ ] **Step 5: Run the integration test against the real upstream**
+- [x] **Step 5: Run the integration test against the real upstream**
 
 Run: `uv run pytest tests/test_sources.py -v -m integration`
 Expected: PASS — `pack_files` around 116, download under 2 MB
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/mc_jarvis/sources.py tests/test_sources.py
@@ -995,7 +1005,7 @@ Implements §8 and the copies rules in §10. The `deck_limit <= quantity` invari
 
 **Fixture contract.** `tests/fixtures/cards.py` exposes `PACK` — a list of hand-invented card dicts in marvelsdb shape containing no FFG text. Later tasks extend it; the traps it must encode are listed in spec §14. This task adds: a `deck_limit: null` card, a normal card, and a card that violates the invariant (used only by the failure test).
 
-- [ ] **Step 1: Write the fixture**
+- [x] **Step 1: Write the fixture**
 
 ```python
 # tests/fixtures/cards.py
@@ -1028,7 +1038,7 @@ INVARIANT_VIOLATION = card("tst99", "Impossible Card",
                            quantity=1, deck_limit=3)
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_index.py
@@ -1130,12 +1140,12 @@ def real_index():
     return index.connect(db)
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_index.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.schema'`
 
-- [ ] **Step 4: Write `schema.py`**
+- [x] **Step 4: Write `schema.py`**
 
 ```python
 """All DDL in one place. Idempotent."""
@@ -1198,7 +1208,7 @@ CREATE TABLE IF NOT EXISTS build_meta (
 """
 ```
 
-- [ ] **Step 5: Write `index.py`**
+- [x] **Step 5: Write `index.py`**
 
 ```python
 """SQLite index build (spec §8, §10)."""
@@ -1340,12 +1350,12 @@ def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
 
 Note `sqlite3` stores Python `bool` as 0/1 and `None` as NULL, so `is_unique` and `permanent` need no conversion.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_index.py -v -m "not integration"`
 Expected: PASS, 6 tests
 
-- [ ] **Step 7: Build against the real corpus by hand**
+- [x] **Step 7: Build against the real corpus by hand**
 
 ```bash
 uv run python -c "
@@ -1359,12 +1369,12 @@ print(index.load_cards(conn, root / 'marvelsdb'))
 ```
 Expected: around 4,298 cards, 1,607 player cards, 61 packs, no `InvariantError`
 
-- [ ] **Step 8: Run the integration tests**
+- [x] **Step 8: Run the integration tests**
 
 Run: `uv run pytest tests/ -v -m integration`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/mc_jarvis/schema.py src/mc_jarvis/index.py tests/
@@ -1389,7 +1399,7 @@ Implements §3 and §5.1. After this task the tool answers real questions. **Sto
   - `cards.handle_search(args) -> int`
   - `index.build_fts(conn) -> int` — rebuilds the FTS table, returns row count
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_cards_search.py
@@ -1460,12 +1470,12 @@ def test_real_corpus_structural_query(real_index):
     assert all(h["faction_code"] == "justice" for h in hits)
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_cards_search.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.cards'`
 
-- [ ] **Step 3: Add the FTS table to `schema.py`**
+- [x] **Step 3: Add the FTS table to `schema.py`**
 
 Append to `SCHEMA`:
 
@@ -1478,7 +1488,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
 
 External-content FTS5 keeps no second copy of the text; `build_fts` repopulates it explicitly rather than via triggers, because the index is rebuilt wholesale rather than edited.
 
-- [ ] **Step 4: Add `build_fts` to `index.py`**
+- [x] **Step 4: Add `build_fts` to `index.py`**
 
 ```python
 def build_fts(conn: sqlite3.Connection) -> int:
@@ -1490,7 +1500,7 @@ def build_fts(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM cards_fts").fetchone()[0]
 ```
 
-- [ ] **Step 5: Write `cards.py`**
+- [x] **Step 5: Write `cards.py`**
 
 `_fts_query` is load-bearing: a player's words are not FTS5 syntax, and card names contain `//`, `-`, and quotes. Every term is quoted so it is treated as a literal.
 
@@ -1589,7 +1599,7 @@ def handle_search(args) -> int:
     return 0
 ```
 
-- [ ] **Step 6: Dispatch it from `cli.py`**
+- [x] **Step 6: Dispatch it from `cli.py`**
 
 In `_dispatch`, add:
 
@@ -1600,12 +1610,12 @@ In `_dispatch`, add:
             return cards.handle_search(args)
 ```
 
-- [ ] **Step 7: Run tests to verify they pass**
+- [x] **Step 7: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 8: Rebuild the real index and exercise it**
+- [x] **Step 8: Rebuild the real index and exercise it**
 
 ```bash
 uv run python -c "
@@ -1620,7 +1630,7 @@ mc-jarvis card search --trait Aerial --limit 5 --json
 ```
 Expected: real cards in every case; no FTS5 syntax errors; `--json` is valid JSON
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/mc_jarvis/cards.py src/mc_jarvis/schema.py src/mc_jarvis/index.py src/mc_jarvis/cli.py tests/
@@ -1644,7 +1654,7 @@ Implements §8. 79 player names appear in more than one pack and 60 character na
   - `cards.show(conn, ident: str) -> dict` — either `{"card": {...}, "faces": [...]}` or `{"ambiguous": [...]}`
   - `cards.handle_show(args) -> int`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_cards_show.py
@@ -1709,12 +1719,12 @@ def test_real_black_panther_is_ambiguous(real_index):
     assert len(result["ambiguous"]) >= 3
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_cards_show.py -v -m "not integration"`
 Expected: FAIL — `AttributeError: module 'mc_jarvis.cards' has no attribute 'show'`
 
-- [ ] **Step 3: Implement `show` in `cards.py`**
+- [x] **Step 3: Implement `show` in `cards.py`**
 
 ```python
 FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
@@ -1808,14 +1818,14 @@ def _print_card(c: dict) -> None:
 
 `handle_show` references `rules.explain`, which Task 14 provides. Until then, `--explain` is the only flag that fails; leave the import inside the branch so nothing else breaks.
 
-- [ ] **Step 4: Dispatch it** — in `cli.py` `_dispatch`, under the `card` branch add `if args.card_cmd == "show": return cards.handle_show(args)`
+- [x] **Step 4: Dispatch it** — in `cli.py` `_dispatch`, under the `card` branch add `if args.card_cmd == "show": return cards.handle_show(args)`
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 6: Exercise against real data**
+- [x] **Step 6: Exercise against real data**
 
 ```bash
 mc-jarvis card show "Black Panther"      # must list candidates, exit 1
@@ -1823,7 +1833,7 @@ mc-jarvis card show 01040a               # must show hero and alter-ego faces
 mc-jarvis card show "Swinging Web Kick"
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/cards.py src/mc_jarvis/cli.py tests/test_cards_show.py
@@ -1852,7 +1862,7 @@ Implements §8 — the subtlest part of the data model. Two separate rules, both
   - `cards.identity(conn, name: str) -> dict`
   - `cards.handle_identity(args) -> int`
 
-- [ ] **Step 1: Extend the fixture**
+- [x] **Step 1: Extend the fixture**
 
 Append to `tests/fixtures/cards.py` — this mirrors the Black Panther family's shape without using its text:
 
@@ -1904,7 +1914,7 @@ MULTI_IDENTITY = [
 ]
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_identity.py
@@ -1987,12 +1997,12 @@ def test_real_black_panther_heroes_do_not_match(real_index):
     assert identity.matches(real_index, "01040a", "51002") is True
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_identity.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.identity'`
 
-- [ ] **Step 4: Add tables to `schema.py`**
+- [x] **Step 4: Add tables to `schema.py`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS identities (
@@ -2016,7 +2026,7 @@ CREATE TABLE IF NOT EXISTS match_titles (
 CREATE INDEX IF NOT EXISTS idx_match_titles_title ON match_titles(title);
 ```
 
-- [ ] **Step 5: Write `identity.py`**
+- [x] **Step 5: Write `identity.py`**
 
 ```python
 """Identity grouping and RR p.45 unique-card matching (spec §8)."""
@@ -2125,7 +2135,7 @@ def matches(conn, code_a: str, code_b: str) -> bool:
 
 Note `matches(x, x)` on a non-unique card returns `False` because it has no rows in `match_titles` — which is what `test_non_unique_cards_never_match` asserts.
 
-- [ ] **Step 6: Add `cards.identity`**
+- [x] **Step 6: Add `cards.identity`**
 
 ```python
 def identity(conn, name: str) -> dict:
@@ -2171,7 +2181,7 @@ def handle_identity(args) -> int:
     return 0
 ```
 
-- [ ] **Step 7: Call `identity.build` from the index build and dispatch the command**
+- [x] **Step 7: Call `identity.build` from the index build and dispatch the command**
 
 In `index.py`, after `build_fts`, callers run `identity.build(conn)`; Task 15 wires this into `init`. In `cli.py` `_dispatch` add:
 
@@ -2181,12 +2191,12 @@ In `index.py`, after `build_fts`, callers run `identity.build(conn)`; Task 15 wi
         return cards.handle_identity(args)
 ```
 
-- [ ] **Step 8: Run tests to verify they pass**
+- [x] **Step 8: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 9: Rebuild the real index and check the named cases**
+- [x] **Step 9: Rebuild the real index and check the named cases**
 
 ```bash
 uv run python -c "
@@ -2201,7 +2211,7 @@ uv run pytest tests/test_identity.py -v -m integration
 ```
 Expected: 72 identities; the integration assertions on Black Panther pass
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/mc_jarvis/identity.py src/mc_jarvis/schema.py src/mc_jarvis/cards.py src/mc_jarvis/cli.py tests/
@@ -2229,7 +2239,7 @@ Implements §10. Three mechanisms mark cards as sitting outside the constructed 
 
 **`config/legality.yaml` scope for this plan.** Only the `out_of_deck` section. Deck size, aspect purity, and the rest are the next plan's work.
 
-- [ ] **Step 1: Write `config/legality.yaml`**
+- [x] **Step 1: Write `config/legality.yaml`**
 
 ```yaml
 # Hand-encoded deckbuilding rules (spec §10).
@@ -2270,7 +2280,7 @@ out_of_deck:
 
 The two `cards: []` lists are filled in during Step 7 from real data, not guessed now — the audit's whole purpose is that these codes are not derivable by exact-match.
 
-- [ ] **Step 2: Extend the fixture**
+- [x] **Step 2: Extend the fixture**
 
 ```python
 # Three out-of-deck mechanisms, plus the Sp//dr ordering trap.
@@ -2324,7 +2334,7 @@ CONFIG_COVERING_EMBERLINE = {
 }
 ```
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 ```python
 # tests/test_outofdeck.py
@@ -2448,12 +2458,12 @@ def test_extra_hero_forms_are_not_blanket_exempted(real_index):
         assert n == 1, key
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_outofdeck.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.outofdeck'`
 
-- [ ] **Step 5: Add the table to `schema.py`**
+- [x] **Step 5: Add the table to `schema.py`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS out_of_deck (
@@ -2463,7 +2473,7 @@ CREATE TABLE IF NOT EXISTS out_of_deck (
 );
 ```
 
-- [ ] **Step 6: Write `outofdeck.py`**
+- [x] **Step 6: Write `outofdeck.py`**
 
 ```python
 """Cards that sit outside the constructed deck, and the audit that keeps
@@ -2629,7 +2639,7 @@ def classify(conn: sqlite3.Connection, config: dict, *,
 
 Config ships inside the wheel at `src/mc_jarvis/_bundled/legality.yaml`. Create that directory and make `config/legality.yaml` the editable source, copied there by the build; for development, symlink it.
 
-- [ ] **Step 7: Verify the two hand-encoded card codes against the data**
+- [x] **Step 7: Verify the two hand-encoded card codes against the data**
 
 The codes in `legality.yaml` were read off the corpus on 2026-08-21 (`38002` Touched in set `rogue`; `25002` Death-Glow in set `valk`). Confirm they still hold rather than trusting them — this is the file the design twice names as its highest risk:
 
@@ -2647,12 +2657,12 @@ for key in ('rogue', 'valk'):
 ```
 Read the output and confirm by eye that `38002` is Touched and `25002` is Death-Glow. If either has moved, correct `config/legality.yaml` and record the names you actually saw in the `note`. Note the query uses `valk`, not `valkyrie`.
 
-- [ ] **Step 8: Run tests to verify they pass**
+- [x] **Step 8: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 9: Run the real audit**
+- [x] **Step 9: Run the real audit**
 
 ```bash
 uv run python -c "
@@ -2668,7 +2678,7 @@ Expected: **eight** identities — Matt Murdock, Stephen Strange, Hercules, Bobb
 
 Spec §10 says this scan returns exactly four. **It returns eight** — the spec's scan did not include the `begins the game with` pattern. Eight is the correct number for the patterns in `SETUP_PATTERNS`; §10's table is the narrower result. **If any identity comes back `GAP`, that is the audit working: read the quote, find the card by eye, and add a config entry.**
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/mc_jarvis/outofdeck.py src/mc_jarvis/schema.py config/ tests/
@@ -2694,7 +2704,7 @@ Implements §10's "card text is a rules source the fields do not capture". **The
   - `cardtext.KEYWORDS: tuple[str, ...]`
   - `cardtext.build(conn) -> dict[str, int]` — populates `card_traits`, `card_keywords`, `cost_clauses`
 
-- [ ] **Step 1: Extend the fixture**
+- [x] **Step 1: Extend the fixture**
 
 ```python
 ARROW_CARDS = [
@@ -2720,7 +2730,7 @@ ARROW_CARDS = [
 ]
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_cardtext.py
@@ -2809,12 +2819,12 @@ def test_real_corpus_arrow_counts(real_index):
     assert ambiguous < 25             # 6 at time of writing
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_cardtext.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.cardtext'`
 
-- [ ] **Step 4: Add tables to `schema.py`**
+- [x] **Step 4: Add tables to `schema.py`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS card_traits (
@@ -2842,7 +2852,7 @@ CREATE TABLE IF NOT EXISTS cost_clauses (
 );
 ```
 
-- [ ] **Step 5: Write `cardtext.py`**
+- [x] **Step 5: Write `cardtext.py`**
 
 ```python
 """Build-time card-text parsing (spec §10).
@@ -3009,12 +3019,12 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
             "clauses": len(clauses)}
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_cardtext.py -v -m "not integration"`
 Expected: PASS, 8 tests
 
-- [ ] **Step 7: Check the parse against the real corpus and eyeball the ambiguous set**
+- [x] **Step 7: Check the parse against the real corpus and eyeball the ambiguous set**
 
 ```bash
 uv run python -c "
@@ -3032,7 +3042,7 @@ uv run pytest tests/test_cardtext.py -v -m integration
 ```
 Expected: roughly 607 clauses, ~196 with timing, single-digit ambiguous. **Read the timing/cost pairs.** If a timing clause has leaked into a cost, that is the failure this task exists to prevent — fix and re-run before committing.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/mc_jarvis/cardtext.py src/mc_jarvis/schema.py tests/
@@ -3052,7 +3062,7 @@ Implements §5.1. Card-data only; no new dependencies.
 **Interfaces:**
 - Produces: `cards.encounter(conn, name: str) -> dict`, `cards.handle_encounter(args) -> int`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_encounter.py
@@ -3111,12 +3121,12 @@ def test_unknown_set_returns_empty(conn):
     assert cards.encounter(conn, "Nobody")["set_code"] is None
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_encounter.py -v`
 Expected: FAIL — `AttributeError: module 'mc_jarvis.cards' has no attribute 'encounter'`
 
-- [ ] **Step 3: Implement `encounter` in `cards.py`**
+- [x] **Step 3: Implement `encounter` in `cards.py`**
 
 ```python
 def encounter(conn, name: str) -> dict:
@@ -3163,21 +3173,21 @@ def handle_encounter(args) -> int:
 
 Villain hit points scale by player count at the table rather than living in separate rows, so `--difficulty` is deliberately absent; the printed value is the base. Note this in `SKILL.md` (Task 16).
 
-- [ ] **Step 4: Dispatch it** — in `cli.py` `_dispatch`: `if name == "encounter": from . import cards; return cards.handle_encounter(args)`
+- [x] **Step 4: Dispatch it** — in `cli.py` `_dispatch`: `if name == "encounter": from . import cards; return cards.handle_encounter(args)`
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 6: Exercise against real data**
+- [x] **Step 6: Exercise against real data**
 
 ```bash
 mc-jarvis encounter "Rhino"
 mc-jarvis encounter "Klaw" --json
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/cards.py src/mc_jarvis/cli.py tests/test_encounter.py
@@ -3287,7 +3297,7 @@ Implements §11. FFG's product page returns HTTP 403 to plain HTTP clients regar
   - `manifest.DEFAULT_SLUGS: tuple[str, ...]` — Rules Reference and Learn to Play
   - `manifest.fetch_with_browser() -> str` — Playwright; raises `RuntimeError` when the extra is absent
 
-- [ ] **Step 1: Write the fixture**
+- [x] **Step 1: Write the fixture**
 
 Hand-written, mimicking the page's structure without reproducing FFG's page. Save as `tests/fixtures/ffg_page.html`:
 
@@ -3308,7 +3318,7 @@ Hand-written, mimicking the page's structure without reproducing FFG's page. Sav
 </body></html>
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_manifest.py
@@ -3367,12 +3377,12 @@ def test_diff_is_empty_when_nothing_changed(docs):
     assert manifest.diff(docs, docs) == []
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_manifest.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.manifest'`
 
-- [ ] **Step 4: Write `manifest.py`**
+- [x] **Step 4: Write `manifest.py`**
 
 `html.parser` from the stdlib is used rather than a dependency; the parse is one pass over anchors.
 
@@ -3516,12 +3526,12 @@ def fetch_with_browser() -> str:
     return html
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_manifest.py -v`
 Expected: PASS, 8 tests
 
-- [ ] **Step 6: Verify against the real page**
+- [x] **Step 6: Verify against the real page**
 
 Save the real product page to `/tmp/ffg.html` using any browser (or an agent's browser tool), then:
 
@@ -3557,7 +3567,7 @@ print('OK')
 "
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/manifest.py tests/
@@ -3581,7 +3591,7 @@ Implements §9 and §6. Two backends behind one interface: `pypdf` by default, `
   - `pdf.available_backends() -> list[str]`
   - `pdf.PdfError` — exception
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 The test generates its own two-column PDF so no FFG content is committed and column order is genuinely exercised.
 
@@ -3641,12 +3651,12 @@ def test_missing_file_raises_clearly(tmp_path):
 
 Add `reportlab` to the dev extra in `pyproject.toml` (`dev = ["pytest>=8.0", "reportlab>=4.0"]`). It is a **test-only** dependency and must not appear in `dependencies`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run --extra dev pytest tests/test_pdf.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.pdf'`
 
-- [ ] **Step 3: Write `pdf.py`**
+- [x] **Step 3: Write `pdf.py`**
 
 ```python
 """PDF acquisition and text extraction (spec §6, §9).
@@ -3734,12 +3744,12 @@ def _extract_pypdf(path: Path) -> list[str]:
     return [(page.extract_text() or "") for page in reader.pages]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `uv run --extra dev pytest tests/test_pdf.py -v`
 Expected: PASS, 5 tests
 
-- [ ] **Step 5: Verify both backends agree on the real Rules Reference**
+- [x] **Step 5: Verify both backends agree on the real Rules Reference**
 
 ```bash
 uv run python -c "
@@ -3755,7 +3765,7 @@ for backend in pdf.available_backends():
 ```
 Expected: 71 pages from each backend; `INDEX` present on page 2 for both. **If the page count differs between backends, stop — the chunker in Task 13 assumes page indices are comparable.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/mc_jarvis/pdf.py tests/test_pdf.py pyproject.toml
@@ -3786,7 +3796,7 @@ The same index also names every icon, so **`config/glyphs.yaml` is derived and r
   - `rules_chunk.load_glyphs(path=None) -> dict[str, str]`
   - `rules_chunk.store(conn, entries: list[Entry]) -> int`
 
-- [ ] **Step 1: Write the text fixture**
+- [x] **Step 1: Write the text fixture**
 
 `tests/fixtures/rr_like.txt` — shaped like real extractor output, invented content, one private-use codepoint (U+F521) and one unmapped one (U+F5FF). Pages separated by form feeds:
 
@@ -3828,7 +3838,7 @@ PY
 ```
 (Set `RAW` to the block above.)
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_rules_chunk.py
@@ -3999,12 +4009,12 @@ def test_no_unmapped_glyphs_in_the_real_rules(real_index):
         f"unmapped glyph codepoints: {row['value']}"
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_rules_chunk.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.rules_chunk'`
 
-- [ ] **Step 4: Add tables to `schema.py`**
+- [x] **Step 4: Add tables to `schema.py`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS rules_entries (
@@ -4030,7 +4040,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS rules_fts USING fts5(
 );
 ```
 
-- [ ] **Step 5: Write `rules_chunk.py`**
+- [x] **Step 5: Write `rules_chunk.py`**
 
 ```python
 """Rules Reference chunking (spec §9, as corrected).
@@ -4281,12 +4291,12 @@ def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
         "SELECT COUNT(*) FROM rules_entries").fetchone()[0]
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_rules_chunk.py -v -m "not integration"`
 Expected: PASS, 9 tests
 
-- [ ] **Step 7: Derive `config/glyphs.yaml` from the real Rules Reference — then read it**
+- [x] **Step 7: Derive `config/glyphs.yaml` from the real Rules Reference — then read it**
 
 ```bash
 uv run python -c "
@@ -4332,7 +4342,7 @@ glyphs:
 
 **Verify this table against the script's output before committing** — the values above are what was observed on 2026-08-21 and the RR may have been revised since. Note that spec §9 and §16 say the range is U+F520–F530; it is U+F520–**F531**, and U+F523 and U+F529–U+F52C are unused.
 
-- [ ] **Step 8: Run the extraction audit and account for every unresolved entry**
+- [x] **Step 8: Run the extraction audit and account for every unresolved entry**
 
 A rules index that silently drops entries is worse than one that fails, because every downstream answer stays confidently wrong. This step is the gate.
 
@@ -4367,11 +4377,11 @@ The one remaining pointer is `Card Anatomy`, a genuine index entry pointing into
 
 **If your run leaves more than one pointer, do not widen the thresholds.** Read each one, decide whether it is recoverable, and record why if it is not.
 
-- [ ] **Step 9: Persist the audit so it stays visible**
+- [x] **Step 9: Persist the audit so it stays visible**
 
 Have `init` write the report to `<data>/rules/extraction-report.json` and surface `resolved`/`index_entries` in `mc-jarvis status`. A regression after an FFG revision then shows up in a routine `status` rather than in a wrong ruling at a table.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/mc_jarvis/rules_chunk.py src/mc_jarvis/schema.py config/glyphs.yaml tests/
@@ -4397,7 +4407,7 @@ Implements §5.1, §9, §10. **Every rules answer cites the entry name and page*
   - `rules.build_links(conn) -> int` — populates `card_rules_links`
   - `rules.handle_show(args) -> int`, `rules.handle_search(args) -> int`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_rules.py
@@ -4507,12 +4517,12 @@ def test_real_keyword_entries_resolve(real_index):
         assert result["page"] is not None, term
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_rules.py -v -m "not integration"`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.rules'`
 
-- [ ] **Step 3: Add the link table to `schema.py`**
+- [x] **Step 3: Add the link table to `schema.py`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS card_rules_links (
@@ -4524,7 +4534,7 @@ CREATE TABLE IF NOT EXISTS card_rules_links (
 CREATE INDEX IF NOT EXISTS idx_links_term ON card_rules_links(lower(term));
 ```
 
-- [ ] **Step 4: Write `rules.py`**
+- [x] **Step 4: Write `rules.py`**
 
 ```python
 """Rules queries (spec §5.1, §9). Every answer carries a citation."""
@@ -4647,7 +4657,7 @@ def handle_search(args) -> int:
     return 0
 ```
 
-- [ ] **Step 5: Dispatch it** — in `cli.py` `_dispatch`:
+- [x] **Step 5: Dispatch it** — in `cli.py` `_dispatch`:
 
 ```python
     if name == "rules":
@@ -4658,12 +4668,12 @@ def handle_search(args) -> int:
             return rules.handle_search(args)
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 7: Exercise against real rules**
+- [x] **Step 7: Exercise against real rules**
 
 ```bash
 mc-jarvis rules show Overkill
@@ -4673,7 +4683,7 @@ mc-jarvis card show 01001a --explain
 ```
 Expected: every answer carries an entry name and page; `--explain` lists the card's keywords with rules text
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/mc_jarvis/rules.py src/mc_jarvis/schema.py src/mc_jarvis/cli.py tests/test_rules.py
@@ -4698,7 +4708,7 @@ Implements §11. Ties every preceding task into one bootstrap. **First run is a 
   - `update.run(args) -> int`
   - `update.status(args) -> int`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_init.py
@@ -4778,12 +4788,12 @@ def test_update_diff_reports_a_revised_rulebook(tmp_path):
     assert manifest.diff(old, new) == [("rules-reference", "revised")]
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_init.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.init'`
 
-- [ ] **Step 3: Write `init.py`**
+- [x] **Step 3: Write `init.py`**
 
 ```python
 """Bootstrap (spec §11)."""
@@ -4926,7 +4936,7 @@ def _get_page_html(args) -> str | None:
     return None
 ```
 
-- [ ] **Step 4: Write `update.py`**
+- [x] **Step 4: Write `update.py`**
 
 ```python
 """Refresh and staleness reporting (spec §11)."""
@@ -4996,7 +5006,7 @@ def status(args) -> int:
     return 0
 ```
 
-- [ ] **Step 5: Dispatch them** — in `cli.py` `_dispatch`:
+- [x] **Step 5: Dispatch them** — in `cli.py` `_dispatch`:
 
 ```python
     if name == "init":
@@ -5010,12 +5020,12 @@ def status(args) -> int:
         return update.status(args)
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 7: Run a real end-to-end init from an empty data directory**
+- [x] **Step 7: Run a real end-to-end init from an empty data directory**
 
 ```bash
 rm -rf ~/.local/share/mc-jarvis
@@ -5026,7 +5036,7 @@ uv run pytest tests/ -v -m integration
 ```
 Expected: the whole pipeline from nothing to a working index; `status` shows ~4,298 cards, 72 identities, ~216 rules entries, and **`unmapped_glyphs` empty**
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/mc_jarvis/init.py src/mc_jarvis/update.py src/mc_jarvis/cli.py tests/test_init.py
