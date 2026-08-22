@@ -2,7 +2,7 @@
 
 **Tasks 1–15 and 17 of the Phase 1 plan are complete, committed, and green.**
 
-    272 tests passing
+    276 tests passing
     4,379 cards · 69 identities · 263 rules entries (216 resolve) · 1,180
     card-rules links · 4,586 timing triggers
     unmapped_glyphs: empty · unclassified prefixes: none
@@ -57,6 +57,16 @@ that would have produced wrong answers at a table:
   p.5; `First Player` is p.19, not p.20. No page number lives in
   `timing.yaml` any more.
 
+- **The prefix-length cutoff hid a real trigger.** `len(prefix) > 40`
+  dropped bold spans without classifying or counting them, so no gate
+  could report what it hid. Measured: 113 rows above the line, 112 of
+  them prose bolded for emphasis, and one a genuine `Forced Response` —
+  21147 Hela's Crown prints `<b>Forced Response<b>:`, an opening tag
+  where a closing one belongs, so the span swallowed the card's `Boost`
+  trigger too. The cutoff is now config with its measurement recorded
+  (longest classifying span 29 chars, shortest bolded sentence 41), and a
+  test re-measures both ends.
+
 Two bugs outside the task, both surfaced by running `update` a **second**
 time — the first run passed:
 
@@ -74,6 +84,9 @@ time — the first run passed:
 - Task 17's steps are ticked; earlier tasks' checkboxes are still unticked.
 - **This report previously said 287 rules entries. It is 263** — 216
   addressable glossary entries, 46 redirects, one page pointer.
+- `mc-jarvis status` now prints `rules_resolved` alongside
+  `rules_entries`. The total on its own read as "263 terms you can look
+  up", which is not what it means.
 
 ## Earlier work still standing
 
