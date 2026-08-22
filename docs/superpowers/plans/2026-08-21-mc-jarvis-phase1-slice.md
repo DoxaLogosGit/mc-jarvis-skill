@@ -30,7 +30,15 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 ## Verified findings this plan adds to the spec
 
-Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9 and §16.
+Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9, §10 and §16.
+
+**The corpus has moved since the spec was written.** It now holds **4,379 cards** (§16 says 4,298) across **69 identities** grouped by `set_code` (§16 says 72 heroes). Test tolerances in this plan are ranges, not exact counts, for that reason — do not tighten them to today's numbers.
+
+**The setup audit flags eight identities, not four.** Spec §10's table lists Bobby Drake, Riri Williams, Rogue and Brunnhilde. Running the patterns in this plan's `SETUP_PATTERNS` also returns Matt Murdock, Stephen Strange, Hercules, and Ororo Munroe, all via `begins the game with`. All eight are coverable; see Task 8.
+
+**A `hero_special` set is a different set from its identity's**, so it cannot be found by `set_code` — identity `iceman` pairs with set `iceman_frostbite`. Pack code is the reliable join: verified exact for all six hero_special sets, matching nothing else.
+
+**Valkyrie's set code is `valk`, not `valkyrie`.** Touched is `38002` (set `rogue`); Death-Glow is `25002` (set `valk`). Neither carries `permanent`, and neither set contains any permanent card — so nothing but a config entry can cover them.
 
 - **The Rules Reference carries its own index on PDF pages 2–3**, and it is authoritative: 216 entries with page numbers, plus 46 `See …` redirects. This replaces the spec's ALL-CAPS-regex-with-reconciliation approach as the primary entry list. An independent alphabetical-monotonicity filter over the body headers yields ~215 entries, cross-validating the count.
 - **All 13 private-use icon codepoints used in the RR body are named by that index** (`Mental Resource (<glyph>)`, `Amplify Icon (<glyph>)`, …), so `config/glyphs.yaml` is **derived and human-reviewed, not hand-authored**. Zero body glyphs are unmapped.
@@ -394,10 +402,51 @@ Expected: PASS, 11 tests
 Run: `uv tool install --editable . && mc-jarvis --help && mc-jarvis doctor; echo "exit=$?"`
 Expected: help text listing every command; `doctor` prints the not-implemented message and `exit=3`
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Create the bundled-asset directory**
+
+Three modules resolve paths into `src/mc_jarvis/_bundled/` — `outofdeck.CONFIG_PATH`, `rules_chunk.GLYPHS_PATH`, and `skill_install.SKILL_SOURCE` — and the wheel ships it. Create it now, as scaffolding, so no later task depends on a directory nothing makes.
 
 ```bash
-git add pyproject.toml src/ tests/
+mkdir -p src/mc_jarvis/_bundled
+# Development: the editable sources live at the repo root; the package
+# reads them through links so an edit takes effect without a rebuild.
+ln -sfn ../../../config/legality.yaml src/mc_jarvis/_bundled/legality.yaml
+ln -sfn ../../../config/glyphs.yaml   src/mc_jarvis/_bundled/glyphs.yaml
+ln -sfn ../../../skill                src/mc_jarvis/_bundled/skill
+printf '*\n!.gitignore\n' > src/mc_jarvis/_bundled/.gitignore
+```
+
+The links are gitignored; the wheel gets real files instead. Replace the `artifacts` line in `pyproject.toml` with a `force-include` mapping, which resolves the real sources at build time:
+
+```toml
+[tool.hatch.build.targets.wheel.force-include]
+"config/legality.yaml" = "src/mc_jarvis/_bundled/legality.yaml"
+"config/glyphs.yaml"   = "src/mc_jarvis/_bundled/glyphs.yaml"
+"skill"                = "src/mc_jarvis/_bundled/skill"
+```
+
+Add the test:
+
+```python
+# tests/test_bundled.py
+from mc_jarvis import outofdeck, rules_chunk, skill_install
+
+
+def test_every_bundled_asset_path_resolves():
+    """Three modules read from _bundled/. A missing link here surfaces as
+    a confusing failure four tasks later."""
+    assert outofdeck.CONFIG_PATH.exists(), outofdeck.CONFIG_PATH
+    assert rules_chunk.GLYPHS_PATH.exists(), rules_chunk.GLYPHS_PATH
+    assert (skill_install.SKILL_SOURCE / "SKILL.md").exists(), \
+        skill_install.SKILL_SOURCE
+```
+
+This test fails until Tasks 8, 13, and 16 create the three sources. That is intentional — mark it `@pytest.mark.xfail(strict=False)` now and remove the marker in Task 16.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add pyproject.toml src/ tests/ .gitignore
 git commit -m "feat: package scaffold, data paths, and CLI seam"
 ```
 
@@ -2121,17 +2170,19 @@ out_of_deck:
   # `identity` is the identity_key (set_code); `cards` are card codes.
   exceptions:
     - identity: rogue
-      cards: []                    # resolved in Task 8 Step 7, not guessed here
+      cards: ["38002"]             # Touched — verify in Task 8 Step 7
       note: >-
         Rogue's identity text instructs the player to find this card and set
         it aside. The card carries deck_limit 1, quantity 1, permanent null,
         in the ordinary set — structurally indistinguishable from a normal
         signature upgrade.
-    - identity: valkyrie
-      cards: []                    # resolved in Task 8 Step 7, not guessed here
+    - identity: valk
+      cards: ["25002"]             # Death-Glow — verify in Task 8 Step 7
       note: >-
         Brunnhilde's setup text names "Death Glow"; the card is named
         "Death-Glow". Resolution cannot be by exact name match.
+        NOTE the identity key is `valk`, not `valkyrie` — the set code is
+        abbreviated, and a wrong key here matches nothing and fails silent.
 ```
 
 The two `cards: []` lists are filled in during Step 7 from real data, not guessed now — the audit's whole purpose is that these codes are not derivable by exact-match.
@@ -2289,13 +2340,29 @@ def test_spdr_permanent_shares_a_title_with_its_hero_face(conn):
 
 
 @pytest.mark.integration
-def test_real_audit_returns_the_four_known_identities(real_index):
+def test_real_audit_flags_the_known_identities_and_covers_them_all(real_index):
+    """Verified 2026-08-21: these patterns flag eight identities, not the
+    four spec §10 claims — the spec's scan was narrower. All eight must come
+    back covered."""
     config = outofdeck.load_config()
     findings = outofdeck.setup_audit(real_index, config)
-    names = {f.identity_name for f in findings}
-    assert {"Rogue", "Brunnhilde"} <= names
+    keys = {f.identity_key for f in findings}
+    assert {"daredevil", "doctor_strange", "hercules", "iceman",
+            "ironheart", "rogue", "storm", "valk"} <= keys
     assert all(f.covered for f in findings), \
-        [f.identity_name for f in findings if not f.covered]
+        [(f.identity_key, f.quote) for f in findings if not f.covered]
+
+
+@pytest.mark.integration
+def test_extra_hero_forms_are_not_blanket_exempted(real_index):
+    """Angel, Ant-Man and Wasp have a third face but one alter-ego. If they
+    ever gain set-aside text, the audit must still flag them."""
+    for key in ("angel", "ant", "wsp"):
+        n = real_index.execute(
+            "SELECT COUNT(*) FROM identity_faces f JOIN cards c "
+            "ON c.code = f.code WHERE f.identity_key = ? "
+            "AND c.type_code = 'alter_ego'", (key,)).fetchone()[0]
+        assert n == 1, key
 ```
 
 - [ ] **Step 4: Run the tests to verify they fail**
@@ -2387,20 +2454,41 @@ def setup_audit(conn: sqlite3.Connection, config: dict) -> list[AuditFinding]:
             sentence = _sentence_around(row["text"], m.start())
 
             covered = bool(exceptions.get(key))
+
             if not covered:
+                # A hero_special set is a DIFFERENT set from the identity's
+                # own (identity `iceman` -> set `iceman_frostbite`), so it
+                # cannot be found by set_code. It is reliably found by pack:
+                # verified 2026-08-21, pack association is exact for all six
+                # hero_special sets and matches nothing else.
                 covered = conn.execute(
-                    "SELECT 1 FROM cards c LEFT JOIN sets s "
-                    "  ON s.code = c.set_code "
-                    "WHERE c.set_code = ? AND ("
-                    "  c.permanent = 1 OR s.card_set_type_code = ?) LIMIT 1",
-                    (key, special_type)).fetchone() is not None
+                    "SELECT 1 FROM cards sp "
+                    "JOIN sets s ON s.code = sp.set_code "
+                    "WHERE s.card_set_type_code = ? AND sp.pack_code IN ("
+                    "  SELECT c.pack_code FROM identity_faces f "
+                    "  JOIN cards c ON c.code = f.code "
+                    "  WHERE f.identity_key = ?) LIMIT 1",
+                    (special_type, key)).fetchone() is not None
+
             if not covered:
-                # An identity whose set-aside language refers to its own
-                # other identity cards (the Ironheart shape) is covered by
-                # identity grouping.
+                # A permanent card in the identity's own set.
                 covered = conn.execute(
-                    "SELECT COUNT(*) FROM identity_faces "
-                    "WHERE identity_key = ?", (key,)).fetchone()[0] > 2
+                    "SELECT 1 FROM cards WHERE set_code = ? "
+                    "AND permanent = 1 LIMIT 1", (key,)).fetchone() is not None
+
+            if not covered:
+                # The Ironheart shape: multiple complete identity CARDS, so
+                # "set your other identities aside" is already handled by
+                # identity grouping. The discriminator is more than one
+                # alter-ego face — verified 2026-08-21 to isolate Ironheart
+                # alone. Counting faces > 2 instead would blanket-exempt
+                # Angel, Ant-Man and Wasp, which have a second *hero* form
+                # and must stay auditable.
+                covered = conn.execute(
+                    "SELECT COUNT(*) FROM identity_faces f "
+                    "JOIN cards c ON c.code = f.code "
+                    "WHERE f.identity_key = ? AND c.type_code = 'alter_ego'",
+                    (key,)).fetchone()[0] > 1
 
             findings.append(AuditFinding(key, row["name"], sentence, covered))
             break
@@ -2458,15 +2546,15 @@ def classify(conn: sqlite3.Connection, config: dict, *,
 
 Config ships inside the wheel at `src/mc_jarvis/_bundled/legality.yaml`. Create that directory and make `config/legality.yaml` the editable source, copied there by the build; for development, symlink it.
 
-- [ ] **Step 7: Fill in the real card codes**
+- [ ] **Step 7: Verify the two hand-encoded card codes against the data**
 
-The two `cards: []` entries must be resolved by looking at the data, not by guessing:
+The codes in `legality.yaml` were read off the corpus on 2026-08-21 (`38002` Touched in set `rogue`; `25002` Death-Glow in set `valk`). Confirm they still hold rather than trusting them — this is the file the design twice names as its highest risk:
 
 ```bash
 uv run python -c "
 from mc_jarvis import index, paths
 conn = index.connect(paths.db_path())
-for key in ('rogue', 'valkyrie'):
+for key in ('rogue', 'valk'):
     print('---', key)
     for r in conn.execute(
         'SELECT code, name, type_code, permanent, deck_limit FROM cards '
@@ -2474,7 +2562,7 @@ for key in ('rogue', 'valkyrie'):
         print(dict(r))
 "
 ```
-Read the output, identify Touched and Death-Glow by eye, and write their codes into `config/legality.yaml`. Record the exact names you saw in the `note`.
+Read the output and confirm by eye that `38002` is Touched and `25002` is Death-Glow. If either has moved, correct `config/legality.yaml` and record the names you actually saw in the `note`. Note the query uses `valk`, not `valkyrie`.
 
 - [ ] **Step 8: Run tests to verify they pass**
 
@@ -2493,7 +2581,9 @@ for f in outofdeck.setup_audit(conn, cfg):
 print('classified:', outofdeck.classify(conn, cfg, strict=True))
 "
 ```
-Expected: the four identities from spec §10 — Bobby Drake, Riri Williams, Rogue, Brunnhilde — all `OK` once Step 7 is done. **If more than four appear, that is a real finding: record it and widen the config.**
+Expected: **eight** identities — Matt Murdock, Stephen Strange, Hercules, Bobby Drake, Riri Williams, Rogue, Ororo Munroe, Brunnhilde — every one `OK`. Five are covered by a `hero_special` set found through the shared pack code, one (Ironheart) by identity grouping, and two by the config entries.
+
+Spec §10 says this scan returns exactly four. **It returns eight** — the spec's scan did not include the `begins the game with` pattern. Eight is the correct number for the patterns in `SETUP_PATTERNS`; §10's table is the narrower result. **If any identity comes back `GAP`, that is the audit working: read the quote, find the card by eye, and add a config entry.**
 
 - [ ] **Step 10: Commit**
 
@@ -3280,7 +3370,26 @@ print('defaults present:',
       set(manifest.DEFAULT_SLUGS) <= {d.slug for d in docs})
 "
 ```
-Expected: around 91 PDFs; both default slugs present. **If `rules-reference` is not among the slugs, the title on the page differs from the assumption — fix `DEFAULT_SLUGS` rather than the slugifier.**
+Expected: around 91 PDFs; both default slugs present, **each with a non-null `date`**.
+
+Two ways this fails quietly, both worth checking here rather than later:
+
+- If `rules-reference` is not among the slugs, the page title differs from the assumption — fix `DEFAULT_SLUGS`, not the slugifier.
+- If `date` is `None`, `manifest.diff` can never report `revised`, and `update`'s only rules-staleness signal is dead. `_Collector` reads size and date from text *following* the anchor; if the real page puts them before it, move the capture rather than shipping the feature inert.
+
+```bash
+uv run python -c "
+from pathlib import Path
+from mc_jarvis import manifest
+docs = {d.slug: d for d in manifest.parse(Path('/tmp/ffg.html').read_text())}
+for slug in manifest.DEFAULT_SLUGS:
+    d = docs.get(slug)
+    assert d, f'missing slug: {slug}'
+    assert d.date, f'{slug} has no date — manifest.diff cannot detect revisions'
+    print(slug, '|', d.date, '|', d.size)
+print('OK')
+"
+```
 
 - [ ] **Step 7: Commit**
 
@@ -3857,9 +3966,12 @@ def store(conn: sqlite3.Connection, entries: list[Entry]) -> int:
         [(e.term, t, e.source_doc) for e in entries for t in e.see_also])
 
     conn.execute("INSERT INTO rules_fts(rules_fts) VALUES('delete-all')")
+    # Redirects ("See Cost Arrow Icon.") carry no page, and a search hit
+    # with no page would break the citation guarantee. They stay queryable
+    # by name through `rules show`, but out of the full-text index.
     conn.execute(
         "INSERT INTO rules_fts(rowid, term, body) "
-        "SELECT id, term, body FROM rules_entries")
+        "SELECT id, term, body FROM rules_entries WHERE page IS NOT NULL")
     conn.commit()
     return conn.execute(
         "SELECT COUNT(*) FROM rules_entries").fetchone()[0]
@@ -3968,6 +4080,21 @@ from mc_jarvis import cardtext, index, rules, rules_chunk
 from tests.fixtures import cards as fx
 
 
+_ENTRIES = [
+    rules_chunk.Entry("Toughness", "A tough status card absorbs "
+                      "the next damage.", 41, "rules-reference"),
+    rules_chunk.Entry("Retaliate", "After this character defends, "
+                      "deal damage to the attacker.", 36, "rules-reference"),
+    rules_chunk.Entry("Setup", "Follow these steps in order.", 3,
+                      "learn-to-play", entry_addressable=False),
+]
+
+
+@pytest.fixture
+def entries():
+    return list(_ENTRIES)
+
+
 @pytest.fixture
 def conn(tmp_path):
     root = tmp_path / "marvelsdb"
@@ -3979,16 +4106,7 @@ def conn(tmp_path):
     index.load_cards(c, root)
     index.build_fts(c)
     cardtext.build(c)
-    entries = [
-        rules_chunk.Entry("Toughness", "A tough status card absorbs "
-                          "the next damage.", 41, "rules-reference"),
-        rules_chunk.Entry("Retaliate", "After this character defends, "
-                          "deal damage to the attacker.", 36,
-                          "rules-reference"),
-        rules_chunk.Entry("Setup", "Follow these steps in order.", 3,
-                          "learn-to-play", entry_addressable=False),
-    ]
-    rules_chunk.store(c, entries)
+    rules_chunk.store(c, _ENTRIES)
     rules.build_links(c)
     return c
 
@@ -4020,6 +4138,18 @@ def test_search_results_all_carry_a_citation(conn):
     for h in hits:
         assert h["source_doc"]
         assert h["page"] is not None
+
+
+def test_redirects_are_reachable_by_name_but_not_by_search(conn, entries):
+    """A redirect has no page, so a search hit on one could not be cited.
+    `store` replaces a whole source_doc, so the redirect is added to the
+    full set rather than stored on its own."""
+    rules_chunk.store(conn, entries + [rules_chunk.Entry(
+        "Bolstered", "See Toughness.", None, "rules-reference",
+        see_also=["Toughness"])])
+    assert rules.show(conn, "Bolstered")["body"] == "See Toughness."
+    assert all(h["term"] != "Bolstered"
+               for h in rules.search(conn, "Toughness"))
 
 
 def test_search_labels_non_entry_addressable_sources(conn):
