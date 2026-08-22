@@ -36,6 +36,22 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 Confirmed by direct inspection on 2026-08-21, while planning. These supersede or sharpen §9, §10 and §16.
 
+**Seven heroes override the normal deckbuilding rules, and nothing structural marks them.** `deck_requirements` is null on every identity, so the only evidence is prose on the alter-ego card. Scanning identity text for composition language (as opposed to the 42 faces that merely *search* the deck) returns exactly seven, verified 2026-08-22:
+
+| Identity | Override |
+|---|---|
+| Spider-Woman | Two aspects instead of one, in equal numbers |
+| Adam Warlock | All four aspects in equal numbers, **and** max 1 copy of any non-signature card |
+| Cable | Player side schemes from any aspect |
+| Cyclops | X-MEN allies from any aspect |
+| Wonder Man | Events with a printed energy icon from any aspect |
+| Gamora | Up to 6 attack/thwart events off-aspect (cap on the total, not per trait) |
+| Maria Hill | 3 S.H.I.E.L.D. supports off-aspect — the cap is on **distinct titles**, each at full copy count |
+
+Two of these are not simple allowances and the deck validator must not treat them as such: Spider-Woman and Adam Warlock change the *aspect count itself* and impose an equality constraint, and Warlock additionally caps every non-signature card at 1 copy, overriding `deck_limit` downward.
+
+`deckrules.scan` finds them, `config/legality.yaml` encodes what each means, and `deckrules.check` fails the build when a scanned identity has no entry **or** when an entry's quote no longer appears in the card text. Both directions matter: a new release adding an override would otherwise be validated against the wrong rules silently, and a reworded card would leave a stale rule in force. This is the same shape as the setup audit, for the same reason — a hand-maintained list does not converge.
+
 **Copy limits stated in card text: `deck_limit` is authoritative, and scraping the text is the bug.** Measured 2026-08-22:
 
 | Phrase | Cards | What `deck_limit` says |

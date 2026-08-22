@@ -64,3 +64,75 @@ out_of_deck:
       note: >-
         "Set your other identities aside" refers to her other identity
         cards, which identity grouping already keeps out of the deck.
+
+# Hero-specific deckbuilding overrides (spec §10 does not cover these).
+#
+# `deck_requirements` is null on every identity, so the ONLY evidence is
+# prose on the alter-ego card. The scan in `deckrules.scan` finds which
+# identities carry such text; this section says what each one means,
+# because the semantics cannot be derived from the prose.
+#
+# `quote` must appear verbatim in the identity's card text. The audit
+# re-checks it at build time, so a reworded card fails loudly rather than
+# leaving a stale rule in force.
+#
+# Verified 2026-08-22: the scan returns exactly these seven identities.
+deckbuilding_overrides:
+  - identity: spider_woman
+    aspects: 2
+    equal_aspects: true
+    quote: "Choose two aspects instead of one during deck-building"
+    note: >-
+      Must include an equal number of cards from the two chosen aspects.
+
+  - identity: warlock
+    aspects: 4
+    equal_aspects: true
+    max_copies_non_signature: 1
+    quote: "your deck must include an equal number of cards from all 4 aspects"
+    note: >-
+      Also: "You cannot include more than 1 copy of any non-Adam Warlock
+      card", which overrides deck_limit downward for every off-set card.
+
+  - identity: cable
+    off_aspect_allowance:
+      type_code: player_side_scheme
+      limit: null                    # null means no cap
+    quote: "You may include player side schemes from any aspect in your deck"
+
+  - identity: cyclops
+    off_aspect_allowance:
+      type_code: ally
+      trait: X-MEN
+      limit: null
+    quote: "You may include [[X-MEN]] allies from any aspect in your deck"
+
+  - identity: wonder_man
+    off_aspect_allowance:
+      type_code: event
+      resource: energy
+      limit: null
+    quote: >-
+      You may include events with a printed [energy] resource icon from
+      any aspect in your deck
+
+  - identity: gam
+    off_aspect_allowance:
+      type_code: event
+      traits_any: ["attack", "thwart"]
+      limit: 6
+    quote: "You may include up to 6"
+    note: >-
+      Up to 6 attack and/or thwart events from aspects other than the
+      chosen one. The cap is on the total, not per trait.
+
+  - identity: maria_hill
+    off_aspect_allowance:
+      type_code: support
+      trait: S.H.I.E.L.D.
+      limit: 3
+      limit_unit: distinct_titles
+    quote: "You may include the maximum number of copies of 3"
+    note: >-
+      Three S.H.I.E.L.D. supports at their full copy count - the cap is on
+      distinct titles, not on cards, so it is 3 titles x deck_limit each.
