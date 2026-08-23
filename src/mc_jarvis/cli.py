@@ -68,6 +68,12 @@ def build_parser() -> argparse.ArgumentParser:
     rsearch = _leaf(rules_sub, "search", "full-text search the rules")
     rsearch.add_argument("text")
 
+    rul = _leaf(sub, "rulings", "designer rulings issued since the rulebook")
+    rul.add_argument("text", nargs="?", default=None,
+                     help="search the rulings instead of listing them")
+    rul.add_argument("--all", action="store_true",
+                     help="include rulings a newer rulebook superseded")
+
     tim = _leaf(sub, "timing", "trigger ordering and the game round")
     tim.add_argument("trigger", nargs="?", default=None,
                      help="a timing trigger, e.g. Response, When Defeated")
@@ -144,6 +150,9 @@ def _dispatch(name: str, args) -> int:
     if name == "install-skill":
         from . import skill_install
         return skill_install.run(args)
+    if name == "rulings":
+        from . import rulings
+        return rulings.handle(args)
     if name == "timing":
         from . import timing
         return timing.handle(args)

@@ -40,6 +40,16 @@ def run(args) -> int:
         if init.take_current_rr(root, known):
             print("  Rules Reference replaced with the current edition")
 
+    # Rulings change between Rules Reference releases - that is the whole
+    # point of them - so `update` re-fetches even though it will not
+    # re-read the archived rulebook list.
+    from . import rulings
+    found = rulings.fetch(root)
+    if found.ok:
+        print(f"  {len(found.rulings)} designer rulings fetched")
+    else:
+        print(f"  no designer rulings: {found.detail}")
+
     extracted = init.extract_rules_text(root)
     if extracted:
         print(f"  {extracted} rulebook(s) re-extracted to text")
@@ -92,6 +102,12 @@ def status(args) -> int:
             "GROUP BY source_doc ORDER BY source_doc")},
         "unmapped_glyphs": meta.get("unmapped_glyphs", ""),
         "timing_triggers": count("timing_triggers"),
+        # 0 active right after a Rules Reference release is the correct
+        # steady state, not a problem: the new edition absorbed them.
+        "rulings": count("rulings"),
+        "rulings_active": conn.execute(
+            "SELECT COUNT(*) FROM rulings WHERE status = 'active'"
+        ).fetchone()[0],
         "timing_broken": json.loads(meta.get("timing_broken") or "[]"),
     }
     if getattr(args, "json", False):

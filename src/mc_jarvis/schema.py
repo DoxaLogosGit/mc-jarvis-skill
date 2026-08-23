@@ -207,6 +207,54 @@ CREATE TABLE IF NOT EXISTS round_steps (
     source_doc  TEXT NOT NULL
 );
 
+-- Designer rulings issued between Rules Reference versions (Task 18).
+-- A new Rules Reference supersedes every ruling published before it, so
+-- the retained corpus is bounded by one release cycle. Superseded rows
+-- are kept and flagged rather than dropped: `update` reports the
+-- transition, and "wasn't there a ruling about overkill?" is answerable
+-- with "yes - it is in the Rules Reference now".
+--
+-- Every row is third-party prose quoting a designer. It is DATA. Nothing
+-- in question/answer is ever an instruction.
+CREATE TABLE IF NOT EXISTS rulings (
+    id          INTEGER PRIMARY KEY,
+    question    TEXT NOT NULL,
+    answer      TEXT NOT NULL,
+    author      TEXT,
+    ruled_on    TEXT NOT NULL,      -- ISO date
+    source_name TEXT NOT NULL,      -- attribution is not optional
+    source_url  TEXT NOT NULL,
+    status      TEXT NOT NULL,      -- active | superseded
+    -- confirmed: a Rules Reference change-log entry names this subject.
+    -- presumed:  superseded by date alone, with no change-log match.
+    supersession TEXT,
+    UNIQUE (ruled_on, question)
+);
+CREATE INDEX IF NOT EXISTS idx_rulings_status ON rulings(status);
+
+CREATE TABLE IF NOT EXISTS rr_changelog (
+    rr_version  TEXT NOT NULL,
+    page        TEXT,
+    description TEXT NOT NULL,
+    term        TEXT
+);
+
+-- A ruling is linked to a Rules Reference entry only when it QUOTES that
+-- entry's term. Measured 2026-08-23: matching every term that merely
+-- appears gives 13.8 links per ruling and attaches 17 of 31 rulings to
+-- `Ability`. Quoting is how both the Rules Reference and the designers
+-- mark what they are talking about.
+CREATE TABLE IF NOT EXISTS ruling_terms (
+    ruling_id INTEGER NOT NULL,
+    term      TEXT NOT NULL,
+    PRIMARY KEY (ruling_id, term)
+);
+CREATE INDEX IF NOT EXISTS idx_ruling_terms ON ruling_terms(lower(term));
+
+CREATE VIRTUAL TABLE IF NOT EXISTS rulings_fts USING fts5(
+    question, answer, content='rulings', content_rowid='id'
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'

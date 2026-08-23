@@ -67,11 +67,16 @@ def show(conn, term: str) -> dict:
         "WHERE lower(l.term) = lower(?) AND c.code = c.canonical_code "
         "ORDER BY c.code LIMIT 40", (row["term"],))]
 
+    # Additive, never a replacement: the Rules Reference citation stands
+    # and the ruling sits beside it, so the player sees both and judges.
+    from . import rulings as _rulings
+    active = _rulings.for_term(conn, row["term"])
+
     return {"term": row["term"], "body": row["body"], "page": row["page"],
             "source_doc": row["source_doc"],
             "entry_addressable": bool(row["entry_addressable"]),
             "searchable": bool(row["searchable"]),
-            "see_also": see_also, "cards": cards}
+            "see_also": see_also, "cards": cards, "rulings": active}
 
 
 def search(conn, text: str, *, limit: int = 10) -> list[dict]:
@@ -145,6 +150,16 @@ def handle_show(args) -> int:
     print(f"{result['term']}  {_cite(result)}\n")
     print(" ".join(result["body"].split()) if not result["entry_addressable"]
           else result["body"])
+    for ruling in result.get("rulings") or []:
+        print(f"\nDesigner ruling, {ruling['ruled_on']} — "
+              f"{ruling['author'] or 'FFG'}, via {ruling['source_name']}")
+        print(f"  This postdates the Rules Reference above and stands "
+              f"alongside it.")
+        if ruling["question"]:
+            print(f"  Q: {ruling['question'][:400]}")
+        print(f"  A: {ruling['answer'][:600]}")
+        print(f"  {ruling['source_url']}")
+
     if result["see_also"]:
         print(f"\nSee also: {', '.join(result['see_also'])}")
     if result["cards"]:

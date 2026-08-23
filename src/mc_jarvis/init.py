@@ -13,7 +13,8 @@ import sys
 from pathlib import Path
 
 from . import (cardtext, deckrules, doctor, identity, index, manifest,
-               outofdeck, paths, pdf, rules, rules_chunk, sources, timing)
+               outofdeck, paths, pdf, rules, rules_chunk, rulings,
+               sources, timing)
 
 # Below this many index entries, a rulebook is treated as having no
 # alphabetical index and is chunked by page instead: searchable, but not
@@ -51,6 +52,7 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
     counts["rules_links"] = rules.build_links(conn)
 
     counts["timing_triggers"] = timing.build(conn)
+    counts.update(_rebuild_rulings(conn, data_root))
     broken = timing.verify_chart(conn) + timing.verify_citations(conn)
     if broken:
         # Not fatal: the card index is still correct and useful. But the
@@ -128,6 +130,62 @@ def _rebuild_rules(conn: sqlite3.Connection,
             "rules_resolved": resolved,
             "rr_version": rr_version or "unknown",
             "unmapped_glyphs": len(unmapped)}
+
+
+def _rebuild_rulings(conn, data_root: Path) -> dict:
+    """Classify the cached rulings against the indexed Rules Reference.
+
+    Additive and optional: with no cache there are simply no rulings. A
+    cache that no longer parses is reported, because "the page changed"
+    and "there are no rulings" must never look alike.
+    """
+    from . import manifest
+
+    found = rulings.load(data_root)
+    if not found.ok:
+        if found.status != "disabled":
+            print(f"WARNING: {found.detail}", file=sys.stderr)
+        conn.execute("DELETE FROM rulings")
+        conn.execute("DELETE FROM ruling_terms")
+        conn.commit()
+        return {"rulings": 0}
+
+    version = conn.execute(
+        "SELECT value FROM build_meta WHERE key = 'rr_version'").fetchone()
+    version = version["value"] if version else None
+
+    manifest_path = data_root / "rules" / "manifest.json"
+    docs = []
+    if manifest_path.is_file():
+        docs = [d.__dict__ for d in manifest.read(manifest_path).docs]
+
+    published = rulings.published_on(data_root, rr_version=version,
+                                     manifest_docs=docs)
+    if published is None:
+        print("WARNING: could not determine when the Rules Reference was "
+              "published, so every ruling is treated as still in force. "
+              "Over-reporting a ruling is survivable; dropping a live one "
+              "is not.", file=sys.stderr)
+
+    pages = (data_root / "rules" / "txt"
+             / "marvel-champions-rules-reference.txt")
+    changelog = []
+    if pages.is_file():
+        first = pages.read_text(encoding="utf-8").split("\f")[0]
+        changelog = rulings.parse_changelog(first, version or "unknown")
+    conn.execute("DELETE FROM rr_changelog")
+    conn.executemany(
+        "INSERT INTO rr_changelog (rr_version, page, description, term) "
+        "VALUES (?, ?, ?, ?)",
+        [(e["rr_version"], e["page"], e["description"], e["term"])
+         for e in changelog])
+
+    total = rulings.store(conn, found.rulings, published=published,
+                          changelog=changelog,
+                          source_name=manifest.MIRROR_NAME)
+    split = rulings.counts(conn)
+    return {"rulings": total, "rulings_active": split["active"],
+            "rulings_superseded": split["superseded"]}
 
 
 def extract_rules_text(data_root: Path, *, backend: str | None = None) -> int:
@@ -283,6 +341,12 @@ def run(args) -> int:
         init_took = take_current_rr(root, result)
         if init_took:
             print(f"  Rules Reference {init_took} in place")
+
+    found = rulings.fetch(root)
+    if found.ok:
+        print(f"  {len(found.rulings)} designer rulings fetched")
+    else:
+        print(f"  no designer rulings: {found.detail}", file=sys.stderr)
 
     pages = extract_rules_text(root)
     if pages:

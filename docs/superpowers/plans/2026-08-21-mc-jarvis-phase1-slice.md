@@ -6672,10 +6672,12 @@ brackets because a criterion that fails as written is worse than none.
 - [x] `mc-jarvis install-skill` places the skill for all four
       harnesses, and refuses `$HOME` and a nested repository
 - [x] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing
-- [ ] An agent in the workspace answers a card question and a rules
+- [x] An agent in the workspace answers a card question and a rules
       question with citations, without being told which command to run.
       **The one criterion a test cannot settle** — it measures whether the
-      skill's `description` earns activation. Run it in a real session.
+      skill's `description` earns activation. Verified 2026-08-23 in a real
+      session: "What does Overkill do?" activated the skill and answered
+      from the command.
 - [x] `mc-jarvis timing` prints the chart with a page cite, and an
       off-chart trigger cites the entry that governs it rather than the
       chart it is absent from
