@@ -826,3 +826,58 @@ checking whether they can ever be discarded. They *flip* rather than
 discard, which would keep them out of the deck permanently, but "flip" is
 not proof that nothing else discards them.
 
+### 14.9 Scenarios whose deck grows during play
+
+Raised by the user: The Hood, Mojo and Dark Beast add modular sets to the
+encounter deck *while you play*, at random. A single deck profile is the
+wrong answer for these, and pretending otherwise would be the same class
+of error as reporting a mean over the wrong denominator.
+
+All three are the same mechanism with different parameters — a **pool**
+of set-aside sets, and a **trigger** that shuffles one in:
+
+| Scenario | Pool | Determinable? | Trigger |
+|---|---|---|---|
+| `dark_beast` | Blue Moon, Genosha, Savage Land | **yes** — named in `Contents` | villain stage `When Revealed` |
+| `mojo` | the 7 MojoMania modulars (Crime, Fantasy, Horror, Longshot, Sci-Fi, Sitcom, Western) — player pre-selects 1 + 1/hero | **yes** — the pack's modular sets | main scheme `When Revealed` |
+| `the_hood` | any 7 modulars the player chooses, from all 158 | **no** | villain and main scheme `When Revealed` |
+
+`the_hood` therefore *requires* `--modular`; there is nothing to infer.
+`assess` must say so rather than assess it against an empty pool. The
+other two have pools the data gives us.
+
+**The model: report a trajectory, not a number.** The deck is a function
+of how many additions have happened, so report the profile at each step
+rather than predicting where a game stops. Predicting that would be
+simulation, which §1 rules out as a non-goal.
+
+- **k = 0** — the opening deck: villain set, difficulty set, and anything
+  shuffled in at setup. Fully deterministic.
+- **k = 1 … |pool|** — the deck after that many additions.
+
+**Two of the three statistics are exactly computable, and the third is
+not — the difference must be printed, not hidden.**
+
+- **Additive statistics** — deck size, total boost icons, minion copies,
+  acceleration icons. Sets are drawn uniformly without replacement, so by
+  linearity of expectation the expected contribution after `k` draws is
+  exactly `k/n ×` the pool total. **Exact, not a simulation.** The bounds
+  are exact too: sort the pool by that statistic and take the `k` lightest
+  and `k` heaviest.
+- **Ratio statistics** — quantity-weighted mean boost, Surge rate. These
+  are ratios of two random quantities, and `E[X/Y] ≠ E[X]/E[Y]`. The
+  **range is still exact** (min and max over the k-subsets), so report the
+  range as the answer and the ratio-of-expectations only if it is labelled
+  as an approximation. Reporting it bare would be a number that looks like
+  the others and is not.
+
+So the honest output for `dark_beast` is not "average boost 1.8" but
+"opening deck 24 cards, mean boost 1.6; after one environment set is
+shuffled in, 31–34 cards and mean boost 1.7–1.9". The player gets the
+spread they actually face, and the model has something to reason with.
+
+**Cheapest correct first version:** report `k = 0` and `k = |pool|` — the
+opening deck and the fully-grown deck — and name the pool. That is two
+exact profiles and no statistics anyone has to caveat, and it already
+answers "what does this scenario throw at me" better than a single
+number that is wrong for the whole game.
