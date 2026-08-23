@@ -255,3 +255,102 @@ def test_status_names_a_missing_rulebook(tmp_path, monkeypatch, capsys):
     assert "learn-to-play" in out
     assert "marvel-champions-rules-reference" not in out.split(
         "No rules indexed from:")[1]
+
+
+def test_a_superseded_manifest_takes_the_current_rules_reference(monkeypatch):
+    """The latest Rules Reference is the authority. The archive.org
+    capture the manifest comes from lags FFG by months, so left alone
+    `init` indexes a superseded rulebook and cites every answer to it."""
+    from mc_jarvis import init as init_mod
+    from mc_jarvis import manifest
+
+    result = manifest.ManifestResult(
+        docs=[manifest.RuleDoc(
+            title="Rules Reference",
+            url="https://cdn.example.invalid/mc_rulesreference_v17-web.pdf",
+            slug="marvel-champions-rules-reference")],
+        source="wayback")
+    monkeypatch.setattr(manifest, "current_rr_from_mirror",
+                        lambda *a, **k: manifest.MirrorLookup(
+                            "ok", version="1.8",
+                            url="https://mirror.example.invalid/rr_v18.pdf"))
+    verdict = init_mod._current_rr(result)
+    assert verdict["status"] == "behind"
+    assert verdict["have"] == "1.7"
+    assert verdict["current"] == "1.8"
+    assert verdict["url"].endswith("rr_v18.pdf")
+
+
+def test_a_current_manifest_is_left_alone(monkeypatch):
+    from mc_jarvis import init as init_mod
+    from mc_jarvis import manifest
+
+    result = manifest.ManifestResult(
+        docs=[manifest.RuleDoc(
+            title="Rules Reference",
+            url="https://cdn.example.invalid/mc_rulesreference_v18-web.pdf",
+            slug="marvel-champions-rules-reference")],
+        source="wayback")
+    monkeypatch.setattr(manifest, "current_rr_from_mirror",
+                        lambda *a, **k: manifest.MirrorLookup(
+                            "ok", version="1.8", url="https://x.invalid/a.pdf"))
+    assert init_mod._current_rr(result) is None
+
+
+def test_an_unreadable_mirror_never_reads_as_current(monkeypatch, capsys):
+    """A broken oracle must not silently disable the check. It reports
+    that it could not confirm, and `init` keeps the archived edition."""
+    from mc_jarvis import init as init_mod
+    from mc_jarvis import manifest
+
+    result = manifest.ManifestResult(
+        docs=[manifest.RuleDoc(
+            title="Rules Reference",
+            url="https://cdn.example.invalid/mc_rulesreference_v17-web.pdf",
+            slug="marvel-champions-rules-reference")],
+        source="wayback")
+    monkeypatch.setattr(manifest, "current_rr_from_mirror",
+                        lambda *a, **k: manifest.MirrorLookup(
+                            "nav_missing", detail="site redesigned"))
+    assert init_mod._current_rr(result) is None
+    assert "could not confirm" in capsys.readouterr().err
+
+
+def test_a_mirrored_rulebook_must_declare_its_own_version(tmp_path, monkeypatch):
+    """The only thing that makes a mirror safe is that the document states
+    its version on page 1. One that will not say is refused."""
+    from mc_jarvis import init as init_mod
+    from mc_jarvis import pdf, rules_chunk
+
+    target = tmp_path / "rr.pdf"
+    target.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(pdf, "extract_pages", lambda *a, **k: ["no version"])
+    with pytest.raises(rules_chunk.VersionMismatch):
+        init_mod._verify_rr(target, "1.8")
+
+    monkeypatch.setattr(pdf, "extract_pages", lambda *a, **k: ["VeRsion 1.7"])
+    with pytest.raises(rules_chunk.VersionMismatch):
+        init_mod._verify_rr(target, "1.8")
+
+    monkeypatch.setattr(pdf, "extract_pages", lambda *a, **k: ["VeRsion 1.8"])
+    init_mod._verify_rr(target, "1.8")
+
+
+def test_a_mirror_behind_the_manifest_is_not_taken(monkeypatch):
+    """`--from-html` reads FFG's own current list, so it can be ahead of
+    the mirror. Latest wins in both directions - the mirror is not
+    privileged, it is just usually fresher than the archive."""
+    from mc_jarvis import init as init_mod
+    from mc_jarvis import manifest
+
+    result = manifest.ManifestResult(
+        docs=[manifest.RuleDoc(
+            title="Rules Reference",
+            url="https://cdn.example.invalid/mc_rulesreference_v19-web.pdf",
+            slug="marvel-champions-rules-reference")],
+        source="html")
+    monkeypatch.setattr(manifest, "current_rr_from_mirror",
+                        lambda *a, **k: manifest.MirrorLookup(
+                            "ok", version="1.8",
+                            url="https://mirror.example.invalid/rr_v18.pdf"))
+    assert init_mod._current_rr(result) is None

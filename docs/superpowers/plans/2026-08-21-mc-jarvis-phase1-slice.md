@@ -166,9 +166,10 @@ The consequence for the collection work in the next plan: ownership is binary pe
 > from their commits: each landed with its tests and its real-data gate.
 > Task 16 is the only one not started.
 >
-> A tick means the task's own gate passed **against the development index,
-> which held Rules Reference v1.8**. It is not a claim that the task holds
-> on a v1.7 index, which is what `init` produces today — see the audit note
+> A tick means the task's own gate passed against an index built by
+> `init` — two rulebooks, current Rules Reference. That was not true when
+> these were first ticked: the development directory had been assembled by
+> hand and held one rulebook and a different edition. See the audit note
 > above Task 16. Task 15 is the standing reminder that a green task and a
 > correct outcome are different things.
 
@@ -5081,16 +5082,41 @@ per-trigger modes, names the mismatch and the indexed version, and points
 at `rules show Ability`. `--round` still answers, because the Round
 Overview is parsed from its own entry.
 
-Two further consequences, both open:
+### How this was resolved: fix currency, do not support both editions
 
-- **The timing config is v1.8-only.** `expected_chart`, `aliases` and the
-  `triggers` rung mapping all encode v1.8. Supporting v1.7 means keying
-  them by the RR version the index holds, which `build_meta.rr_version`
-  now records.
-- **The integration suite is version-dependent.** Against v1.7 it reports
-  two honest failures: the timing chart, and rules-extraction coverage at
-  0.859 against a 0.88 gate measured on v1.8. "276 tests passing" was true
-  of the development index only.
+Decided 2026-08-22. **The latest Rules Reference is the authority.** When
+FFG publishes a new one it replaces the old, and the only thing that
+outlives an edition is a ruling issued after it (Task 18). A superseded
+edition is therefore not something to support — it is something not to
+ship.
+
+So the fix is not a version-keyed `timing.yaml`. It is that `init` must
+stop delivering v1.7 at all. `manifest.check_rr_currency` already did the
+hard part — two independent strategies against the mirror, `disagree`
+rather than a guess, every failure named — and **nothing called it**.
+That was the whole bug.
+
+`init` and `update` now both call `init.take_current_rr`, which downloads
+the current edition beside the existing file and swaps it in only once the
+document declares the expected version. A failed or mislabelled fetch
+leaves the rulebook on disk untouched; on a fresh `init` the archived
+edition is downloaded first as a floor, so the user is never left with no
+Rules Reference at all. Measured: a fresh `init` lands on v1.8 with 287
+entries and no timing warning, and `update` upgrades an existing v1.7
+index in place.
+
+Two consequences worth keeping:
+
+- **`timing`'s refusal is now the fallback for the opposite case** — a
+  Rules Reference *newer* than this config, which is what a v1.9 release
+  produces. The message says so: the rulebook is the authority, and
+  `config/timing.yaml` is what has gone stale.
+- **The coverage gate was calibrated on one edition.** It floored at 0.88,
+  measured on v1.8; v1.7 gives 0.862. Diagnosed rather than widened:
+  `resolved` is 216 of 217 on both, with the same single pointer, so
+  lookup quality is identical and only the glossary-to-book text ratio
+  moved. The gate now asserts `resolved` strictly and floors coverage
+  below both measurements.
 
 ## Task 16: `SKILL.md` and `install-skill`
 

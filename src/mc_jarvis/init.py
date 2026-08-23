@@ -168,6 +168,71 @@ def _get_manifest(args) -> manifest.ManifestResult | None:
         return None
 
 
+RR_SLUG = "marvel-champions-rules-reference"
+
+
+def _current_rr(result) -> dict | None:
+    """The current Rules Reference, when the manifest's is superseded.
+
+    The latest Rules Reference is the authority: when FFG publishes a new
+    one it replaces the old, and nothing about the old edition survives
+    except rulings issued after it. The archive.org capture the manifest
+    comes from lags FFG by months, so left alone `init` indexes a
+    superseded rulebook and every answer is cited to it.
+
+    Returns None when the manifest is already current, or when the check
+    could not run - never a guess. `check_rr_currency` reports a broken
+    oracle as `unknown` rather than as a clean bill of health.
+    """
+    verdict = manifest.check_rr_currency(result)
+    if verdict is None:
+        return None
+    if verdict.get("status") != "behind" or not verdict.get("url"):
+        print(f"  could not confirm the Rules Reference is current: "
+              f"{verdict.get('detail', verdict.get('status'))}",
+              file=sys.stderr)
+        return None
+    return verdict
+
+
+def _verify_rr(path: Path, expected: str) -> None:
+    """A mirrored rulebook is only safe because the document states its own
+    version on page 1. Refuse anything that will not say so."""
+    found = rules_chunk.verify_version(pdf.extract_pages(path), expected)
+    if found is None:
+        raise rules_chunk.VersionMismatch(
+            f"{path.name} does not declare a version; refusing to index it "
+            f"as {expected}")
+
+
+def take_current_rr(root: Path, result) -> str | None:
+    """Replace the indexed Rules Reference when a newer one is published.
+
+    Downloads beside the existing file and only swaps it in once the
+    document has proved its own version, so a failed or mislabelled
+    download leaves the rulebook already on disk untouched.
+
+    Returns the version taken, or None if nothing was replaced.
+    """
+    current = _current_rr(result)
+    if not current:
+        return None
+    print(f"  Rules Reference {current['have']} is superseded; "
+          f"{current['source_name']} lists {current['current']} "
+          f"- taking the current one")
+    target = root / "rules" / "pdf" / f"{RR_SLUG}.pdf"
+    staged = target.with_suffix(".pdf.incoming")
+    try:
+        pdf.download(current["url"], staged)
+        _verify_rr(staged, current["current"])
+    except (pdf.PdfError, rules_chunk.VersionMismatch) as exc:
+        print(f"  {exc}", file=sys.stderr)
+        staged.unlink(missing_ok=True)
+        return None
+    staged.replace(target)
+    return current["current"]
+
+
 def run(args) -> int:
     checks = doctor.run_checks(network=False)
     hard = [c for c in checks if c.hard and not c.ok]
@@ -209,6 +274,15 @@ def run(args) -> int:
         except pdf.PdfError as exc:
             print(f"  {exc}", file=sys.stderr)
             continue
+
+    # The archived capture lags FFG by months, and the latest Rules
+    # Reference is the authority - so the archived edition is only ever a
+    # floor. Swapping happens after the download above so a failure here
+    # leaves a working, if superseded, rulebook rather than none.
+    if docs:
+        init_took = take_current_rr(root, result)
+        if init_took:
+            print(f"  Rules Reference {init_took} in place")
 
     pages = extract_rules_text(root)
     if pages:

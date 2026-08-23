@@ -378,17 +378,26 @@ def blocked(conn) -> list[str]:
 
 
 def _refuse(conn, problems: list[str]) -> int:
+    """The normal reason to land here is a Rules Reference newer than this
+    config, not an old one: `init` and `update` both take the current
+    edition. So the message points at the config being behind the
+    rulebook, which is the direction a maintainer needs to act in."""
     version = rr_version(conn) or "unknown"
-    print(f"The timing reference does not match the Rules Reference in "
-          f"this index (version {version}), so it will not answer:\n")
+    print(f"Your Rules Reference is version {version}, and this timing "
+          f"reference has not been updated for it:\n")
     for b in problems:
         print(f"  {b}")
-    print("\nTrigger ordering is version-specific, so answering anyway "
-          "would cite your rulebook for a rule it does not contain.\n"
-          "`mc-jarvis timing --round` still works - the game round is "
-          "parsed separately.\n"
-          "`mc-jarvis rules show Ability` gives the chart as your own "
-          "rulebook prints it.")
+    print(f"\nYour rulebook is the authority - the chart below it is what "
+          f"has gone stale. Trigger ordering has changed between Rules "
+          f"Reference versions before, so answering from a chart built for "
+          f"a different edition would cite version {version} for a rule it "
+          f"does not contain.\n\n"
+          f"  mc-jarvis rules show Ability   the chart as YOUR rulebook "
+          f"prints it\n"
+          f"  mc-jarvis timing --round       still works; the game round "
+          f"is parsed separately\n\n"
+          f"If version {version} is current, config/timing.yaml needs its "
+          f"`expected_chart` and trigger mapping brought up to it.")
     return 1
 
 

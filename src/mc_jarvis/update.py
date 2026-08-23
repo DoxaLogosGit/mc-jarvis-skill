@@ -33,6 +33,13 @@ def run(args) -> int:
         if warning:
             print(warning)
 
+        # A new Rules Reference supersedes the old one, and `update` is
+        # where that is meant to be noticed. The mirror check can see a
+        # release the archived capture cannot, so this is the one currency
+        # question `update` can actually answer.
+        if init.take_current_rr(root, known):
+            print("  Rules Reference replaced with the current edition")
+
     extracted = init.extract_rules_text(root)
     if extracted:
         print(f"  {extracted} rulebook(s) re-extracted to text")

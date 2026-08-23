@@ -110,9 +110,21 @@ both reported it. `timing` answered anyway. It now refuses when its own
 verification fails, names the mismatch and the indexed version, and points
 at `rules show Ability`. `--round` still works.
 
-**Open:** the timing config is v1.8-only. Supporting v1.7 means keying
-`expected_chart`, `aliases` and the rung mapping by version —
-`build_meta.rr_version` now records which one the index holds.
+**Resolved by fixing currency, not by supporting both.** The latest Rules
+Reference is the authority; a superseded edition is not something to
+support. `check_rr_currency` already existed and **nothing called it** —
+that was the actual bug. `init` and `update` now both consult the mirror,
+and take the current edition when the archived capture is behind. The
+download is staged beside the existing file and only swapped in once the
+document declares the expected version, so a failed or mislabelled fetch
+leaves the rulebook on disk untouched.
+
+Measured: a fresh `init` now lands on **v1.8** with 287 entries and no
+timing warning, and `update` upgrades an existing v1.7 index in place.
+
+`timing`'s refusal remains as the fallback for the case that matters
+next — a Rules Reference **newer** than this config. Its message now says
+so: your rulebook is the authority, `timing.yaml` is what has gone stale.
 
 ## The same missing rulebook hid a second bug
 
@@ -127,9 +139,9 @@ Addressable-by-name and included-in-search are two properties, and they
 are now two columns. No test could catch this while the development index
 had no Learn to Play in it.
 
-**Open:** the development index is not what `init` produces — one rulebook
-instead of two, v1.8 instead of v1.7 — so every real-data gate from here
-runs against an index no user has. That is how both of these survived.
+The development index has been rebuilt with `init`, so it is now what a
+user gets: two rulebooks, current Rules Reference, reproducible. Running
+gates against a hand-assembled directory is how both of these survived.
 
 ## Earlier work still standing
 
