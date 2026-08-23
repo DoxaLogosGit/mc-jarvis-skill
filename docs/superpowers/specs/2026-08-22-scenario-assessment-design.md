@@ -521,25 +521,64 @@ The instruction lives in the **main scheme's `Setup` block**, in prose —
 | a whole set | *"Set the Blue Moon, Genosha, and Savage Land sets aside."* |
 | a category | *"Set aside each unused villain card."* |
 
-**Magnitude.** Resolving the named cards and trait groups against the
-corpus: **29 cards of 1,353 deck-eligible — 2.1%** — concentrated in about
-ten scenarios. Fourteen of the 29 are `ally`-type cards in encounter sets.
+**Deck-eligible types, settled.** `minion`, `treachery`, `side_scheme`,
+`attachment`, `environment`. Not eligible: `villain` and `main_scheme`
+(start in play), and `ally` / `upgrade` / `event` / `support` / `resource`
+/ `player_side_scheme`, which are **player-side cards** that happen to ship
+in encounter sets — every encounter-set `ally` is a rescued-captive type
+that enters play for the players via a side scheme, never shuffled in.
+`obligation` is eligible only under `--nemesis` (§13.4). Settling this
+first matters: it moves the denominator of every average.
 
-That number decides the plan's shape. The type rule alone —
-`villain` and `main_scheme` are never in the deck, everything else is — is
-**~98% correct**, so:
+**Magnitude — corpus-wide is the wrong measure.** `assess` never reports a
+corpus average; it reports one scenario's deck. Per affected scenario,
+set-aside cards as a share of that scenario's deck-eligible copies:
 
-- Part 1 **ships on the type rule**, with the residue named in config.
-- `config/encounter_setup.yaml` is a **refinement, not a prerequisite**.
-- The whole-set asides are a different question entirely: they change
-  *which sets are in play*, not which cards within a set are in the deck.
-  They belong to scenario assembly (§14.1), not to per-card roles.
+| Scenario | Deck-eligible | Set aside | Error |
+|---|---|---|---|
+| `m.o.d.o.k.` | 25 | 4 | **16.0%** |
+| `apocalypse` | 14 | 1 | 7.1% |
+| `morlock_siege` | 14 | 1 | 7.1% |
+| `red_skull` | 23 | 1 | 4.3% |
+| `magneto_villain` | 26 | 1 | 3.8% |
+| `god_of_lies` | 28 | 1 | 3.6% |
+| `enchantress_villain` | 32 | 1 | 3.1% |
+
+**So the config is a prerequisite, not a refinement** — for the scenarios
+it affects. A 16% error in the denominator makes every average that
+scenario reports wrong while looking entirely plausible, which is the
+failure §5 opens with.
+
+**But the affected scenarios are detectable**, which is what makes this
+tractable. A scenario whose main-scheme `Setup` block contains a set-aside
+or put-into-play instruction is one where the type rule is unreliable:
+
+| | Villain sets |
+|---|---|
+| `Setup` says "set … aside" | 16 |
+| `Setup` says "put … into play" | 26 |
+| both | 9 |
+| **needs acknowledgment (either)** | **33** |
+| **type rule alone is sufficient** | **23** |
+
+So the design is the `timing` refusal, not a silent approximation:
+
+- The type rule stands for all 56, and is complete for 23 of them.
+- For the 33 flagged, `config/encounter_setup.yaml` must acknowledge what
+  the `Setup` sentence removes, each entry carrying that sentence and
+  re-verified at build time.
+- **`assess` flags a scenario whose `Setup` block is flagged and
+  unacknowledged**, rather than reporting numbers that may be a sixth
+  wrong. Same move as `timing` refusing when its chart does not match the
+  indexed rulebook.
+
+The whole-set asides are a different question: they change *which sets are
+in play*, not which cards within a set are in the deck, and belong to
+scenario assembly (§14.1).
 
 §5.1's three-step structure survives with its first step replaced: not a
-detection rule, but a **type rule plus an enumerated residue**, each entry
-carrying the `Setup` sentence that justifies it, re-verified at build time.
-The audit still fails on an unacknowledged flag — it just has far less to
-acknowledge than the spec feared.
+detection rule over card text, but a **type rule plus a detectable flag
+plus an enumerated residue**.
 
 ### 14.3 Confirmed unchanged
 
@@ -553,8 +592,12 @@ acknowledge than the spec feared.
 
 ### 14.4 Still open after this pass
 
-- §13.2 (villain stages in the profile), §13.3 (environments) and §13.4
-  (obligations) are untouched by this pass and remain open.
+- §13.3 (environments) is now partly answered and partly sharpened: they
+  are deck-eligible by type, but 26 scenarios "put" one into play at setup
+  and `m.o.d.o.k.` sets three of four aside — so environments are the
+  single biggest driver of the flagged-scenario residue.
+- §13.2 (villain stages) and §13.4 (obligations) are untouched and remain
+  open.
 - The **`recommended` vs `prescribed` distinction** is drawn from grammar
   alone. It should be checked against one printed insert before it is
   relied on, per §10's rule that a stated mechanic must not quietly become
