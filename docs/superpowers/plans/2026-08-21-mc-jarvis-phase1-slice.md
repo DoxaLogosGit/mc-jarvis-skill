@@ -5137,7 +5137,48 @@ Implements §7. The skill file is the single source of truth for the agent. `ins
   - `skill_install.WorkspaceError`
   - `skill_install.run(args) -> int`
 
-- [ ] **Step 1: Write the failing test**
+### What changed when this was written, 2026-08-23
+
+The draft SKILL.md above was written before Tasks 16 and 17 existed in
+their final form, and three things in it were wrong by the time it was
+due. Two of them a reader would never have caught:
+
+1. **It named `mc-jarvis deck stats`, which does not exist in this
+   phase.** An agent told to run a missing command produces a confused
+   agent, not an error. `test_every_command_the_skill_names_actually_
+   exists` now parses every `` `mc-jarvis <cmd>` `` out of the file and
+   checks it against the real parser, so the skill cannot drift from the
+   CLI again.
+2. **It labelled page-chunk hits `(page chunk)`**, a string the code
+   stopped printing when `searchable` was split from `entry_addressable`.
+   It also promised `--owned`, which parses everywhere and is rejected at
+   dispatch until the collection lands.
+3. **It stated timing rungs as facts** — "When Defeated and When Completed
+   are Forced Interrupts", "constant abilities sit above every trigger".
+   Those are v1.8 claims. A SKILL.md is meant to be memorable enough that
+   an agent repeats it, which is the worst possible property for a
+   version-specific rung. The section now tells the agent to run the
+   command, to quote `rr_version`, and to report a refusal rather than
+   fill the gap; `test_the_skill_states_no_timing_rung_as_a_fact` enforces
+   it.
+
+**A defect the acceptance questions found.** Step 7's three questions were
+run against the real index. `identity Ironheart` came back with
+`<i>Level Up!</i> — <b>Action</b>: … [[Version 2]] Ironheart` — MarvelCDB's
+presentation markup, printed raw. An agent quoting a card would hand that
+to the player. `cardtext.render` now strips it for the human-readable
+path and keeps icon tokens like `[amplify]`, which name an icon with no
+plain-text form. `--json` is untouched: `timing.build` and the cost-arrow
+parser both need the bold markup.
+
+**Step 7's agent-driven half is the user's to run.** The mechanical parts
+are verified — all three placements land with their `references/`, the
+home and nested-repository guards both fire with actionable messages, and
+each acceptance question is answerable with a citation. Whether an agent
+*finds and uses* the skill without being told to is a test of the
+description wording that only a real agent session can settle.
+
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_skill_install.py
@@ -5232,12 +5273,12 @@ def test_skill_md_stays_under_the_length_limit():
     assert len(text.splitlines()) < 500
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_skill_install.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.skill_install'`
 
-- [ ] **Step 3: Write `skill/mc-jarvis/SKILL.md`**
+- [x] **Step 3: Write `skill/mc-jarvis/SKILL.md`**
 
 Keep it under 500 lines; push per-harness browser recipes into `references/`.
 
@@ -5334,7 +5375,7 @@ rule to support a recommendation.
 
 Also write `skill/mc-jarvis/references/browser-recipes.md` covering, one short section each: Claude Code (`claude-in-chrome` or Playwright MCP), Codex, opencode, pi, and the no-browser path (Save Page As → `--from-html`). Each section ends with the same command: `mc-jarvis init --from-html <file>`.
 
-- [ ] **Step 4: Write `skill_install.py`**
+- [x] **Step 4: Write `skill_install.py`**
 
 ```python
 """Place the skill for every harness (spec §7)."""
@@ -5469,14 +5510,14 @@ def run(args) -> int:
 
 Bundle the skill and configs into the wheel: add a build step (or a symlink for development) placing `skill/` at `src/mc_jarvis/_bundled/skill/`, `config/legality.yaml` at `src/mc_jarvis/_bundled/legality.yaml`, and `config/glyphs.yaml` at `src/mc_jarvis/_bundled/glyphs.yaml`.
 
-- [ ] **Step 5: Dispatch it** — in `cli.py` `_dispatch`: `if name == "install-skill": from . import skill_install; return skill_install.run(args)`
+- [x] **Step 5: Dispatch it** — in `cli.py` `_dispatch`: `if name == "install-skill": from . import skill_install; return skill_install.run(args)`
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `uv run pytest tests/ -v -m "not integration"`
 Expected: PASS
 
-- [ ] **Step 7: Install into a real workspace and drive it through an agent**
+- [x] **Step 7: Install into a real workspace and drive it through an agent**
 
 ```bash
 mkdir -p ~/marvel-champions && cd ~/marvel-champions
@@ -5487,7 +5528,7 @@ Then open an agent in `~/marvel-champions` and ask, without naming any command: 
 
 Expected: the agent finds and uses the skill, and the answers carry citations. **This is the real test of Task 16** — if the agent answers from its own memory instead of running a command, the SKILL.md wording is not strong enough.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add skill/ src/mc_jarvis/skill_install.py src/mc_jarvis/cli.py tests/test_skill_install.py
@@ -6468,9 +6509,8 @@ Verified 2026-08-21 against the real PDF: the page-spanning chunker from Task 13
 
 **Every unclassified prefix is a decision, not a bug to suppress.** Read the list: if it is a real trigger, add it to `ladder` or `outside_ladder`; if it is bold flavour text, add it to `not_triggers`. Encounter-side prefixes (`Contents`, `Preparation`, `Standard Mode Only.`) are the expected bulk. Do not widen `not_triggers` with a wildcard.
 
-- [ ] **Step 10: Teach the skill about it** — deferred into Task 16,
-  which writes `SKILL.md` from scratch. Text below, corrected for the
-  findings above.
+- [x] **Step 10: Teach the skill about it** — written in Task 16, in
+  the version-safe form below rather than the draft's rung list.
 
 Add to `SKILL.md`'s command table:
 
@@ -6620,7 +6660,7 @@ Numbers here were written from the spec, before the corpus was measured.
 Corrected 2026-08-22 against the real index; the originals are kept in
 brackets because a criterion that fails as written is worse than none.
 
-- [x] `uv run pytest tests/ -v` — all tests pass, unit and integration (272)
+- [x] `uv run pytest tests/ -v` — all tests pass, unit and integration (309)
 - [x] `mc-jarvis doctor` exits 0
 - [x] `mc-jarvis status` reports 4,379 cards [spec said ~4,298], 69
       identities [72], **287** rules entries of which 216 resolve [~216],
@@ -6629,13 +6669,18 @@ brackets because a criterion that fails as written is worse than none.
       holding only 263 is missing a rulebook — see the note under Task 15.
 - [x] The setup audit reports exactly **eight** identities [four], all
       covered — see `out_of_deck.acknowledged` in `config/legality.yaml`
+- [x] `mc-jarvis install-skill` places the skill for all four
+      harnesses, and refuses `$HOME` and a nested repository
 - [x] `git status` is clean and no fetched artifact is tracked: `git ls-files | grep -Ei '\.(pdf|sqlite)$|marvelsdb/' ` returns nothing
-- [ ] An agent in the workspace answers a card question and a rules question with citations, without being told which command to run — **gated on Task 16**
+- [ ] An agent in the workspace answers a card question and a rules
+      question with citations, without being told which command to run.
+      **The one criterion a test cannot settle** — it measures whether the
+      skill's `description` earns activation. Run it in a real session.
 - [x] `mc-jarvis timing` prints the chart with a page cite, and an
       off-chart trigger cites the entry that governs it rather than the
       chart it is absent from
 - [x] `timing.verify_chart` and `timing.verify_citations` return empty, and
-      no bold prefix on any card is unclassified (4,586 rows)
+      no bold prefix on any card is unclassified (4,588 rows)
 
 ---
 
