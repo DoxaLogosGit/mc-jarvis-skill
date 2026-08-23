@@ -178,6 +178,23 @@ def test_every_command_the_skill_names_actually_exists():
         assert named <= known, named - known
 
 
+def test_the_skill_names_every_command_a_player_would_ask_for():
+    """The mirror of the test above, and the one that was missing: adding
+    `rulings` to the parser and not to the skill left an agent unable to
+    reach the feature at all. `named <= known` cannot catch that.
+
+    Setup and diagnostics are excluded deliberately - the skill covers
+    them in prose, not in its command table."""
+    from mc_jarvis import cli
+
+    setup_only = {"init", "update", "install-skill", "doctor"}
+    known = _subcommands(cli.build_parser()) - setup_only - {"hero"}
+    named = set()
+    for text in _skill_docs():
+        named |= set(re.findall(r"`?mc-jarvis ([a-z-]+)", text))
+    assert known <= named, known - named
+
+
 def test_two_level_commands_name_a_real_subcommand():
     """`rules show` and `card search` are two levels deep, which is where
     drift actually happens - the one-level check above passes on

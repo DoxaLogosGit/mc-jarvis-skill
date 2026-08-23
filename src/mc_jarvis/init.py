@@ -142,13 +142,6 @@ def _rebuild_rulings(conn, data_root: Path) -> dict:
     from . import manifest
 
     found = rulings.load(data_root)
-    if not found.ok:
-        if found.status != "disabled":
-            print(f"WARNING: {found.detail}", file=sys.stderr)
-        conn.execute("DELETE FROM rulings")
-        conn.execute("DELETE FROM ruling_terms")
-        conn.commit()
-        return {"rulings": 0}
 
     version = conn.execute(
         "SELECT value FROM build_meta WHERE key = 'rr_version'").fetchone()
@@ -166,6 +159,19 @@ def _rebuild_rulings(conn, data_root: Path) -> dict:
               "published, so every ruling is treated as still in force. "
               "Over-reporting a ruling is survivable; dropping a live one "
               "is not.", file=sys.stderr)
+
+    if not found.ok:
+        # Keep whatever is already stored. A parse that fails today
+        # against a cache that parsed yesterday is a broken parser, not an
+        # empty corpus, and discarding the rows makes the two
+        # indistinguishable. The statuses are still refreshed against the
+        # rulebook now indexed.
+        if found.status != "disabled":
+            print(f"WARNING: {found.detail}", file=sys.stderr)
+        split = rulings.reclassify(conn, published)
+        return {"rulings": split["total"],
+                "rulings_active": split["active"],
+                "rulings_superseded": split["superseded"]}
 
     pages = (data_root / "rules" / "txt"
              / "marvel-champions-rules-reference.txt")

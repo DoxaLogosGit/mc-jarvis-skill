@@ -261,6 +261,40 @@ def test_store_is_idempotent(conn):
     assert conn.execute("SELECT COUNT(*) FROM rulings").fetchone()[0] == 2
 
 
+def test_a_failed_parse_does_not_discard_a_good_corpus(conn, tmp_path,
+                                                       monkeypatch, capsys):
+    """A parser that breaks today against a cache that parsed yesterday is
+    a broken parser, not an empty corpus. Deleting the rows makes the two
+    indistinguishable, and `status` then reports `rulings: 0` for both."""
+    from mc_jarvis import init as init_mod
+
+    parsed = rulings.parse(PAGE, source_url="u")
+    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+                  source_name="Hall of Heroes")
+    assert rulings.counts(conn)["total"] == 2
+
+    monkeypatch.setattr(rulings, "load", lambda root: rulings.RulingsLookup(
+        "unparsed", detail="markup changed"))
+    monkeypatch.setattr(rulings, "published_on", lambda *a, **k: V18)
+    out = init_mod._rebuild_rulings(conn, tmp_path)
+    assert out["rulings"] == 2
+    assert "markup changed" in capsys.readouterr().err
+
+
+def test_reclassify_moves_rulings_when_the_rulebook_moves_on(conn):
+    """The corpus can outlive a parse failure, but its statuses still have
+    to track the rulebook actually indexed."""
+    parsed = rulings.parse(PAGE, source_url="u")
+    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+                  source_name="Hall of Heroes")
+    assert rulings.counts(conn) == {"total": 2, "active": 1, "superseded": 1}
+
+    # A newer rulebook absorbs the remaining one.
+    assert rulings.reclassify(conn, dt.date(2026, 9, 1))["active"] == 0
+    # An older one puts them all back in force.
+    assert rulings.reclassify(conn, dt.date(2026, 1, 9))["active"] == 2
+
+
 # --- surfacing -------------------------------------------------------
 
 def test_for_term_returns_only_active_rulings(conn):

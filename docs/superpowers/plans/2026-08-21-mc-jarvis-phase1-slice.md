@@ -6583,9 +6583,9 @@ and add `"config/timing.yaml" = "src/mc_jarvis/_bundled/timing.yaml"` to the `fo
 
 ---
 
-## Task 18 (design): Designer rulings and supersession
+## Task 18: Designer rulings and supersession
 
-**Not scheduled in this plan.** Designed here because the constraint that makes it tractable was worked out with the user on 2026-08-22, and the reasoning should not have to be rediscovered.
+**Designed 2026-08-22, built 2026-08-23 — after Phase 1's done criteria, which do not cover it.** The design is kept below as written; what the real corpus changed is recorded at the end of this section.
 
 ### The problem
 
@@ -6646,15 +6646,72 @@ If the RR's publication date cannot be determined, **every ruling is treated as 
 
 `rules show <term>` prints the RR entry and its page cite as it does now, then any active ruling touching that term, with its date and attribution. The RR citation is never replaced — the ruling is additive, and the player sees both and can judge. `rules search` covers both, labelled by source.
 
-### Open questions for the user
+### Questions answered 2026-08-23
 
-- **Source dependence.** The rulings are curated by one community site. Core rules must work without it, so this is an opt-in source with graceful degradation, and a markup change must fail loudly rather than silently yield zero rulings.
-- **Attribution.** These are FFG designers' words, curated by a third party. Both get named on every ruling shown. Same distribution rule as everything else: fetched at init, never committed.
-- **Scope.** Whether to also ingest the site's rule changelog and keyword list, or only the dated rulings.
+- **Source dependence.** Opt-in with graceful degradation, as designed. No
+  cache means no rulings and no complaint. A page that *fetches and then
+  parses to nothing* is `unparsed`, never an empty-but-healthy result —
+  and a parse failure now **keeps** whatever is already stored and
+  re-runs only the classification, because discarding a good corpus makes
+  a broken parser indistinguishable from "never fetched".
+- **Attribution.** Both named on every row and in every printed answer:
+  the designer, the site that collected it, the date, and the URL.
+- **Scope.** *Dated rulings only.* The site's "Rule changelog" and
+  "Keyword list" are links to separate documents, and the Rules Reference
+  already carries its own change log on page 1 — a second dependency for
+  something the primary source already provides.
+
+### What the real corpus changed
+
+1. **The Rules Reference states no publication date.** The whole
+   supersession rule keys on it. It comes from the PDF's `/ModDate`
+   (2026-07-22 for v1.8; `/CreationDate` is the layout file, two months
+   earlier), cross-checked against the manifest — but **the manifest is
+   only usable when it describes the same edition**, since
+   `take_current_rr` swaps in a newer rulebook and leaves the archived
+   date behind. When sources disagree the **earliest wins**: earlier
+   retains more rulings, and dropping a live one is the failure this
+   exists to prevent. A ruling dated the same day as the rulebook stays
+   active, since the rulebook's text is frozen before it publishes.
+
+2. **8 was dates, not rulings.** The design's table counted 8; the page
+   carries **31 rulings across 8 dated sessions**. The ruling is the unit.
+   Both numbers were right about different things.
+
+3. **Term linking had to be narrowed twice.** Linking every Rules
+   Reference term a ruling *mentions* gives 13.8 links per ruling and
+   attaches 17 of 31 to `Ability`. Card-name linking was measured as an
+   alternative and abandoned — one ruling matched 85 cards, and excluding
+   Rules Reference vocabulary removed 2 names out of 3,186. Only **quoted**
+   terms are linked: 9 links, each a real subject reference.
+
+4. **The change-log confirmation mechanism does not work.** This is a
+   design conclusion, not an implementation detail. Matching change-log
+   terms against a ruling's free text "confirmed" 12 of 31, because
+   `resolve` is simultaneously a v1.8 change-log term and ordinary rules
+   vocabulary. Matching change-log *page numbers* against linked entries'
+   pages claimed 2, both coincidental page-sharing — `Attach To` and
+   `Attack (Enemy Activation)` are both on p.8. Strict quoted-subject
+   matching confirms **0 of 31**, and that is the honest answer: page 1
+   summarises *notable* changes, not every incorporation. The column and
+   the strict rule are kept — they are correct when they fire — but
+   today every row is `presumed`, and supersession really is a
+   presumption.
+
+Measured 2026-08-23 by re-classifying the real 31 against each edition:
+
+| Rules Reference held | Active | Superseded |
+|---|---|---|
+| v1.7 (09 Jan 2026) | 31 | 0 |
+| v1.8 (22 Jul 2026) | **0** | 31 |
+| date undeterminable | 31 | 0 (fail-safe) |
 
 ---
 
 ## Done criteria
+
+**Phase 1 only.** Task 18 landed after these were met and is not covered
+by them; its own verification is recorded in its section above.
 
 Numbers here were written from the spec, before the corpus was measured.
 Corrected 2026-08-22 against the real index; the originals are kept in

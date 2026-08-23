@@ -390,6 +390,29 @@ def store(conn: sqlite3.Connection, items: list[Ruling], *,
     return conn.execute("SELECT COUNT(*) FROM rulings").fetchone()[0]
 
 
+def reclassify(conn, published: dt.date | None) -> dict:
+    """Re-run the active/superseded split on rulings already stored.
+
+    Used when the corpus cannot be re-parsed but the rulebook may have
+    moved on. Deleting a good corpus because today's parse failed would
+    make a transient breakage look identical to "no rulings were ever
+    fetched" - and losing a live ruling is the failure this exists to
+    prevent.
+    """
+    for row in conn.execute("SELECT id, ruled_on, status FROM rulings").fetchall():
+        ruled = _parse_date(row["ruled_on"])
+        if ruled is None:
+            continue
+        status = classify(ruled, published)
+        if status != row["status"]:
+            conn.execute(
+                "UPDATE rulings SET status = ?, supersession = ? WHERE id = ?",
+                (status, None if status == "active" else "presumed",
+                 row["id"]))
+    conn.commit()
+    return counts(conn)
+
+
 # --- reading ---------------------------------------------------------
 
 _FIELDS = ("id", "question", "answer", "author", "ruled_on",

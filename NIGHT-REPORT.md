@@ -1,8 +1,8 @@
 # mc-jarvis — state of play, 2026-08-23
 
-**Phase 1 is complete.** All 17 tasks are committed and green.
+**Phase 1 is complete, and Task 18 has landed on top of it.**
 
-    309 tests passing
+    345 tests passing
     4,379 cards · 69 identities · 287 rules entries (216 resolve) · 1,180
     card-rules links · 4,588 timing triggers
     Rules Reference v1.8 · unmapped_glyphs: empty · unclassified prefixes: none
@@ -48,12 +48,49 @@ rulebooks to the user's machine.
 
 | | |
 |---|---|
-| Task 18 designer rulings | design only, deliberately unscheduled |
 | `assess` (scenario threat profile) | spec written, Part 1 plannable |
 | deck pipeline | not specified — `deck` commands do not exist yet |
 
 `--owned` parses on every command and is rejected at dispatch: the
 collection lands with the deck pipeline.
+
+## Task 18: designer rulings
+
+FFG designers answer rules questions between rulebook releases, and some
+of those answers say the rulebook is wrong. A citation to superseded text
+is still a wrong answer. What keeps it small: **a new Rules Reference
+supersedes every ruling published before it**, so the live set is bounded
+by one release cycle and is relative to the edition indexed.
+
+    mc-jarvis rulings              # in force under the rulebook you hold
+    mc-jarvis rulings <text>       # search them
+    mc-jarvis rulings --all        # including superseded, each labelled
+
+`rules show <term>` adds any ruling in force under the rulebook entry,
+never in place of it. Superseded rulings are kept and flagged, so "what
+happened to that ruling about overkill?" stays answerable.
+
+**Today it reports 31 rulings, 0 in force.** That is the correct steady
+state a month after a rulebook release, not a broken feature. Verified by
+re-classifying the real corpus against each edition: v1.7 → 31 active,
+v1.8 → 0 active, no determinable date → 31 active (fail-safe).
+
+Three things the real data settled against the design:
+
+- **The Rules Reference states no publication date**, and the whole rule
+  keys on it. It comes from the PDF's `/ModDate`, cross-checked against
+  the manifest — and the manifest is only usable when it describes the
+  *same edition*, since `take_current_rr` leaves the archived date behind.
+  When sources disagree the earliest wins, because earlier retains more.
+- **Linking is quoted terms only.** Every term a ruling merely mentions
+  gives 13.8 links each and attaches 17 of 31 to `Ability`. Card-name
+  linking was measured and abandoned: one ruling matched 85 cards.
+- **The change-log confirmation mechanism does not work.** Free-text
+  matching "confirmed" 12 of 31 because `resolve` is both a change-log
+  term and ordinary rules vocabulary; page-number matching claimed 2, both
+  coincidental page-sharing. Strict quoting confirms 0. Page 1 summarises
+  *notable* changes, not every incorporation — so supersession really is a
+  presumption, and every row says `presumed`.
 
 ## The three bugs this project's own gates caught
 
