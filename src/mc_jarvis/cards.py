@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from . import index, paths
+from . import cardtext, index, paths
 from .cli import emit
 
 SUMMARY = ("code", "name", "subname", "type_code", "faction_code",
@@ -195,7 +195,7 @@ def _print_card(c: dict) -> None:
     if c.get("traits"):
         print(f"  {c['traits']}")
     if c.get("text"):
-        print(f"  {c['text']}")
+        print(f"  {cardtext.render(c['text'])}")
 
 
 def handle_show(args) -> int:

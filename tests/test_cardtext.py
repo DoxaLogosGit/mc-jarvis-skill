@@ -229,3 +229,22 @@ def test_unique_cards_are_all_limit_one(real_index):
         "SELECT code, name, deck_limit FROM cards "
         "WHERE is_unique = 1 AND deck_limit != 1").fetchall()
     assert bad == [], [(r["code"], r["name"], r["deck_limit"]) for r in bad]
+
+
+def test_render_strips_presentation_markup_but_keeps_icon_tokens():
+    """An agent quotes this text back to the player. `<b>Action</b>:` is
+    not something anyone should read, but `[amplify]` names an icon that
+    has no plain-text form."""
+    raw = ("<i>Level Up!</i> \u2014 <b>Action</b>: Remove 6 counters from "
+           "[[Version 2]] Ironheart \u2192 ready her. [amplify]")
+    out = cardtext.render(raw)
+    assert "<b>" not in out and "<i>" not in out
+    assert "[[" not in out
+    assert "Version 2 Ironheart" in out
+    assert "Action: Remove" in out
+    assert "[amplify]" in out
+
+
+def test_render_of_nothing_is_empty():
+    assert cardtext.render(None) == ""
+    assert cardtext.render("") == ""

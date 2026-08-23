@@ -1,0 +1,189 @@
+"""Placing the skill for every harness (spec §7).
+
+`install-skill`'s guard rails all fail silently when they fail: a skill in
+the wrong directory simply never activates, and the user sees an agent
+answering from memory rather than an error. So they get tests.
+"""
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from mc_jarvis import skill_install as si
+
+
+# --- workspace guards ------------------------------------------------
+
+def test_home_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    with pytest.raises(si.WorkspaceError, match="home directory"):
+        si.check_workspace(tmp_path)
+
+
+def test_directory_inside_another_repository_is_refused(tmp_path):
+    outer = tmp_path / "outer"
+    (outer / "sub").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(outer)], check=True)
+    with pytest.raises(si.WorkspaceError, match="inside"):
+        si.check_workspace(outer / "sub")
+
+
+def test_a_repository_root_is_accepted(tmp_path):
+    """Its own root is fine - it is a nested one that gets cut off."""
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    subprocess.run(["git", "init", "-q", str(ws)], check=True)
+    si.check_workspace(ws)
+
+
+def test_a_plain_directory_is_accepted(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.check_workspace(ws)
+
+
+# --- placement -------------------------------------------------------
+
+def test_install_places_the_skill_for_every_harness(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    placements = si.install(ws)
+    got = {p.path.relative_to(ws).as_posix() for p in placements}
+    assert got == {
+        ".agents/skills/mc-jarvis",
+        ".claude/skills/mc-jarvis",
+        ".codex/skills/mc-jarvis",
+    }
+    for p in placements:
+        assert (p.path / "SKILL.md").is_file()
+
+
+def test_install_copies_by_default(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    for p in si.install(ws):
+        assert not p.path.is_symlink()
+        assert p.mode == "copy"
+
+
+def test_link_mode_symlinks(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    for p in si.install(ws, link=True):
+        assert p.path.is_symlink()
+        assert p.mode == "link"
+
+
+def test_install_initialises_git_so_the_boundary_is_defined(tmp_path):
+    """Ancestor walking is bounded by the repository root; without a git
+    root a workspace can be cut off from its own skill (spec §7)."""
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.install(ws)
+    assert (ws / ".git").is_dir()
+
+
+def test_reinstall_replaces_rather_than_nesting(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.install(ws)
+    si.install(ws)
+    target = ws / ".claude" / "skills" / "mc-jarvis"
+    assert not (target / "mc-jarvis").exists()
+
+
+def test_reinstall_over_a_link_replaces_it_with_a_copy(tmp_path):
+    """`shutil.rmtree` on a symlinked directory raises, and `unlink` on a
+    real one raises too - so the replace has to test which it has."""
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.install(ws, link=True)
+    for p in si.install(ws):
+        assert not p.path.is_symlink()
+        assert (p.path / "SKILL.md").is_file()
+
+
+def test_global_install_never_touches_the_workspace(tmp_path, monkeypatch):
+    """--global is the escape hatch for someone who genuinely wants it
+    everywhere. It must not also litter the current directory."""
+    home = tmp_path / "home"
+    home.mkdir()
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setenv("HOME", str(home))
+    placements = si.install(ws, global_=True)
+    assert placements
+    for p in placements:
+        assert home in p.path.parents
+    assert not (ws / ".claude").exists()
+    assert not (ws / ".git").exists()
+
+
+# --- the skill file itself -------------------------------------------
+
+def _skill_text() -> str:
+    return (si.SKILL_SOURCE / "SKILL.md").read_text(encoding="utf-8")
+
+
+def test_frontmatter_has_the_required_fields_and_no_allowed_tools():
+    text = _skill_text()
+    assert text.startswith("---")
+    front = text.split("---")[1]
+    assert "name: mc-jarvis" in front
+    assert "description:" in front
+    assert "compatibility:" in front
+    # Marked experimental with support varying between implementations,
+    # which is exactly what breaks a one-file-everywhere design (spec §7).
+    assert "allowed-tools" not in front
+
+
+def test_skill_md_stays_under_the_length_limit():
+    assert len(_skill_text().splitlines()) < 500
+
+
+def test_browser_recipes_reference_exists_and_ends_every_path_the_same_way():
+    """Whatever route a user takes to FFG's page, it lands on one
+    command. A recipe that stops short of it has not helped."""
+    text = (si.SKILL_SOURCE / "references" / "browser-recipes.md").read_text(
+        encoding="utf-8")
+    for harness in ("Claude Code", "Codex", "opencode", "pi"):
+        assert harness in text, harness
+    assert "Save Page As" in text
+    assert text.count("mc-jarvis init --from-html") >= 5
+
+
+def test_every_command_the_skill_names_actually_exists():
+    """The draft named `deck stats`, which does not exist in this phase.
+    A skill that tells an agent to run a missing command produces a
+    confused agent, not an error."""
+    from mc_jarvis import cli
+
+    parser = cli.build_parser()
+    known = set(parser._subparsers._group_actions[0].choices)
+    named = set(re.findall(r"`mc-jarvis ([a-z-]+)", _skill_text()))
+    assert named <= known, named - known
+
+
+def test_the_skill_does_not_promise_flags_that_are_not_built():
+    """--owned parses everywhere and is rejected at dispatch: the
+    collection lands in a later phase."""
+    assert "--owned" not in _skill_text()
+
+
+def test_the_skill_states_no_timing_rung_as_a_fact():
+    """Trigger ordering has changed between Rules Reference versions. A
+    SKILL.md is meant to be memorable enough that an agent repeats it,
+    which is exactly what must not happen to a version-specific rung."""
+    text = _skill_text()
+    assert not re.search(r"rung \d", text, re.I)
+    for claim in ("is a Forced Interrupt", "on rung", "outrank"):
+        assert claim not in text, claim
+
+
+def test_the_skill_teaches_the_citation_rule():
+    text = _skill_text()
+    assert "mc-jarvis status" in text
+    assert "rr_version" in text

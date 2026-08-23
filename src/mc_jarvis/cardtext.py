@@ -50,6 +50,24 @@ class CostClause:
     raw: str
 
 
+def render(text: str | None) -> str:
+    """Card text as a person reads it.
+
+    MarvelCDB stores presentation markup - `<b>Action</b>`, `<i>flavour</i>`
+    - and marks trait references as `[[Trait]]`. Printing it raw means an
+    agent quotes `<b>Action</b>:` back to the player. Icon tokens like
+    `[amplify]` stay: they name an icon that has no plain-text form, and
+    `glyphs.yaml` chose those spellings to be read aloud.
+
+    `--json` keeps the raw text - anything computing on bold prefixes
+    needs the markup that marks them.
+    """
+    if not text:
+        return ""
+    out = TRAIT_RE.sub(r"\1", text)
+    return TAG_RE.sub("", out)
+
+
 def parse_traits(text: str | None) -> list[str]:
     if not text:
         return []

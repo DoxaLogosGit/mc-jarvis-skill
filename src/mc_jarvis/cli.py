@@ -141,6 +141,9 @@ def _dispatch(name: str, args) -> int:
     if name == "encounter":
         from . import cards
         return cards.handle_encounter(args)
+    if name == "install-skill":
+        from . import skill_install
+        return skill_install.run(args)
     if name == "timing":
         from . import timing
         return timing.handle(args)
