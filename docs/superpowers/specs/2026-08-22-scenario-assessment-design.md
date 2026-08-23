@@ -675,18 +675,58 @@ so `assess` coverage is bounded by marvelcdb's, and a scenario a player
 has actually played may simply be absent. `assess` must say so plainly
 rather than report a partial deck.
 
-**Revised detection order**, replacing §14.2's two-step:
+### 14.6 `Setup` alone does not exclude a card — it can cycle back
+
+Raised by the user and confirmed in the data: a card that starts in play
+may later be removed to the **encounter discard pile**, and rejoins the
+encounter deck at the next reshuffle. Starting in play and being in the
+deck are not exclusive.
+
+The three `[[Setting]]` environments prove it, and they carry their own
+evidence:
+
+> `The Savage Land` — **Setup.** The villain gains retaliate 1.
+> **Special**: … **When Revealed**: Discard each other `[[Setting]]`
+> environment in play. — `permanent` = –, **boost = 3**
+
+A `When Revealed` ability and a boost value are both **meaningless for a
+card that never enters the encounter deck**: When Revealed fires only when
+a card is revealed from it, and a boost value is only read when the card is
+drawn face-down as a boost card. `Genosha` and `Blue Area of the Moon` are
+identical in shape. So the cycle is: start in play → another Setting
+environment is revealed → discarded → reshuffled into the deck → drawn.
+
+**`permanent` earns its place here after all**, in the opposite direction
+to §14.5's trap. It means "cannot be discarded from play", so a `Setup`
+card that is also `permanent` can never reach the discard pile and never
+rejoins the deck. That splits the 13 cleanly:
+
+| `Setup` + … | Cards | In the deck? |
+|---|---|---|
+| `permanent` | 7 — Power Stone, Infinity Gauntlet, Flight, Super Strength, Telepathy, Gene Pool, Ancient Ritual | **never** |
+| `When Revealed` and/or `boost` | 3 — the `[[Setting]]` environments | **starts in play, returns later** |
+| neither | 3 — the `Chief … Officer` environments (they *flip*, they do not discard) | probably never; unverified |
+
+So `starts_in_play` is not one role but two, and the difference matters to
+`assess`: a card that rejoins the deck belongs in the composition
+statistics, just not in the opening deck. The model needs a
+`returns_to_deck` flag alongside the role, not a fourth role value.
+
+**Revised detection order**, replacing §14.2's two-step and §14.5's first
+draft:
 
 1. `type_code` — `villain` and `main_scheme` are never in the deck; the
    player-side types (§14.2) are never in it either.
-2. `Setup` keyword in the card's own text → `starts_in_play` /
-   `setup_attachment`. 13 cards, free.
-3. `Place this card in the [[X]] deck` → `other_deck`. 15+ cards, free.
-4. The scenario's `Setup` prose → the residue, per scenario, acknowledged
+2. `Place this card in the [[X]] deck` → `other_deck`. 15+ cards, free.
+3. `Setup` keyword **and** `permanent` → `starts_in_play`, never returns.
+   7 cards, free.
+4. `Setup` keyword **without** `permanent` → starts in play but
+   `returns_to_deck`, if it carries a boost value or a `When Revealed`
+   ability. 3 cards; the remaining 3 are unverified and go to config.
+5. The scenario's `Setup` prose → the residue, per scenario, acknowledged
    in config and gated. 33 of 56 scenarios need one.
-5. Anything left → `deck`.
+6. Anything left → `deck`.
 
-Steps 2 and 3 are new and cost nothing. They do not remove the need for
-step 4, but they shrink it and they catch the two worst cases in the
-corpus.
+Steps 2–4 are free. They do not remove step 5, but they shrink it and they
+catch the two worst cases in the corpus.
 
