@@ -608,3 +608,85 @@ plus an enumerated residue**.
   this, but the question should be settled before the non-modular part of
   the block is used for anything.
 
+### 14.5 Corrections from domain knowledge, 2026-08-23
+
+Four cards named by the user, checked against the corpus. Two of them
+correct §14.2, which overstated the negative.
+
+**§14.2 was too strong: a signal does exist.** A `Setup` keyword in the
+card's own text marks a card that enters play at setup, and it catches
+exactly the cards the user named:
+
+| Card | Set | Type | `permanent` | `boost` |
+|---|---|---|---|---|
+| `Infinity Gauntlet` | `infinity_gauntlet` | attachment | 1 | – |
+| `Power Stone` | `power_stone` | attachment | 1 | – |
+| `Flight` / `Super Strength` / `Telepathy` | own sets | attachment | 1 | – |
+| `Gene Pool`, `Ancient Ritual` | `infinites`, `clan_akkaba` | side_scheme | 1 | – |
+| `The Savage Land`, `Genosha`, `Blue Area of the Moon` | own sets | environment | – | 3 |
+
+**13 deck-eligible cards carry it.** Small, but precise and free — it costs
+one regex and needs no acknowledgment. §14.2's claim that "no signal in the
+card data distinguishes a set-aside card from a deck card" is wrong as
+stated; the correct claim is narrower: **no signal distinguishes the
+*scenario-specific* asides** — the ones named only in a main scheme's
+`Setup` prose, like `Orbital Decay` or the `[[Captive]]` allies.
+
+**`permanent` is NOT a membership signal, and this is a trap.** It is
+tempting — 37 deck-eligible cards carry it — but it means "cannot be
+discarded from play", not "starts outside the deck". Enchantress's
+`Trance of Envy` is `permanent` **and** has a `When Revealed` ability,
+which only fires when a card is revealed from the encounter deck. It is
+drawn, then stays. The same holds for `Intense Focus` and `Total Focus`.
+Treating `permanent` as "not in the deck" would wrongly remove cards that
+demonstrably are.
+
+**`boost` is not a membership signal either**, though it looks like one.
+`Armored Rhino Suit` has no boost value and `Charge` has 2 — which is the
+difference §5 needed and could not find. But `The Sleeper` and
+`Future of Despair` are both set aside by their scenario's `Setup` block
+and carry boost 1 and 3. Absence correlates; presence does not exclude.
+
+**A fifth role is missing: `other_deck`.** The spec's four roles have no
+place for a card that belongs to a *different* deck. Six exist:
+
+| Deck | Sets |
+|---|---|
+| `[[infinity stone]]` | `infinity_gauntlet`, `loki`, `thanos` |
+| `[[invocation]]` | `doctor_strange` and its nemesis / invocation sets |
+| `[[sense]]` | `daredevil` |
+| `[[gift]]`, `[[labor]]` | `hercules` |
+| `[[weather]]` | `storm` |
+
+**15 deck-eligible cards belong to the infinity stone deck alone**, and
+they are detectable: their text says `Place this card in the
+[[infinity stone]] deck`. The `infinity_gauntlet` modular is the sharpest
+case in the corpus — **7 cards, none of them in the encounter deck**: the
+Gauntlet attaches at setup, and the six Stones are their own deck. A
+scenario including that modular would gain 7 phantom encounter cards, a
+100% error for that set's contribution.
+
+**Data-source bound.** The user played a Bullseye scenario online, and
+`Adamantium-Lace Spines` appears nowhere in the corpus. Bullseye exists
+only as a **minion**, in `dangerous_recruits` and `daredevil_nemesis`.
+marvelcdb — current here to 2026-08-21 — carries no Bullseye villain set.
+DragnCards keeps its own database and carries content marvelcdb does not,
+so `assess` coverage is bounded by marvelcdb's, and a scenario a player
+has actually played may simply be absent. `assess` must say so plainly
+rather than report a partial deck.
+
+**Revised detection order**, replacing §14.2's two-step:
+
+1. `type_code` — `villain` and `main_scheme` are never in the deck; the
+   player-side types (§14.2) are never in it either.
+2. `Setup` keyword in the card's own text → `starts_in_play` /
+   `setup_attachment`. 13 cards, free.
+3. `Place this card in the [[X]] deck` → `other_deck`. 15+ cards, free.
+4. The scenario's `Setup` prose → the residue, per scenario, acknowledged
+   in config and gated. 33 of 56 scenarios need one.
+5. Anything left → `deck`.
+
+Steps 2 and 3 are new and cost nothing. They do not remove the need for
+step 4, but they shrink it and they catch the two worst cases in the
+corpus.
+
