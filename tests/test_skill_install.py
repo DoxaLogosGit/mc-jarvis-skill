@@ -155,22 +155,58 @@ def test_browser_recipes_reference_exists_and_ends_every_path_the_same_way():
     assert text.count("mc-jarvis init --from-html") >= 5
 
 
+def _skill_docs() -> list[str]:
+    """Every file the skill ships. `references/` is read by the agent too,
+    so it can drift from the CLI exactly like SKILL.md can."""
+    return [p.read_text(encoding="utf-8")
+            for p in sorted(si.SKILL_SOURCE.rglob("*.md"))]
+
+
+def _subcommands(parser):
+    return set(parser._subparsers._group_actions[0].choices)
+
+
 def test_every_command_the_skill_names_actually_exists():
     """The draft named `deck stats`, which does not exist in this phase.
     A skill that tells an agent to run a missing command produces a
     confused agent, not an error."""
     from mc_jarvis import cli
 
-    parser = cli.build_parser()
-    known = set(parser._subparsers._group_actions[0].choices)
-    named = set(re.findall(r"`mc-jarvis ([a-z-]+)", _skill_text()))
-    assert named <= known, named - known
+    known = _subcommands(cli.build_parser())
+    for text in _skill_docs():
+        named = set(re.findall(r"`?mc-jarvis ([a-z-]+)", text))
+        assert named <= known, named - known
+
+
+def test_two_level_commands_name_a_real_subcommand():
+    """`rules show` and `card search` are two levels deep, which is where
+    drift actually happens - the one-level check above passes on
+    `mc-jarvis rules nonsense`."""
+    from mc_jarvis import cli
+
+    groups = cli.build_parser()._subparsers._group_actions[0].choices
+    for text in _skill_docs():
+        for parent, child in re.findall(r"mc-jarvis (card|rules) ([a-z]+)",
+                                        text):
+            assert child in _subcommands(groups[parent]), f"{parent} {child}"
+
+
+def test_the_skill_names_at_least_one_two_level_command():
+    """Guards the guard: a regex that matches nothing passes vacuously."""
+    from mc_jarvis import cli
+
+    groups = cli.build_parser()._subparsers._group_actions[0].choices
+    assert "show" in _subcommands(groups["rules"])
+    found = [m for text in _skill_docs()
+             for m in re.findall(r"mc-jarvis (card|rules) ([a-z]+)", text)]
+    assert len(found) >= 4, found
 
 
 def test_the_skill_does_not_promise_flags_that_are_not_built():
     """--owned parses everywhere and is rejected at dispatch: the
     collection lands in a later phase."""
-    assert "--owned" not in _skill_text()
+    for text in _skill_docs():
+        assert "--owned" not in text
 
 
 def test_the_skill_states_no_timing_rung_as_a_fact():
@@ -187,3 +223,30 @@ def test_the_skill_teaches_the_citation_rule():
     text = _skill_text()
     assert "mc-jarvis status" in text
     assert "rr_version" in text
+
+
+@pytest.mark.integration
+def test_the_built_wheel_carries_the_whole_skill():
+    """The distribution story runs entirely through this path: the repo
+    ships no content, so `uv tool install mc-jarvis` has to deliver the
+    skill and the configs. In a checkout `_bundled/skill` is a symlink and
+    every other test reads through it, so nothing else would notice a
+    force-include that stopped resolving - and `references/` was added to
+    the skill long after that mapping was written.
+    """
+    import subprocess
+    import zipfile
+
+    repo = Path(__file__).resolve().parent.parent
+    build = subprocess.run(["uv", "build", "--wheel"], cwd=repo,
+                           capture_output=True, text=True)
+    assert build.returncode == 0, build.stderr
+    wheel = max((repo / "dist").glob("*.whl"), key=lambda p: p.stat().st_mtime)
+    names = set(zipfile.ZipFile(wheel).namelist())
+    for required in (
+            "mc_jarvis/_bundled/skill/mc-jarvis/SKILL.md",
+            "mc_jarvis/_bundled/skill/mc-jarvis/references/browser-recipes.md",
+            "mc_jarvis/_bundled/timing.yaml",
+            "mc_jarvis/_bundled/legality.yaml",
+            "mc_jarvis/_bundled/glyphs.yaml"):
+        assert required in names, required

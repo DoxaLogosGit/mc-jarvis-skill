@@ -8,3 +8,5 @@ __pycache__/
 .pytest_cache/
 src/mc_jarvis/_bundled/*
 !src/mc_jarvis/_bundled/.gitignore
+dist/
+build/
