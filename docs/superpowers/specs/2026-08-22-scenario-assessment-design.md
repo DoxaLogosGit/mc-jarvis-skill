@@ -1,9 +1,11 @@
 # Scenario Assessment — Design
 
-> **Status: captured, not yet detailed.** Written 2026-08-22 to record the
-> idea and the data findings behind it before they were lost. Revisit after
-> Phase 1 Tasks 15–17 land. Sections marked **[thin]** are deliberately
-> under-specified and need a working pass before they can be planned.
+> **Status: working pass done 2026-08-23; ready to plan Part 1.** Written
+> 2026-08-22 to record the idea and the data findings behind it before they
+> were lost. Sections marked **[thin]** were under-specified pending a pass
+> over real encounter sets; that pass is now recorded in §14, and **it
+> contradicts §4.7 and §5.2**. Read §14 before planning from anything
+> below — the corrections are marked inline, but §14 carries the numbers.
 >
 > **Parent spec:** `docs/superpowers/specs/2026-08-20-mc-jarvis-design.md`
 > **Parent plan:** `docs/superpowers/plans/2026-08-21-mc-jarvis-phase1-slice.md`
@@ -161,12 +163,21 @@ a membership question (§5), not a data question.
 starts emitting an explicit zero, the `null`-means-zero reading has changed
 and the build must say so rather than silently mixing two encodings.
 
+Re-verified 2026-08-23 against the raw JSON, and the precise shape is
+narrower than "null means zero": the `boost` key is **either absent or one
+of 1, 2, 3, 4**. It is never `0` and never explicitly `null` — 1,244 cards
+carry it (2:560, 1:353, 3:312, 4:19). So the gate is really two assertions:
+no `0`, and no value outside 1–4.
+
 ### 4.4 The `*_star` family is a flag, not a value
 
-`boost_star` is `Counter({'True': 419})` — never a number. The same holds
-for `attack_star` (451), `scheme_star` (117), `base_threat_star` (2),
-`escalation_threat_star` (19), `defense_star` (3), `recover_star` (1),
-`cost_star` (7).
+`boost_star` is `Counter({'True': 419})` — never a number. Re-verified
+2026-08-23 against the raw JSON: **eleven** `*_star` fields exist, not the
+eight listed here, and every one is boolean `True` only —
+`attack_star` (451), `boost_star` (419), `scheme_star` (117),
+`thwart_star` (42), `escalation_threat_star` (19), `cost_star` (7),
+`health_star` (7), `threat_star` (4), `defense_star` (3),
+`recover_star` (1), `base_threat_star` (2).
 
 **134 cards carry both `boost` and `boost_star`** — the star is an additional
 icon with a card-specific effect, not a replacement for the numeric count.
@@ -190,13 +201,26 @@ parent plan already records for Task 10, repeated on the scheme side.
 Same family: `health_per_hero` (235), `health_per_group` (1),
 `cost_per_hero` (4), `base_threat_per_group` (1).
 
-### 4.7 marvelsdb has no scenario → modular mapping
+### 4.7 marvelsdb has no scenario → modular mapping — **WRONG, see §14.1**
 
-There is no field anywhere in `cards.json`, `packs.json`, or `sets.json` that
-records which modular sets a published scenario prescribes. That mapping
-lives in the scenario's printed rules insert. §7 covers the consequence.
+~~There is no field anywhere in `cards.json`, `packs.json`, or `sets.json`
+that records which modular sets a published scenario prescribes.~~
+
+There is no structured *field*, which is what this claim checked. But the
+mapping is in the data: FFG prints it in the **`Contents` block of the
+scenario's own main scheme card**, and marvelsdb carries that text
+verbatim. 49 of 56 villain sets have one. §14.1 has the measurement and
+what it changes.
 
 ## 5. The load-bearing problem: encounter deck membership
+
+> **The example below is wrong — see §14.2.** `Armored Rhino Suit` is
+> asserted here to be set aside. Nothing in the data says so: it reads
+> `Attach to Rhino`, exactly like `Charge` and `Enhanced Ivory Horn`, which
+> this same list calls encounter-deck cards. Rhino's main scheme carries no
+> set-aside instruction at all — its entire `Setup` block is *"Advance to
+> stage 1B."* The membership problem is real and the reasoning below stands;
+> the card chosen to illustrate it does not.
 
 `Armored Rhino Suit` sits in `set_code = rhino` with `boost: null` and
 **never enters the encounter deck** — it attaches to Rhino during setup. The
@@ -258,6 +282,13 @@ The detection rules for each are **not yet written**. Candidate signals:
 scenario's own setup text, and phrases in card text. This needs a working
 pass over real sets before it can be planned, and it is the single largest
 piece of unknown work in this spec.
+
+> **Done, and it is not the largest piece of work — see §14.2.** The pass
+> proved a negative: **no signal in the card data distinguishes a set-aside
+> card from a deck card of the same type.** A detection rule over card text
+> is not achievable. What is achievable is the type rule plus a small
+> enumerated residue: **29 cards of 1,353 deck-eligible, or 2.1%**,
+> concentrated in about ten scenarios.
 
 ## 6. Command surface
 
@@ -403,3 +434,134 @@ that can fail.
 4. **Obligations.** 95 carry boost values and they enter the encounter deck
    only when their hero is in play — so they belong to the profile only under
    `--nemesis`, or when a modular set ships one (23 do).
+
+---
+
+## 14. Working pass, 2026-08-23
+
+The pass §5.2 asked for, run against the real corpus. Two findings
+contradict the spec above, and both make the feature *smaller*.
+
+### 14.1 The scenario → modular mapping is in the data (corrects §4.7)
+
+§4.7 checked for a structured field and correctly found none. It did not
+check the card text. FFG prints the scenario's contents on the **main
+scheme card**, and marvelsdb carries it verbatim:
+
+> `[unus]` **Contents**: Unus (I) and Unus (II). *(Unus (II) and Unus (III)
+> instead for expert mode.)* Unus, Infinites, and Standard sets. **One
+> modular set** *(Dystopian Nightmare)*. **Setup**: Reveal the Gene Pool
+> side scheme.
+
+**61 main-scheme cards across 55 sets carry a `Contents` block; 49 of the
+56 villain sets have one.** Parsing the modular clause and resolving the
+names against `sets.name` where `card_set_type_code = 'modular'`:
+
+| Outcome | Villain sets |
+|---|---|
+| named, every name resolved | 35 |
+| named, at least one name unresolved | 7 |
+| no `Contents` block at all | 7 |
+| player chooses, no set named | 6 |
+| random selection | 1 |
+
+The 7 unresolved are **not** a parsing dead end — they are formatting
+variance plus one upstream typo:
+
+- `'<i>Acolytes</i>'`, `'<i>Mystique</i>'`, `'<i>Sentinels</i>'`,
+  `'<i>Zero Tolerance</i>'`, `'<i>Brotherhood</i>'` — inner markup left in
+  the capture; strip tags before resolving.
+- `'S.H.I.E.L.D'` — the set is named `S.H.I.E.L.D.`, with the final stop.
+- `"Batrocs's Brigade"` — FFG's own typo for `Batroc's Brigade`. One card,
+  and a misprint like the `Hero Reponse` family already in `timing.yaml`.
+
+**Three kinds of scenario, not one mapping.** The parse must keep them
+apart, because a player choosing modulars needs to know which the box
+prescribes:
+
+- **prescribed** — `(Dystopian Nightmare)` stated flatly;
+- **recommended** — `(recommended: Bomb Scare)`, as Rhino and Ultron print
+  it. The player may substitute freely;
+- **open** — *"Choose 1 modular set, plus 1 per hero…"* (Thunderbolts,
+  Mojo), *"3–4 modular sets"* (the PvP scenarios), or random (Magog).
+
+Flattening `recommended` into `prescribed` would state a constraint the box
+does not impose.
+
+**What this changes in §7.** `config/scenarios.yaml` stops being
+hand-authored from printed inserts for all 56 scenarios. It is **parsed
+from the main scheme**, and the config carries only what the text cannot
+give: the 7 sets with no `Contents` block, the one typo, and any name the
+parse cannot resolve. Same shape as `timing.yaml` — the primary source is
+parsed, the config holds only the residue, and both directions are gated.
+§7's two failure modes still apply, and gain a third: **fail when a
+`Contents` block names a modular set that does not resolve and no config
+entry covers it.**
+
+### 14.2 Set-aside cannot be detected, and it barely matters (corrects §5.2)
+
+§5.1 proposed "a detection rule over card type and text, not a hand-written
+list". **For `set_aside`, that rule does not exist.** Measured:
+
+- `Armored Rhino Suit` reads `Attach to Rhino.` — character-for-character
+  the same opening as `Charge` and `Enhanced Ivory Horn`, which §5 lists as
+  encounter-deck cards. No field, keyword, or phrase separates them.
+- **Five cards in the whole corpus** contain the phrase "set aside", and
+  three of those are `Contents`/`Setup` prose rather than the card's own
+  rules text.
+- `hidden` marks card backs, as §5 already says. It is not a role.
+
+The instruction lives in the **main scheme's `Setup` block**, in prose —
+17 of 55 sets carry one — and it names things in four different ways:
+
+| Form | Example |
+|---|---|
+| a named card | *"Set the Orbital Decay side scheme aside."* |
+| a trait | *"Set each [[Captive]] ally aside."* |
+| a whole set | *"Set the Blue Moon, Genosha, and Savage Land sets aside."* |
+| a category | *"Set aside each unused villain card."* |
+
+**Magnitude.** Resolving the named cards and trait groups against the
+corpus: **29 cards of 1,353 deck-eligible — 2.1%** — concentrated in about
+ten scenarios. Fourteen of the 29 are `ally`-type cards in encounter sets.
+
+That number decides the plan's shape. The type rule alone —
+`villain` and `main_scheme` are never in the deck, everything else is — is
+**~98% correct**, so:
+
+- Part 1 **ships on the type rule**, with the residue named in config.
+- `config/encounter_setup.yaml` is a **refinement, not a prerequisite**.
+- The whole-set asides are a different question entirely: they change
+  *which sets are in play*, not which cards within a set are in the deck.
+  They belong to scenario assembly (§14.1), not to per-card roles.
+
+§5.1's three-step structure survives with its first step replaced: not a
+detection rule, but a **type rule plus an enumerated residue**, each entry
+carrying the `Setup` sentence that justifies it, re-verified at build time.
+The audit still fails on an unacknowledged flag — it just has far less to
+acknowledge than the spec feared.
+
+### 14.3 Confirmed unchanged
+
+- **No card has `boost: 0`** (§4.3). The gate is valid. Narrower than
+  stated: the key is either **absent or 1–4**, never `0` and never an
+  explicit `null` — 1,244 cards carry it (2:560, 1:353, 3:312, 4:19). So
+  the gate is two assertions, not one.
+- **Every `*_star` field is boolean `True`** (§4.4), verified against the
+  raw JSON. There are **eleven**, not the eight listed: `health_star`,
+  `threat_star` and `thwart_star` were missed.
+
+### 14.4 Still open after this pass
+
+- §13.2 (villain stages in the profile), §13.3 (environments) and §13.4
+  (obligations) are untouched by this pass and remain open.
+- The **`recommended` vs `prescribed` distinction** is drawn from grammar
+  alone. It should be checked against one printed insert before it is
+  relied on, per §10's rule that a stated mechanic must not quietly become
+  a modelled fact.
+- Whether a `Contents` block lists what a scenario **requires** or what
+  **shipped in the box** — `dark_beast` names five sets, only one of them
+  modular. The parse takes the modular clause specifically, which sidesteps
+  this, but the question should be settled before the non-modular part of
+  the block is used for anything.
+
