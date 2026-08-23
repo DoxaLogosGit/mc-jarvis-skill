@@ -730,3 +730,99 @@ draft:
 Steps 2–4 are free. They do not remove step 5, but they shrink it and they
 catch the two worst cases in the corpus.
 
+### 14.7 The set-aside list *is* derivable from card text — I searched wrong twice
+
+§14.2 concluded "only five cards in the whole corpus contain the phrase
+'set aside'". That search was for the **spaced** form. FFG writes the
+adjective **hyphenated**, and:
+
+| Form | Cards |
+|---|---|
+| `set aside` (verb) | 5 |
+| `set-aside` (adjective) | **91** |
+
+Ninety-one cards refer to set-aside cards, and they do it in a resolvable
+way — as **trait-and-type groups**, not free prose:
+
+> `Heart of the Empire` — *The first player reveals a random set-aside
+> `[[Prelate]]` minion.*
+> `Upgrading Adaptoids` — *put 1 random set-aside `[[Adaptoid]]`
+> environment into play instead.*
+> `Sabotage Master Mold` — *Reveal the set-aside Orbital Decay side
+> scheme.*
+
+Extracting `set-aside (<trait>|<Name>) <type>` and resolving against the
+corpus:
+
+| Group | Type | Copies | Referenced from |
+|---|---|---|---|
+| `[[Thunderbolt]]` | minion | **19** | `thunderbolts` |
+| `[[Captive]]` | ally | 13 | `project_wideawake`, `taskmaster` |
+| `[[Prelate]]` | minion | 5 | `apocalypse` |
+| `[[Adaptoid]]` | environment | 4 | `m.o.d.o.k.` |
+| `[[Morlock]]` | ally | 4 | `morlock_siege` |
+| `Rescued Captive` | ally | 4 | `batroc` |
+| `Orbital Decay` | side scheme | 1 | `magneto_villain` |
+| `Absorbing Man`, `Titania`, `Whirlwind`, `Zzzax` | ally | 4 | `trickster_magic` |
+| `Dreadpool` | minion | 1 | `dreadpool` |
+
+**Every group here independently matches what §14.2 derived from the main
+scheme `Setup` blocks**, and it adds one the Setup blocks missed — the 19
+`[[Thunderbolt]]` minions. Two unrelated places in the data agreeing is
+the same shape as the mirror's two version strategies: it makes the result
+checkable rather than trusted, and a disagreement is a signal rather than
+a coin flip.
+
+Two regex artefacts to exclude: `set-aside area for …` is the *nemesis*
+set-aside area, not a card group.
+
+**What this changes.** §5.1's original instinct — "a detection rule over
+card type and text, not a hand-written list" — was right, and §14.2 was
+wrong to abandon it. `config/encounter_setup.yaml` shrinks again: it holds
+only what *neither* source names, and the build gate becomes a
+cross-check between the two sources plus an acknowledgment for the
+residue.
+
+**Method note, recorded because it cost two wrong conclusions.** Both
+errors were the same mistake: searching one spelling and reporting the
+absence as a finding. `set aside` vs `set-aside`, and earlier
+`<b>Setup</b>` without the bare `Setup.` form. A negative result about
+text in this corpus is only as strong as the variants tried, and it must
+be reported with the variants listed — the same standard §4.3 already
+applies to `boost: null`.
+
+### 14.8 Quest chains: side schemes that advance, and never enter the deck
+
+Confirmed by the user for `magneto_villain`, and the chain is fully
+visible in the card text — each link names the next:
+
+> `Boarding Party` → **When Defeated**: Flip this card and reveal
+> `Sabotage Master Mold`
+> `Sabotage Master Mold` → **When Defeated**: Reveal the set-aside
+> `Orbital Decay` side scheme
+> `Orbital Decay` → **When Defeated**: Flip this card and reveal
+> `Physical Strain`
+
+They function as a quest: heroes remove threat to advance to the next, and
+the last one is what allows Magneto to be defeated. **None of them ever
+enters the encounter deck**, and unlike the `[[Setting]]` environments of
+§14.6 they never cycle back.
+
+Their signature separates them from the deck side schemes in the same set:
+each carries a **`When Defeated`** ability and a static restriction
+(*"Magneto cannot have more than 6[per_hero] sustained damage"*), and
+crucially **no boost value and no `When Revealed`** — while `Magnetic
+Mayhem` (boost 4), `Seized!` (boost 3) and `Magnetically Sealed` (`When
+Revealed` + `Boost`) in the same set have both and are deck cards.
+
+That is the §14.6 discriminator applied to a different role: **a card with
+no boost value and no `When Revealed` ability has no way to be used from
+the encounter deck.** It is worth testing as a general negative signal
+before the config is written, because it would also catch the chain
+members that no other card names.
+
+**Still open:** the three `Chief … Officer` environments — the user is
+checking whether they can ever be discarded. They *flip* rather than
+discard, which would keep them out of the deck permanently, but "flip" is
+not proof that nothing else discards them.
+
