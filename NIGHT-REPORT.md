@@ -1,6 +1,13 @@
 # mc-jarvis — state of play, 2026-08-23
 
-**Phase 1 is complete, and Task 18 has landed on top of it.**
+**The Phase 1 *plan* (Tasks 1-17) is complete, plus Task 18.**
+
+> **Not the same as the spec's Phase 1.** The parent spec's §13 lists deck
+> import, legality validation, deck stats, and collection / `--owned` as
+> Phase 1 too, and none of those is built. Roughly two-thirds of spec
+> Phase 1 is done. Earlier versions of this report said "Phase 1 is
+> complete", which was wrong and conflated the plan document with the
+> roadmap.
 
     338 tests passing
     4,379 cards · 69 identities · 287 rules entries (216 resolve) · 1,180
