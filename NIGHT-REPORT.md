@@ -2,7 +2,7 @@
 
 **Phase 1 is complete, and Task 18 has landed on top of it.**
 
-    345 tests passing
+    338 tests passing
     4,379 cards · 69 identities · 287 rules entries (216 resolve) · 1,180
     card-rules links · 4,588 timing triggers
     Rules Reference v1.8 · unmapped_glyphs: empty · unclassified prefixes: none
@@ -62,18 +62,22 @@ is still a wrong answer. What keeps it small: **a new Rules Reference
 supersedes every ruling published before it**, so the live set is bounded
 by one release cycle and is relative to the edition indexed.
 
-    mc-jarvis rulings              # in force under the rulebook you hold
+    mc-jarvis rulings              # what the rulebook does not yet cover
     mc-jarvis rulings <text>       # search them
-    mc-jarvis rulings --all        # including superseded, each labelled
 
-`rules show <term>` adds any ruling in force under the rulebook entry,
-never in place of it. Superseded rulings are kept and flagged, so "what
-happened to that ruling about overkill?" stays answerable.
+`rules show <term>` puts any such ruling under the rulebook entry, never
+in place of it.
 
-**Today it reports 31 rulings, 0 in force.** That is the correct steady
-state a month after a rulebook release, not a broken feature. Verified by
-re-classifying the real corpus against each edition: v1.7 → 31 active,
-v1.8 → 0 active, no determinable date → 31 active (fail-safe).
+**A new Rules Reference absorbs every ruling published before it**, and an
+absorbed ruling says exactly what the rulebook now says — so it is not
+stored at all. Only what the rulebook lacks is kept.
+
+**Today that is zero**, and that is the healthy state a month after a
+release, not a broken feature. Since an empty corpus cannot gate itself,
+the pipeline is verified by re-classifying the cached page against each
+edition: v1.7 keeps 31, v1.8 keeps 0, an undeterminable date keeps 31 as
+the fail-safe. The build still reports `rulings_superseded: 31`, so a
+release absorbing a batch stays visible.
 
 Three things the real data settled against the design:
 
@@ -85,12 +89,13 @@ Three things the real data settled against the design:
 - **Linking is quoted terms only.** Every term a ruling merely mentions
   gives 13.8 links each and attaches 17 of 31 to `Ability`. Card-name
   linking was measured and abandoned: one ruling matched 85 cards.
-- **The change-log confirmation mechanism does not work.** Free-text
-  matching "confirmed" 12 of 31 because `resolve` is both a change-log
-  term and ordinary rules vocabulary; page-number matching claimed 2, both
-  coincidental page-sharing. Strict quoting confirms 0. Page 1 summarises
-  *notable* changes, not every incorporation — so supersession really is a
-  presumption, and every row says `presumed`.
+- **The change-log confirmation mechanism does not work**, and was
+  removed. Free-text matching "confirmed" 12 of 31 because `resolve` is
+  both a change-log term and ordinary rules vocabulary; page-number
+  matching claimed 2, both coincidental page-sharing; strict quoting
+  confirmed 0. Worth knowing before anyone proposes it again: the Rules
+  Reference's page-1 summary lists *notable* changes, so it cannot confirm
+  that a given ruling was incorporated.
 
 ## The three bugs this project's own gates caught
 

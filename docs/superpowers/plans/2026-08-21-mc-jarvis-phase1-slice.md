@@ -6638,6 +6638,8 @@ CREATE TABLE IF NOT EXISTS rr_changelog (
 
 Only `active` rulings are retained at build time. `update` reports the transition — "3 rulings superseded by Rules Reference v1.9" — because that is exactly when a player's understanding needs to change.
 
+> **Decided twice.** On 2026-08-23 this was first built the other way, keeping superseded rulings flagged so the transition report had data and so "what happened to that ruling?" stayed answerable. The user reversed it the same day: a superseded ruling says what the rulebook now says, and `rules show` already quotes the rulebook. The original design was right. `store` returns its dropped count, so the transition report survives without retaining the rows.
+
 ### Fail-safe
 
 If the RR's publication date cannot be determined, **every ruling is treated as active** and the build warns. Over-reporting a ruling is a mild annoyance; silently dropping a live one that contradicts the RR is the failure this feature exists to prevent.
@@ -6685,26 +6687,35 @@ If the RR's publication date cannot be determined, **every ruling is treated as 
    Rules Reference vocabulary removed 2 names out of 3,186. Only **quoted**
    terms are linked: 9 links, each a real subject reference.
 
-4. **The change-log confirmation mechanism does not work.** This is a
-   design conclusion, not an implementation detail. Matching change-log
-   terms against a ruling's free text "confirmed" 12 of 31, because
-   `resolve` is simultaneously a v1.8 change-log term and ordinary rules
-   vocabulary. Matching change-log *page numbers* against linked entries'
-   pages claimed 2, both coincidental page-sharing — `Attach To` and
-   `Attack (Enemy Activation)` are both on p.8. Strict quoted-subject
-   matching confirms **0 of 31**, and that is the honest answer: page 1
-   summarises *notable* changes, not every incorporation. The column and
-   the strict rule are kept — they are correct when they fire — but
-   today every row is `presumed`, and supersession really is a
-   presumption.
+4. **The change-log confirmation mechanism does not work, and is gone.**
+   This is a design conclusion, not an implementation detail. Matching
+   change-log terms against a ruling's free text "confirmed" 12 of 31,
+   because `resolve` is simultaneously a v1.8 change-log term and ordinary
+   rules vocabulary. Matching change-log *page numbers* against linked
+   entries' pages claimed 2, both coincidental page-sharing — `Attach To`
+   and `Attack (Enemy Activation)` are both on p.8. Strict quoted-subject
+   matching confirms **0 of 31**: page 1 summarises *notable* changes, not
+   every incorporation.
+
+   It was kept briefly as `confirmed`/`presumed`, then removed with the
+   superseded rows it classified. `rr_changelog` and `parse_changelog`
+   went with it — nothing else consumed them. Worth knowing before anyone
+   proposes it again: **the Rules Reference's page-1 summary cannot
+   confirm that a given ruling was incorporated.**
 
 Measured 2026-08-23 by re-classifying the real 31 against each edition:
 
-| Rules Reference held | Active | Superseded |
+| Rules Reference held | Stored | Dropped as covered |
 |---|---|---|
 | v1.7 (09 Jan 2026) | 31 | 0 |
 | v1.8 (22 Jul 2026) | **0** | 31 |
 | date undeterminable | 31 | 0 (fail-safe) |
+
+The real index therefore stores **nothing** today, which is the correct
+state and not a broken feature. That leaves the stored corpus unable to
+gate itself, so the integration test re-classifies the *cached page*
+against each edition instead — the pipeline stays verified against real
+data even when its output is empty.
 
 ---
 
