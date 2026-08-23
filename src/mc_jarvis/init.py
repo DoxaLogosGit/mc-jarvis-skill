@@ -133,11 +133,11 @@ def _rebuild_rules(conn: sqlite3.Connection,
 
 
 def _rebuild_rulings(conn, data_root: Path) -> dict:
-    """Classify the cached rulings against the indexed Rules Reference.
+    """Store the rulings the indexed Rules Reference does not yet cover.
 
     Additive and optional: with no cache there are simply no rulings. A
     cache that no longer parses is reported, because "the page changed"
-    and "there are no rulings" must never look alike.
+    and "there is nothing outstanding" must never look alike.
     """
     from . import manifest
 
@@ -156,42 +156,24 @@ def _rebuild_rulings(conn, data_root: Path) -> dict:
                                      manifest_docs=docs)
     if published is None:
         print("WARNING: could not determine when the Rules Reference was "
-              "published, so every ruling is treated as still in force. "
+              "published, so every ruling is treated as still outstanding. "
               "Over-reporting a ruling is survivable; dropping a live one "
               "is not.", file=sys.stderr)
 
     if not found.ok:
-        # Keep whatever is already stored. A parse that fails today
-        # against a cache that parsed yesterday is a broken parser, not an
-        # empty corpus, and discarding the rows makes the two
-        # indistinguishable. The statuses are still refreshed against the
-        # rulebook now indexed.
+        # Keep what is stored rather than discarding it: a parse that
+        # fails today against a cache that parsed yesterday is a broken
+        # parser, not an empty corpus. Anything the rulebook has since
+        # absorbed is still pruned.
         if found.status != "disabled":
             print(f"WARNING: {found.detail}", file=sys.stderr)
-        split = rulings.reclassify(conn, published)
-        return {"rulings": split["total"],
-                "rulings_active": split["active"],
-                "rulings_superseded": split["superseded"]}
+        dropped = rulings.prune(conn, published)
+        return {"rulings": rulings.count(conn), "rulings_superseded": dropped}
 
-    pages = (data_root / "rules" / "txt"
-             / "marvel-champions-rules-reference.txt")
-    changelog = []
-    if pages.is_file():
-        first = pages.read_text(encoding="utf-8").split("\f")[0]
-        changelog = rulings.parse_changelog(first, version or "unknown")
-    conn.execute("DELETE FROM rr_changelog")
-    conn.executemany(
-        "INSERT INTO rr_changelog (rr_version, page, description, term) "
-        "VALUES (?, ?, ?, ?)",
-        [(e["rr_version"], e["page"], e["description"], e["term"])
-         for e in changelog])
-
-    total = rulings.store(conn, found.rulings, published=published,
-                          changelog=changelog,
-                          source_name=manifest.MIRROR_NAME)
-    split = rulings.counts(conn)
-    return {"rulings": total, "rulings_active": split["active"],
-            "rulings_superseded": split["superseded"]}
+    result = rulings.store(conn, found.rulings, published=published,
+                           source_name=manifest.MIRROR_NAME)
+    return {"rulings": result["stored"],
+            "rulings_superseded": result["superseded"]}
 
 
 def extract_rules_text(data_root: Path, *, backend: str | None = None) -> int:

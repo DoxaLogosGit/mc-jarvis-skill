@@ -68,11 +68,10 @@ def build_parser() -> argparse.ArgumentParser:
     rsearch = _leaf(rules_sub, "search", "full-text search the rules")
     rsearch.add_argument("text")
 
-    rul = _leaf(sub, "rulings", "designer rulings issued since the rulebook")
+    rul = _leaf(sub, "rulings",
+                "designer rulings the rulebook does not yet cover")
     rul.add_argument("text", nargs="?", default=None,
                      help="search the rulings instead of listing them")
-    rul.add_argument("--all", action="store_true",
-                     help="include rulings a newer rulebook superseded")
 
     tim = _leaf(sub, "timing", "trigger ordering and the game round")
     tim.add_argument("trigger", nargs="?", default=None,

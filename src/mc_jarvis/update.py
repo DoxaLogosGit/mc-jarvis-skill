@@ -102,12 +102,11 @@ def status(args) -> int:
             "GROUP BY source_doc ORDER BY source_doc")},
         "unmapped_glyphs": meta.get("unmapped_glyphs", ""),
         "timing_triggers": count("timing_triggers"),
-        # 0 active right after a Rules Reference release is the correct
-        # steady state, not a problem: the new edition absorbed them.
-        "rulings": count("rulings"),
-        "rulings_active": conn.execute(
-            "SELECT COUNT(*) FROM rulings WHERE status = 'active'"
-        ).fetchone()[0],
+        # Rulings the Rules Reference does not yet cover. Zero for a
+        # while after each release is the correct steady state, not a
+        # problem: the new edition absorbed them, and absorbed ones are
+        # not kept.
+        "rulings_outstanding": count("rulings"),
         "timing_broken": json.loads(meta.get("timing_broken") or "[]"),
     }
     if getattr(args, "json", False):

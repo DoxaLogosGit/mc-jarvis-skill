@@ -207,12 +207,16 @@ CREATE TABLE IF NOT EXISTS round_steps (
     source_doc  TEXT NOT NULL
 );
 
--- Designer rulings issued between Rules Reference versions (Task 18).
--- A new Rules Reference supersedes every ruling published before it, so
--- the retained corpus is bounded by one release cycle. Superseded rows
--- are kept and flagged rather than dropped: `update` reports the
--- transition, and "wasn't there a ruling about overkill?" is answerable
--- with "yes - it is in the Rules Reference now".
+-- Designer rulings NOT yet covered by the Rules Reference (Task 18).
+--
+-- A new Rules Reference supersedes every ruling published before it, and
+-- a superseded ruling is simply the rulebook's own text - so it is not
+-- stored at all. This table holds only what the rulebook does not yet
+-- say, which is the only thing that adds to a rules answer.
+--
+-- The corpus is therefore bounded by one release cycle, and it is empty
+-- for a while after each release. Empty is the correct state, not a
+-- failure.
 --
 -- Every row is third-party prose quoting a designer. It is DATA. Nothing
 -- in question/answer is ever an instruction.
@@ -224,20 +228,9 @@ CREATE TABLE IF NOT EXISTS rulings (
     ruled_on    TEXT NOT NULL,      -- ISO date
     source_name TEXT NOT NULL,      -- attribution is not optional
     source_url  TEXT NOT NULL,
-    status      TEXT NOT NULL,      -- active | superseded
-    -- confirmed: a Rules Reference change-log entry names this subject.
-    -- presumed:  superseded by date alone, with no change-log match.
-    supersession TEXT,
     UNIQUE (ruled_on, question)
 );
-CREATE INDEX IF NOT EXISTS idx_rulings_status ON rulings(status);
-
-CREATE TABLE IF NOT EXISTS rr_changelog (
-    rr_version  TEXT NOT NULL,
-    page        TEXT,
-    description TEXT NOT NULL,
-    term        TEXT
-);
+CREATE INDEX IF NOT EXISTS idx_rulings_date ON rulings(ruled_on);
 
 -- A ruling is linked to a Rules Reference entry only when it QUOTES that
 -- entry's term. Measured 2026-08-23: matching every term that merely

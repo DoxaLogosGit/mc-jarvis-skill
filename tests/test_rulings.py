@@ -1,10 +1,11 @@
-"""Designer rulings and supersession (Task 18).
+"""Designer rulings the Rules Reference does not yet cover (Task 18).
 
 The whole feature turns on one comparison — is this ruling older than the
-Rules Reference the user holds — and getting it wrong toward "superseded"
-silently drops a live ruling that contradicts the rulebook. That is the
-exact failure this exists to prevent, so the date handling gets more tests
-than the parsing does.
+Rules Reference the user holds. A ruling older than the rulebook says what
+the rulebook already says, so it is not stored at all; getting the
+comparison wrong in that direction silently drops a live ruling that
+contradicts the rulebook. That is the exact failure this exists to
+prevent, so the date handling gets more tests than the parsing does.
 """
 import datetime as dt
 
@@ -29,17 +30,6 @@ though we will need to update the rules to reflect this.</p>
 </blockquote>
 <p>Yes. The window is still open.</p>
 <p><strong>-Alex &#8211; August 1, 2026</strong></p>
-"""
-
-CHANGELOG_PAGE = """Rules Reference Rules Reference
-• • Page 5: Revised “Simultaneous
-Timing Priority” chart.
-• • Page 31: Revised definition of
-“overkill.”
-• • Page 37: Added definition of
-“resolve.”
-Version 1.8 Version 1.8
-SUMMARY OF NOTABLE CHANGES
 """
 
 V18 = dt.date(2026, 7, 22)
@@ -164,82 +154,52 @@ def test_no_source_at_all_yields_none(tmp_path, monkeypatch):
                                 manifest_docs=[]) is None
 
 
-# --- the Rules Reference's own change log ----------------------------
-
-def test_changelog_parses_page_and_quoted_term():
-    entries = rulings.parse_changelog(CHANGELOG_PAGE, "1.8")
-    by_term = {e["term"]: e for e in entries if e["term"]}
-    assert "overkill" in {t.lower() for t in by_term}
-    overkill = next(e for e in entries if (e["term"] or "").lower() == "overkill")
-    assert overkill["page"] == "31"
-    assert "Revised definition" in overkill["description"]
-
-
-def test_changelog_rejoins_a_term_wrapped_across_lines():
-    """The Rules Reference wraps its change log mid-quote: `Revised
-    "Simultaneous / Timing Priority" chart.` Parsing line-by-line captures
-    a half-term that matches nothing."""
-    entries = rulings.parse_changelog(CHANGELOG_PAGE, "1.8")
-    terms = {(e["term"] or "").lower() for e in entries}
-    assert "simultaneous timing priority" in terms
-
-
 # --- storing and classifying -----------------------------------------
 
-def test_store_classifies_and_links_quoted_terms(conn):
+def test_a_superseded_ruling_is_not_stored_at_all(conn):
+    """It says what the rulebook now says, and `rules show` already quotes
+    the rulebook. Keeping it would add a second voice saying nothing new."""
     parsed = rulings.parse(PAGE, source_url="u")
-    n = rulings.store(conn, parsed.rulings, published=V18,
-                      changelog=rulings.parse_changelog(CHANGELOG_PAGE, "1.8"),
-                      source_name="Hall of Heroes")
-    assert n == 2
-    rows = {r["ruled_on"]: dict(r) for r in conn.execute("SELECT * FROM rulings")}
-    assert rows["2026-03-06"]["status"] == "superseded"
-    assert rows["2026-08-01"]["status"] == "active"
+    result = rulings.store(conn, parsed.rulings, published=V18,
+                           source_name="Hall of Heroes")
+    assert result == {"stored": 1, "superseded": 1}
+    kept = [r["ruled_on"] for r in conn.execute("SELECT ruled_on FROM rulings")]
+    assert kept == ["2026-08-01"]
 
 
-def test_a_superseded_ruling_matching_the_changelog_is_confirmed(conn):
+def test_the_dropped_count_is_reported(conn):
+    """`update` needs it to say when a release absorbs a batch - which is
+    exactly when a player's understanding has to change."""
     parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18,
-                  changelog=rulings.parse_changelog(CHANGELOG_PAGE, "1.8"),
-                  source_name="Hall of Heroes")
-    row = conn.execute(
-        "SELECT supersession FROM rulings WHERE ruled_on = '2026-03-06'"
-    ).fetchone()
-    # The change log names "overkill", and the ruling quotes it.
-    assert row["supersession"] == "confirmed"
+    assert rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
+                         source_name="x") == {"stored": 2, "superseded": 0}
 
 
-def test_ordinary_rules_vocabulary_does_not_confirm(conn):
-    """`resolve` is a change-log term in v1.8 AND a word every second
-    ruling uses. Matching change-log terms against free text "confirmed"
-    12 of 31 real rulings that merely said something resolves."""
+def test_prune_drops_what_a_newer_rulebook_now_covers(conn):
+    """Used when the source cannot be re-parsed. Leaving the corpus
+    untouched would keep quoting rulings the rulebook has absorbed."""
     parsed = rulings.parse(PAGE, source_url="u")
-    changelog = [{"rr_version": "1.8", "page": "37",
-                  "description": "Added definition of \u201cresolve.\u201d",
-                  "term": "resolve"}]
-    rulings.store(conn, parsed.rulings, published=V18, changelog=changelog,
-                  source_name="Hall of Heroes")
-    row = conn.execute(
-        "SELECT supersession FROM rulings WHERE ruled_on = '2026-03-06'"
-    ).fetchone()
-    assert row["supersession"] == "presumed"
+    rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
+                  source_name="x")
+    assert rulings.count(conn) == 2
+    assert rulings.prune(conn, dt.date(2026, 9, 1)) == 2
+    assert rulings.count(conn) == 0
+    assert conn.execute("SELECT COUNT(*) FROM ruling_terms").fetchone()[0] == 0
 
 
-def test_supersession_without_a_changelog_match_is_presumed(conn):
+def test_pruned_rulings_leave_the_search_index(conn):
     parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
-                  source_name="Hall of Heroes")
-    row = conn.execute(
-        "SELECT supersession FROM rulings WHERE ruled_on = '2026-03-06'"
-    ).fetchone()
-    assert row["supersession"] == "presumed"
+    rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
+                  source_name="x")
+    rulings.prune(conn, dt.date(2026, 9, 1))
+    assert rulings.search(conn, "excess damage") == []
 
 
 def test_only_quoted_terms_are_linked(conn):
     """Both rulings mention damage and abilities in passing. Only the term
     each one actually quotes becomes a link."""
     parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+    rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
                   source_name="Hall of Heroes")
     linked = {r["term"] for r in conn.execute("SELECT term FROM ruling_terms")}
     assert linked == {"Overkill", "Response"}
@@ -247,7 +207,7 @@ def test_only_quoted_terms_are_linked(conn):
 
 def test_attribution_is_recorded_on_every_row(conn):
     parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+    rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
                   source_name="Hall of Heroes")
     for r in conn.execute("SELECT author, source_name, source_url FROM rulings"):
         assert r["author"] and r["source_name"] and r["source_url"]
@@ -256,7 +216,7 @@ def test_attribution_is_recorded_on_every_row(conn):
 def test_store_is_idempotent(conn):
     parsed = rulings.parse(PAGE, source_url="u")
     for _ in range(2):
-        rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+        rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
                       source_name="Hall of Heroes")
     assert conn.execute("SELECT COUNT(*) FROM rulings").fetchone()[0] == 2
 
@@ -269,81 +229,48 @@ def test_a_failed_parse_does_not_discard_a_good_corpus(conn, tmp_path,
     from mc_jarvis import init as init_mod
 
     parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+    rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
                   source_name="Hall of Heroes")
-    assert rulings.counts(conn)["total"] == 2
+    assert rulings.count(conn) == 2
 
     monkeypatch.setattr(rulings, "load", lambda root: rulings.RulingsLookup(
         "unparsed", detail="markup changed"))
-    monkeypatch.setattr(rulings, "published_on", lambda *a, **k: V18)
+    monkeypatch.setattr(rulings, "published_on",
+                        lambda *a, **k: dt.date(2026, 1, 9))
     out = init_mod._rebuild_rulings(conn, tmp_path)
     assert out["rulings"] == 2
     assert "markup changed" in capsys.readouterr().err
 
 
-def test_reclassify_moves_rulings_when_the_rulebook_moves_on(conn):
-    """The corpus can outlive a parse failure, but its statuses still have
-    to track the rulebook actually indexed."""
-    parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
-                  source_name="Hall of Heroes")
-    assert rulings.counts(conn) == {"total": 2, "active": 1, "superseded": 1}
-
-    # A newer rulebook absorbs the remaining one.
-    assert rulings.reclassify(conn, dt.date(2026, 9, 1))["active"] == 0
-    # An older one puts them all back in force.
-    assert rulings.reclassify(conn, dt.date(2026, 1, 9))["active"] == 2
-
-
 # --- surfacing -------------------------------------------------------
-
-def test_for_term_returns_only_active_rulings(conn):
-    parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
-                  source_name="Hall of Heroes")
-    assert rulings.for_term(conn, "Response")
-    assert rulings.for_term(conn, "Overkill") == []
-
-
-def test_for_term_can_include_superseded(conn):
-    parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
-                  source_name="Hall of Heroes")
-    got = rulings.for_term(conn, "Overkill", include_superseded=True)
-    assert len(got) == 1
-    assert got[0]["status"] == "superseded"
-
 
 def test_search_finds_a_ruling_by_its_text(conn):
     parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
+    rulings.store(conn, parsed.rulings, published=dt.date(2026, 1, 9),
                   source_name="Hall of Heroes")
-    hits = rulings.search(conn, "excess damage", include_superseded=True)
+    hits = rulings.search(conn, "excess damage")
     assert hits and "Sam Wilson" in hits[0]["answer"]
-
-
-def test_counts_report_the_split(conn):
-    parsed = rulings.parse(PAGE, source_url="u")
-    rulings.store(conn, parsed.rulings, published=V18, changelog=[],
-                  source_name="Hall of Heroes")
-    assert rulings.counts(conn) == {"total": 2, "active": 1, "superseded": 1}
 
 
 # --- the real corpus -------------------------------------------------
 
 @pytest.mark.integration
-def test_the_real_index_classifies_every_ruling(real_index):
+def test_the_real_index_stores_only_outstanding_rulings(real_index):
     """Rulings are opt-in: an index built without network access to the
-    curator has none, and that is not a failure."""
-    rows = real_index.execute(
-        "SELECT status, COUNT(*) n FROM rulings GROUP BY status").fetchall()
-    if not rows:
-        pytest.skip("no rulings indexed")
-    assert {r["status"] for r in rows} <= {"active", "superseded"}
-    unclassified = real_index.execute(
-        "SELECT COUNT(*) FROM rulings WHERE status = 'superseded' "
-        "AND supersession IS NULL").fetchone()[0]
-    assert unclassified == 0
+    curator has none, and neither has one whose rulebook covers every
+    ruling issued so far. Both are correct states."""
+    from mc_jarvis import paths
+
+    published = rulings.published_on(
+        paths.data_dir(),
+        rr_version=(real_index.execute(
+            "SELECT value FROM build_meta WHERE key = 'rr_version'"
+        ).fetchone() or {"value": None})["value"],
+        manifest_docs=[])
+    if published is None:
+        pytest.skip("no Rules Reference publication date")
+    for row in real_index.execute("SELECT ruled_on FROM rulings"):
+        assert row["ruled_on"] >= published.isoformat(), row["ruled_on"]
 
 
 @pytest.mark.integration
@@ -355,6 +282,24 @@ def test_no_real_ruling_predates_the_page_it_came_from(real_index):
     if rows["m"] is None:
         pytest.skip("no rulings indexed")
     assert rows["m"] >= "2026-01-09"
+
+
+@pytest.mark.integration
+def test_a_ruling_in_force_reaches_rules_show(conn):
+    """The point of the feature: the rulebook entry keeps its citation and
+    the outstanding ruling sits beside it."""
+    from mc_jarvis import rules
+
+    parsed = rulings.parse(PAGE, source_url="u")
+    rulings.store(conn, parsed.rulings, published=V18,
+                  source_name="Hall of Heroes")
+    shown = rules.show(conn, "Response")
+    assert shown["page"] == 38                     # citation intact
+    assert len(shown["rulings"]) == 1
+    assert shown["rulings"][0]["source_name"] == "Hall of Heroes"
+
+    # Overkill's ruling predates the rulebook, so it was never stored.
+    assert rules.show(conn, "Overkill")["rulings"] == []
 
 
 @pytest.mark.integration
@@ -378,25 +323,10 @@ def test_the_real_corpus_reclassifies_with_the_edition_held():
 
     with tempfile.TemporaryDirectory() as d:
         conn = index.connect(_Path(d) / "t.sqlite")
-        for when, expect_active in (
+        for when, expect in (
                 (_dt.date(2026, 1, 9), len(found.rulings)),   # v1.7
                 (_dt.date(2026, 7, 22), 0),                   # v1.8
                 (None, len(found.rulings))):                  # fail-safe
-            rulings.store(conn, found.rulings, published=when, changelog=[],
+            rulings.store(conn, found.rulings, published=when,
                           source_name="Hall of Heroes")
-            assert rulings.counts(conn)["active"] == expect_active, when
-
-
-@pytest.mark.integration
-def test_no_supersession_is_confirmed_by_ordinary_vocabulary(real_index):
-    """The change log confirms 0 of 31 today, and that is the finding: page
-    1 summarises NOTABLE changes, not every incorporation. Any rule that
-    confirms more was measured and found unsound - `resolve` claimed 12,
-    and change-log page numbers claimed 2 by coincidental page sharing."""
-    rows = real_index.execute(
-        "SELECT COUNT(*) FROM rulings WHERE supersession = 'confirmed'"
-    ).fetchone()[0]
-    total = real_index.execute("SELECT COUNT(*) FROM rulings").fetchone()[0]
-    if total == 0:
-        pytest.skip("no rulings indexed")
-    assert rows == 0
+            assert rulings.count(conn) == expect, when

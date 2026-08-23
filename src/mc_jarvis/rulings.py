@@ -43,13 +43,6 @@ SIGNATURE_RE = re.compile(
 
 # The Rules Reference wraps its change log mid-quote, so the text is
 # joined before the entries are split out.
-# Page 1 carries running furniture after the last bullet - "Version 1.8",
-# the copyright line, the section heading - and without a terminator the
-# final entry swallows all of it.
-CHANGELOG_END_RE = r"(?:Page\s+[\d\u2013\u2014-]+\s*:)|(?:Version\s+\d)|\u00a9|(?:SUMMARY OF)|$"
-CHANGELOG_ENTRY_RE = re.compile(
-    rf"Page\s+([\d\u2013\u2014-]+)\s*:\s*(.+?)(?={CHANGELOG_END_RE})",
-    re.S)
 QUOTED_RE = re.compile(r"[“\"']([^”\"']{2,60})[”\"']")
 
 
@@ -296,33 +289,6 @@ def classify(ruled_on: dt.date, published: dt.date | None) -> str:
     return "active" if ruled_on >= published else "superseded"
 
 
-# --- the Rules Reference's own change log ----------------------------
-
-def parse_changelog(page_one: str, rr_version: str) -> list[dict]:
-    """The SUMMARY OF NOTABLE CHANGES the Rules Reference prints on page 1.
-
-    A superseded ruling whose subject appears here is confirmed
-    superseded rather than merely presumed, which is what keeps the
-    presumption from being taken on faith.
-    """
-    joined = " ".join(page_one.split())
-    out: list[dict] = []
-    for m in CHANGELOG_ENTRY_RE.finditer(joined):
-        description = m.group(2).strip(" ••")
-        quoted = QUOTED_RE.search(description)
-        # The Rules Reference puts the full stop inside the quotation
-        # marks - `\u201coverkill.\u201d` - so the raw capture is a term no
-        # entry is named after.
-        term = quoted.group(1).strip(" .,;:") if quoted else None
-        out.append({
-            "rr_version": rr_version,
-            "page": m.group(1).strip(),
-            "description": description.strip(),
-            "term": term or None,
-        })
-    return out
-
-
 # --- storing ---------------------------------------------------------
 
 def _quoted_terms(conn, ruling: Ruling) -> set[str]:
@@ -343,116 +309,109 @@ def _quoted_terms(conn, ruling: Ruling) -> set[str]:
 
 
 def store(conn: sqlite3.Connection, items: list[Ruling], *,
-          published: dt.date | None, changelog: list[dict],
-          source_name: str) -> int:
-    changed_terms = {(e.get("term") or "").lower()
-                     for e in changelog if e.get("term")}
+          published: dt.date | None, source_name: str) -> dict:
+    """Keep only the rulings the Rules Reference does not yet cover.
 
+    A superseded ruling says the same thing the rulebook now says, and
+    `rules show` already quotes the rulebook. Storing it would add a
+    second voice saying nothing new, so it is dropped here rather than
+    kept and filtered later.
+
+    Returns what was stored and what was dropped, so `update` can report
+    the moment a rulebook release absorbs a batch - which is exactly when
+    a player's understanding needs to change.
+    """
     conn.execute("DELETE FROM rulings")
     conn.execute("DELETE FROM ruling_terms")
-    for ruling in items:
-        status = classify(ruling.ruled_on, published)
-        terms = _quoted_terms(conn, ruling)
-        supersession = None
-        if status == "superseded":
-            # Confirmation requires the ruling to QUOTE a subject the
-            # change log names. Two looser rules were measured on the real
-            # corpus 2026-08-23 and both were unsound:
-            #
-            #   free text  - "resolve" is a change-log term and ordinary
-            #                rules vocabulary, so it "confirmed" 12 of 31
-            #                rulings that merely said something resolves;
-            #   page match - a change-log page holds several entries, so
-            #                `Attach To` (p.8) matched the entry for
-            #                `Attack (Enemy Activation)` (also p.8).
-            #
-            # Strict quoting confirms 0 of 31 today, and that is the
-            # finding: page 1 summarises NOTABLE changes, not every
-            # incorporation, so supersession really is a presumption.
-            hit = bool({t.lower() for t in terms} & changed_terms)
-            supersession = "confirmed" if hit else "presumed"
 
+    kept = dropped = 0
+    for ruling in items:
+        if classify(ruling.ruled_on, published) != "active":
+            dropped += 1
+            continue
         cur = conn.execute(
             "INSERT OR REPLACE INTO rulings "
-            "(question, answer, author, ruled_on, source_name, source_url, "
-            " status, supersession) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(question, answer, author, ruled_on, source_name, source_url) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (ruling.question, ruling.answer, ruling.author,
-             ruling.ruled_on.isoformat(), source_name, ruling.source_url,
-             status, supersession))
+             ruling.ruled_on.isoformat(), source_name, ruling.source_url))
         conn.executemany(
             "INSERT OR IGNORE INTO ruling_terms (ruling_id, term) "
-            "VALUES (?, ?)", [(cur.lastrowid, t) for t in sorted(terms)])
+            "VALUES (?, ?)",
+            [(cur.lastrowid, t) for t in sorted(_quoted_terms(conn, ruling))])
+        kept += 1
 
     conn.execute("INSERT INTO rulings_fts(rulings_fts) VALUES('delete-all')")
     conn.execute("INSERT INTO rulings_fts(rowid, question, answer) "
                  "SELECT id, question, answer FROM rulings")
     conn.commit()
-    return conn.execute("SELECT COUNT(*) FROM rulings").fetchone()[0]
+    return {"stored": kept, "superseded": dropped}
 
 
-def reclassify(conn, published: dt.date | None) -> dict:
-    """Re-run the active/superseded split on rulings already stored.
+def prune(conn, published: dt.date | None) -> int:
+    """Drop stored rulings the indexed Rules Reference now covers.
 
-    Used when the corpus cannot be re-parsed but the rulebook may have
-    moved on. Deleting a good corpus because today's parse failed would
-    make a transient breakage look identical to "no rulings were ever
-    fetched" - and losing a live ruling is the failure this exists to
-    prevent.
+    Used when the source cannot be re-parsed but the rulebook may have
+    moved on. Discarding the whole corpus because today's parse failed
+    would make a transient breakage look identical to "never fetched",
+    while leaving it untouched would keep quoting rulings the rulebook has
+    since absorbed.
     """
-    for row in conn.execute("SELECT id, ruled_on, status FROM rulings").fetchall():
-        ruled = _parse_date(row["ruled_on"])
-        if ruled is None:
-            continue
-        status = classify(ruled, published)
-        if status != row["status"]:
-            conn.execute(
-                "UPDATE rulings SET status = ?, supersession = ? WHERE id = ?",
-                (status, None if status == "active" else "presumed",
-                 row["id"]))
+    stale = [r["id"] for r in conn.execute("SELECT id, ruled_on FROM rulings")
+             if (_parse_date(r["ruled_on"]) is not None
+                 and classify(_parse_date(r["ruled_on"]), published)
+                 != "active")]
+    if stale:
+        marks = ",".join("?" * len(stale))
+        conn.execute(f"DELETE FROM ruling_terms WHERE ruling_id IN ({marks})",
+                     stale)
+        conn.execute(f"DELETE FROM rulings WHERE id IN ({marks})", stale)
+        conn.execute("INSERT INTO rulings_fts(rulings_fts) VALUES('delete-all')")
+        conn.execute("INSERT INTO rulings_fts(rowid, question, answer) "
+                     "SELECT id, question, answer FROM rulings")
     conn.commit()
-    return counts(conn)
+    return len(stale)
 
 
 # --- reading ---------------------------------------------------------
 
 _FIELDS = ("id", "question", "answer", "author", "ruled_on",
-           "source_name", "source_url", "status", "supersession")
+           "source_name", "source_url")
 # Qualified: `rulings_fts` exposes `question` and `answer` too, so an
 # unqualified list is ambiguous the moment the search joins them.
 _COLUMNS = ", ".join(f"r.{f}" for f in _FIELDS)
 
 
-def for_term(conn, term: str, *, include_superseded: bool = False
-             ) -> list[dict]:
-    clause = "" if include_superseded else " AND r.status = 'active'"
+def for_term(conn, term: str) -> list[dict]:
+    """Rulings on this Rules Reference entry. Everything stored is in
+    force - the rulebook already covers the rest."""
     return [dict(r) for r in conn.execute(
         f"SELECT {_COLUMNS} FROM rulings r "
         f"JOIN ruling_terms t ON t.ruling_id = r.id "
-        f"WHERE lower(t.term) = lower(?){clause} "
+        f"WHERE lower(t.term) = lower(?) "
         f"ORDER BY r.ruled_on DESC", (term,))]
 
 
-def search(conn, text: str, *, include_superseded: bool = False,
-           limit: int = 10) -> list[dict]:
+def search(conn, text: str, *, limit: int = 10) -> list[dict]:
     from .cards import _fts_query
 
     expr = _fts_query(text)
     if not expr:
         return []
-    clause = "" if include_superseded else " AND r.status = 'active'"
     return [dict(r) for r in conn.execute(
         f"SELECT {_COLUMNS} FROM rulings_fts f "
         f"JOIN rulings r ON r.id = f.rowid "
-        f"WHERE rulings_fts MATCH ?{clause} ORDER BY rank LIMIT ?",
-        (expr, limit))]
+        f"WHERE rulings_fts MATCH ? ORDER BY rank LIMIT ?", (expr, limit))]
 
 
-def counts(conn) -> dict:
-    rows = {r["status"]: r["n"] for r in conn.execute(
-        "SELECT status, COUNT(*) n FROM rulings GROUP BY status")}
-    return {"total": sum(rows.values()),
-            "active": rows.get("active", 0),
-            "superseded": rows.get("superseded", 0)}
+def count(conn) -> int:
+    return conn.execute("SELECT COUNT(*) FROM rulings").fetchone()[0]
+
+
+def latest(conn, limit: int = 25) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        f"SELECT {_COLUMNS} FROM rulings r ORDER BY r.ruled_on DESC LIMIT ?",
+        (limit,))]
 
 
 # --- cli -------------------------------------------------------------
@@ -462,41 +421,34 @@ def handle(args) -> int:
     from .cli import emit
 
     conn = _open()
-    include = bool(getattr(args, "all", False))
     text = getattr(args, "text", None)
-    hits = (search(conn, text, include_superseded=include) if text
-            else _all(conn, include_superseded=include))
-    split = counts(conn)
+    hits = search(conn, text) if text else latest(conn)
+    total = count(conn)
 
     if getattr(args, "json", False):
-        emit({"counts": split, "rulings": hits}, as_json=True)
+        emit({"count": total, "rulings": hits}, as_json=True)
         return 0 if hits else 1
 
-    if split["total"] == 0:
-        print("No designer rulings indexed. Run `mc-jarvis update` with "
-              "network access to fetch them.")
+    if total == 0:
+        # Empty is the normal state for a while after each Rules Reference
+        # release: the new edition absorbed the outstanding rulings, and
+        # absorbed ones are not kept.
+        print("No designer rulings outstanding — the Rules Reference you "
+              "hold covers everything ruled on so far.\n"
+              "(If you have never run `mc-jarvis update` with network "
+              "access, none have been fetched either; `mc-jarvis status` "
+              "shows which.)")
         return 1
     if not hits:
-        print(f"No matching rulings in force. {split['superseded']} of "
-              f"{split['total']} were superseded by the Rules Reference "
-              f"you hold — pass --all to see them.")
+        print(f"No match among the {total} ruling(s) the Rules Reference "
+              f"does not yet cover.")
         return 1
 
     for r in hits:
-        flag = "" if r["status"] == "active" else \
-            f"  [superseded, {r['supersession']}]"
         print(f"\n{r['ruled_on']} — {r['author'] or 'FFG'}, via "
-              f"{r['source_name']}{flag}")
+              f"{r['source_name']}")
         if r["question"]:
             print(f"  Q: {r['question'][:400]}")
         print(f"  A: {r['answer'][:600]}")
-    print(f"\n{split['active']} in force, {split['superseded']} superseded "
-          f"by the Rules Reference you hold.")
+    print(f"\n{total} ruling(s) not yet covered by the Rules Reference.")
     return 0
-
-
-def _all(conn, *, include_superseded: bool, limit: int = 25) -> list[dict]:
-    clause = "" if include_superseded else " WHERE r.status = 'active'"
-    return [dict(x) for x in conn.execute(
-        f"SELECT {_COLUMNS} FROM rulings r{clause} "
-        f"ORDER BY r.ruled_on DESC LIMIT ?", (limit,))]
