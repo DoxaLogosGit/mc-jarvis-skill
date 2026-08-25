@@ -193,3 +193,27 @@ def test_reconnecting_to_a_current_index_keeps_its_data(tmp_path, corpus):
     index.load_cards(index.connect(db), corpus)
     again = index.connect(db)
     assert again.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 4
+
+
+def test_boost_invariant_rejects_an_explicit_zero():
+    """§4.3: no card in the corpus has boost 0, so `absent` reads as zero
+    boost icons. If upstream ever emits an explicit 0 the reading has
+    changed and two encodings are being mixed."""
+    with pytest.raises(index.InvariantError, match="boost"):
+        index.assert_boost_invariant([{"code": "x1", "name": "X", "boost": 0}])
+
+
+def test_boost_invariant_rejects_a_value_outside_one_to_four():
+    """§14.3 measured the range: 1-4, never 0, never null. A 5 means the
+    printed scale changed."""
+    with pytest.raises(index.InvariantError, match="boost"):
+        index.assert_boost_invariant([{"code": "x1", "name": "X", "boost": 7}])
+
+
+def test_boost_invariant_accepts_absent_and_one_to_four():
+    index.assert_boost_invariant([
+        {"code": "a", "name": "A"},                 # absent
+        {"code": "b", "name": "B", "boost": None},  # explicit null
+        {"code": "c", "name": "C", "boost": 1},
+        {"code": "d", "name": "D", "boost": 4},
+    ])

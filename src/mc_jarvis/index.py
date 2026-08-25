@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 class InvariantError(RuntimeError):
@@ -42,7 +42,10 @@ COLUMNS = (
     "double_sided is_unique permanent duplicate_of cost quantity "
     "resource_physical resource_mental resource_energy resource_wild "
     "attack thwart defense recover health health_per_hero scheme "
-    "stage hand_size text flavor traits"
+    "stage hand_size text flavor traits "
+    "boost base_threat escalation_threat scheme_acceleration scheme_amplify "
+    "scheme_crisis scheme_hazard hidden base_threat_fixed "
+    "escalation_threat_fixed boost_star attack_star scheme_star"
 ).split()
 
 
@@ -91,6 +94,25 @@ def resolve_deck_limit(card: dict) -> int | None:
     (spec §10). 120 player cards depend on this."""
     limit = card.get("deck_limit")
     return card.get("quantity") if limit is None else limit
+
+
+def assert_boost_invariant(rows: list[dict]) -> None:
+    """`boost` is absent or 1-4 (§4.3, re-measured in §14.3).
+
+    Two assertions, not one. An explicit 0 means upstream started using a
+    different encoding for "no boost icons", so the corpus now mixes two
+    and `absent means zero` stops being safe. A value outside 1-4 means
+    the printed scale changed. Either way the quantity-weighted mean
+    quietly stops meaning what it says, which is the headline statistic
+    of the whole assess feature.
+    """
+    bad = [r for r in rows
+           if r.get("boost") is not None and r["boost"] not in (1, 2, 3, 4)]
+    if bad:
+        raise InvariantError(
+            f"{len(bad)} cards have a boost value outside 1-4: "
+            f"{[(r['code'], r.get('boost')) for r in bad[:5]]}. "
+            f"`absent means zero boost icons` is no longer a safe reading.")
 
 
 def _assert_copy_invariant(rows: list[dict]) -> None:
@@ -216,6 +238,7 @@ def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
     # insert: they have no name until resolved.
     report.reprints = resolve_reprints(rows)
     _assert_copy_invariant(rows)
+    assert_boost_invariant(rows)
 
     conn.execute("DELETE FROM cards")
     conn.executemany(

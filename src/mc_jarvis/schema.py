@@ -31,6 +31,28 @@ CREATE TABLE IF NOT EXISTS cards (
     health              INTEGER,
     health_per_hero     INTEGER,   -- HP is multiplied by the player count
     scheme              INTEGER,   -- villains scheme; they do not thwart
+    -- Encounter-side numbers (spec §4.1). None of these was indexed
+    -- before; `assess` is their first consumer.
+    boost               INTEGER,
+    base_threat         INTEGER,
+    escalation_threat   INTEGER,
+    scheme_acceleration INTEGER,
+    scheme_amplify      INTEGER,
+    scheme_crisis       INTEGER,
+    scheme_hazard       INTEGER,
+    hidden              INTEGER,
+    -- `*_fixed` means "does not scale with player count" (§4.6). Applying
+    -- per-hero scaling to a fixed-threat scheme is the same error as
+    -- printing raw villain hit points.
+    base_threat_fixed       INTEGER,
+    escalation_threat_fixed INTEGER,
+    -- The `*_star` family is a FLAG, never a value (§4.4, §14.3): eleven
+    -- such fields exist and every one is boolean. 134 cards carry both
+    -- `boost` and `boost_star`, so the star is an extra icon with a
+    -- card-specific effect, not a replacement. It never enters a mean.
+    boost_star          INTEGER,
+    attack_star         INTEGER,
+    scheme_star         INTEGER,
     stage               TEXT,      -- I, II, III
     hand_size           INTEGER,
     text                TEXT,

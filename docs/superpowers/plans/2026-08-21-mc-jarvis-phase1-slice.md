@@ -6703,6 +6703,24 @@ If the RR's publication date cannot be determined, **every ruling is treated as 
    proposes it again: **the Rules Reference's page-1 summary cannot
    confirm that a given ruling was incorporated.**
 
+### Live-data finding, 2026-08-25
+
+The feature reached its active state on its own. Two days after it shipped
+with **0 rulings in force**, an `update` picked up **8** — dated 2026-08-03
+and 2026-08-13, both after v1.8. The date classification, the fetch, and
+the supersession split all worked unattended, which is the first time the
+active branch has run on real data rather than a re-classification test.
+
+**One defect it exposed.** None of the 8 links to a Rules Reference entry,
+because `_quoted_terms` matches a quoted string against `rules_entries.term`
+exactly — and the rulings quote `"When Defeated"` while the RR names that
+entry **`When Defeated Abilities`**. The same mismatch will hit
+`When Revealed Abilities` and `When Completed Abilities`. `rules.plain_term`
+already exists for exactly this class of problem (it strips printed
+decoration so `Retaliate` finds `Retaliate X`); the linking should compare
+on a normalised form rather than the raw term. Not fixed here - it belongs
+to Task 18, not to the assess plan that surfaced it.
+
 Measured 2026-08-23 by re-classifying the real 31 against each edition:
 
 | Rules Reference held | Stored | Dropped as covered |
