@@ -666,14 +666,33 @@ Gauntlet attaches at setup, and the six Stones are their own deck. A
 scenario including that modular would gain 7 phantom encounter cards, a
 100% error for that set's contribution.
 
-**Data-source bound.** The user played a Bullseye scenario online, and
-`Adamantium-Lace Spines` appears nowhere in the corpus. Bullseye exists
-only as a **minion**, in `dangerous_recruits` and `daredevil_nemesis`.
-marvelcdb — current here to 2026-08-21 — carries no Bullseye villain set.
-DragnCards keeps its own database and carries content marvelcdb does not,
-so `assess` coverage is bounded by marvelcdb's, and a scenario a player
-has actually played may simply be absent. `assess` must say so plainly
-rather than report a partial deck.
+**Data-source bound — traced 2026-08-25, see
+`2026-08-25-card-data-sources.md`.** Bullseye *is* a playable villain in
+Fear No Evil; the card is `Adamantium-Laced Spine` (singular, "Laced"),
+which is why three searches missed it. marvelcdb has **68 of a declared
+276** cards for that box and none of its five villain sets — the encounter
+half is simply unentered upstream, in both the GitHub repo and the live
+API. DragnCards sees it because it also reads **Cerebro**, a separate
+community database with 4,632 cards.
+
+Decided: marvelcdb stays primary, Cerebro is a backup and cross-check
+only, because Cerebro publishes no quantities and every mean here is
+quantity-weighted (§4.5).
+
+Two consequences for this spec:
+
+- `assess` must distinguish **"you typed the name wrong"** from **"the
+  data is not published"**. `packs.json` declares a `size` per pack, so
+  the second is detectable with no second source at all: *"Fear No Evil
+  holds 68 of a declared 276 cards; its encounter sets are not in the
+  index."*
+- `Adamantium-Laced Spine` validates §14.7 against content we have never
+  seen. Bullseye (I) reads *"When Revealed: **Set aside** Adamantium-Laced
+  Spine"* and Bullseye (II) *"Find Adamantium-Laced Spine and attach it"* —
+  a set-aside card named by another card's text, then brought into play by
+  a stage advance. It is also a shape §5.2's four roles do not cover: set
+  aside at setup, then a **permanent attachment** mid-game, never in the
+  encounter deck at any point.
 
 ### 14.6 `Setup` alone does not exclude a card — it can cycle back
 
