@@ -149,6 +149,45 @@ Gauntlet, Invocation, Sense, Ship Command, Weather, Labor and Gift sets —
 independent confirmation of the separate-deck and set-aside findings in
 assess spec §14.5 and §14.8, arrived at from card text alone.
 
+## Revisiting this
+
+The decision turns on one fact — Cerebro publishes no copy counts — so it
+is revisitable, and cheaply. Both maintainers are reachable on the
+DragnCards Discord.
+
+**For the Cerebro maintainer.** Only the first can change the decision; the
+rest shape how an adoption would work.
+
+1. **Are copy counts available anywhere** — an undocumented field, another
+   endpoint, or planned? This is the entire blocker. Everything else about
+   Cerebro is better than what we use.
+2. **What does `CanSimulate` mean exactly?** We read it as "deck-buildable",
+   because every Fear No Evil villain set is `false` while its modular sets
+   are `true`. If that is right it is the "is this scenario assessable"
+   gate the assess spec needs, and worth using whatever else we decide.
+3. **Is `Printings[].ArtificialId` a contract?** We would join on it. If it
+   is a convenience field that may drift from marvelcdb codes, the join
+   needs a different key.
+4. **Is bulk fetching acceptable, and is there a rate limit or a
+   conditional-request path?** `/cards` is 4.5 MB. If we adopt it we should
+   fetch politely and cache, the way `init` already does for the rulebooks.
+
+**For the plugin maintainer (`hone`).** One question, and it answers the
+open item below:
+
+5. **Where do copy counts come from for sets marvelcdb has not entered?**
+   `decks.rs` shows both `quantity: card.quantity` and a hard-coded
+   `quantity: 1`. If the answer is "it falls back to 1", the counts are
+   genuinely unpublished and this decision stands until someone enters
+   them. If there is a third source, that changes everything.
+
+**What a "yes" to (1) would mean.** Cerebro becomes viable as primary: it
+has more cards, a structured modular mapping, and an assessability flag we
+would otherwise derive by regexing prose. The work would be a second
+adapter into the existing `cards` table — plus a plain-text trigger reader,
+a glyph map, and the provenance discipline below. Substantial, but bounded,
+and none of it is speculative: every piece was measured on 2026-08-25.
+
 ## Method note
 
 Four searches in this investigation returned a false negative because they
