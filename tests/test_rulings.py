@@ -308,7 +308,10 @@ def test_the_real_corpus_reclassifies_with_the_edition_held():
     predates v1.8 - so it is verified by re-classifying the real corpus
     against each edition rather than by a fixture.
 
-    Measured 2026-08-23: 31 rulings, all issued between v1.7 and v1.8.
+    Deliberately free of a fixed count. On 2026-08-23 the page held 31
+    rulings, all issued between 1.7 and 1.8, so 1.8 retained none. Two days
+    later 8 more had been published and 1.8 retained those. A gate that
+    hard-codes either number fails on the feature succeeding.
     """
     import datetime as _dt
     import tempfile
@@ -321,12 +324,33 @@ def test_the_real_corpus_reclassifies_with_the_edition_held():
         pytest.skip("no rulings cached")
     assert found.ok, found.detail
 
+    total = len(found.rulings)
+
+    def kept(when):
+        rulings.store(conn, found.rulings, published=when,
+                      source_name="Hall of Heroes")
+        return rulings.count(conn)
+
     with tempfile.TemporaryDirectory() as d:
         conn = index.connect(_Path(d) / "t.sqlite")
-        for when, expect in (
-                (_dt.date(2026, 1, 9), len(found.rulings)),   # v1.7
-                (_dt.date(2026, 7, 22), 0),                   # v1.8
-                (None, len(found.rulings))):                  # fail-safe
-            rulings.store(conn, found.rulings, published=when,
-                          source_name="Hall of Heroes")
-            assert rulings.count(conn) == expect, when
+
+        # The curator's page collects rulings issued after 1.7, so an index
+        # holding 1.7 retains every one of them.
+        assert kept(_dt.date(2026, 1, 9)) == total
+
+        # A rulebook newer than every ruling retains none.
+        assert kept(_dt.date(2099, 1, 1)) == 0
+
+        # No determinable publication date is the fail-safe: retain
+        # everything. Over-reporting is survivable; dropping a live ruling
+        # that contradicts the rulebook is the failure this prevents.
+        assert kept(None) == total
+
+        # 1.8 sits between the two, and the count is NOT asserted as a
+        # constant. It was 0 when this was written on 2026-08-23 and 8 two
+        # days later, because rulings kept being issued - which is the
+        # feature working, not drifting. What must hold is the ordering:
+        # an older rulebook never retains fewer than a newer one.
+        at_18 = kept(_dt.date(2026, 7, 22))
+        assert 0 <= at_18 <= total
+        assert at_18 <= kept(_dt.date(2026, 1, 9))
