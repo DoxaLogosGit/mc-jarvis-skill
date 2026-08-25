@@ -114,7 +114,11 @@ dispatch until the collection lands.
 
 ## Licence
 
-See `LICENSE`.
+MIT — see `LICENSE`. **It covers the software in this repository and
+nothing else.**
 
-Marvel Champions: The Card Game is © Fantasy Flight Games and Marvel. This
-project is unaffiliated, and distributes none of their content.
+Marvel Champions: The Card Game, its cards, rules text, artwork and
+trademarks belong to Fantasy Flight Games, Asmodee and Marvel. This project
+is unaffiliated with and unendorsed by any of them, and distributes none of
+their material. What `init` fetches to your machine is governed by its own
+publishers' terms, not by this licence.

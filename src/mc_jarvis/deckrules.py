@@ -33,7 +33,7 @@ class OverrideAuditError(RuntimeError):
 class Override:
     identity_key: str
     identity_name: str
-    quote: str
+    quote: str          # the sentence the scan found, for reporting only
     covered: bool
     quote_verified: bool
 
@@ -64,9 +64,17 @@ def scan(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     return found
 
 
+def _digest(text: str) -> str:
+    """Fingerprint an identity's rules text (see `timing.digest`)."""
+    import hashlib
+
+    canon = " ".join((text or "").split()).lower()
+    return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:32]
+
+
 def audit(conn: sqlite3.Connection, config: dict) -> list[Override]:
     """Every scanned identity must have a config entry, and each entry's
-    quote must still appear in that identity's text."""
+    recorded digest must still match that identity's text."""
     entries = {e["identity"]: e
                for e in config.get("deckbuilding_overrides", []) or []}
     texts = {}
@@ -82,8 +90,12 @@ def audit(conn: sqlite3.Connection, config: dict) -> list[Override]:
         entry = entries.get(key)
         verified = False
         if entry:
-            quote = " ".join(str(entry.get("quote", "")).split()).lower()
-            verified = bool(quote) and quote in texts.get(key, "").lower()
+            # Fingerprinted rather than quoted. This repository ships no
+            # card text, and a digest is the stronger check anyway: a
+            # quotation only catches a rewording of the sentence quoted,
+            # while this catches any change to the identity's rules text.
+            want = str(entry.get("text_digest", ""))
+            verified = bool(want) and _digest(texts.get(key, "")) == want
         out.append(Override(key, name, sentence, entry is not None, verified))
 
     # A config entry for an identity the scan no longer finds is also a

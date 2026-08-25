@@ -77,11 +77,18 @@ out_of_deck:
 # leaving a stale rule in force.
 #
 # Verified 2026-08-22: the scan returns exactly these seven identities.
+# Heroes whose alter-ego card overrides the standard one-aspect rule.
+#
+# NO CARD TEXT LIVES HERE. `text_digest` fingerprints the identity's rules
+# text as of 2026-08-25, and `deckrules.audit` re-checks it at build time,
+# so a reworded card fails the build instead of leaving a stale rule in
+# force. A digest is stronger than the quotation it replaced: a quote only
+# catches a rewording of the sentence quoted.
 deckbuilding_overrides:
   - identity: spider_woman
     aspects: 2
     equal_aspects: true
-    quote: "Choose two aspects instead of one during deck-building"
+    text_digest: "d38089696d974656b8e2bbb13e268662"
     note: >-
       Must include an equal number of cards from the two chosen aspects.
 
@@ -89,39 +96,37 @@ deckbuilding_overrides:
     aspects: 4
     equal_aspects: true
     max_copies_non_signature: 1
-    quote: "your deck must include an equal number of cards from all 4 aspects"
+    text_digest: "8db209ec5579d5e04f06a2cd02f1594b"
     note: >-
-      Also: "You cannot include more than 1 copy of any non-Adam Warlock
-      card", which overrides deck_limit downward for every off-set card.
+      The card also caps non-signature copies at 1, which overrides
+      deck_limit downward for every off-set card.
 
   - identity: cable
     off_aspect_allowance:
       type_code: player_side_scheme
       limit: null                    # null means no cap
-    quote: "You may include player side schemes from any aspect in your deck"
+    text_digest: "9e4e17b73bb7254310e5a67ae55caa26"
 
   - identity: cyclops
     off_aspect_allowance:
       type_code: ally
       trait: X-MEN
       limit: null
-    quote: "You may include [[X-MEN]] allies from any aspect in your deck"
+    text_digest: "8d0835757085ade4c80c042e56982aeb"
 
   - identity: wonder_man
     off_aspect_allowance:
       type_code: event
       resource: energy
       limit: null
-    quote: >-
-      You may include events with a printed [energy] resource icon from
-      any aspect in your deck
+    text_digest: "07da2db9396ab624c0883a1b8f50c5aa"
 
   - identity: gam
     off_aspect_allowance:
       type_code: event
       traits_any: ["attack", "thwart"]
       limit: 6
-    quote: "You may include up to 6"
+    text_digest: "d916c57313692b93bbab678b10c62b93"
     note: >-
       Up to 6 attack and/or thwart events from aspects other than the
       chosen one. The cap is on the total, not per trait.
@@ -132,7 +137,7 @@ deckbuilding_overrides:
       trait: S.H.I.E.L.D.
       limit: 3
       limit_unit: distinct_titles
-    quote: "You may include the maximum number of copies of 3"
+    text_digest: "15b0055db56dcbab3756af5007e7cd9d"
     note: >-
       Three S.H.I.E.L.D. supports at their full copy count - the cap is on
       distinct titles, not on cards, so it is 3 titles x deck_limit each.

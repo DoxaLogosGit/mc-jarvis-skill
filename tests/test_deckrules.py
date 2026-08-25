@@ -33,7 +33,10 @@ CONFIG = {
                     "exceptions": [], "acknowledged": []},
     "deckbuilding_overrides": [
         {"identity": "prism", "aspects": 2, "equal_aspects": True,
-         "quote": "Choose two aspects instead of one during deck-building"},
+         # Filled in by `_with_digest` from the fixture's own card text:
+         # the config records a fingerprint, not the text (see
+         # config/legality.yaml).
+         "text_digest": None},
     ],
 }
 
@@ -69,14 +72,30 @@ def test_an_unaccounted_override_fails_loudly(conn):
         deckrules.check(conn, bare)
 
 
+def _with_digest(conn, config=None):
+    """Fill the override's digest from the identity text in `conn`."""
+    cfg = copy.deepcopy(config or CONFIG)
+    texts = {}
+    for r in conn.execute(
+            "SELECT f.identity_key, c.text FROM identity_faces f "
+            "JOIN cards c ON c.code = f.code WHERE c.text IS NOT NULL"):
+        texts.setdefault(r["identity_key"], "")
+        texts[r["identity_key"]] += " " + deckrules._plain(r["text"])
+    for entry in cfg["deckbuilding_overrides"]:
+        entry["text_digest"] = deckrules._digest(texts.get(entry["identity"], ""))
+    return cfg
+
+
 def test_a_covered_override_passes(conn):
-    assert deckrules.check(conn, CONFIG) == []
+    assert deckrules.check(conn, _with_digest(conn)) == []
 
 
-def test_a_stale_quote_fails_loudly(conn):
-    """If the card is reworded, the encoded rule may no longer apply."""
-    stale = copy.deepcopy(CONFIG)
-    stale["deckbuilding_overrides"][0]["quote"] = "Choose three aspects"
+def test_a_reworded_card_fails_loudly(conn):
+    """If the card is reworded, the encoded rule may no longer apply. The
+    digest catches ANY change to the identity's text, where the quotation
+    it replaced only caught a rewording of the sentence quoted."""
+    stale = _with_digest(conn)
+    stale["deckbuilding_overrides"][0]["text_digest"] = "0" * 32
     with pytest.raises(deckrules.OverrideAuditError, match="quote not found"):
         deckrules.check(conn, stale)
 

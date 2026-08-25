@@ -12,44 +12,48 @@ from mc_jarvis import index, rules_chunk, timing
 
 # Reproduced from the extracted Rules Reference: the chart sits at the end
 # of the ABILITY body, after the bullet that governs quoted triggers.
-ABILITY = """Simultaneous Timing Priority — Some abilities have
-timing priority over other abilities. In order, the timing
+# Invented text in the extracted rulebook's SHAPE. The parser is what is
+# under test, so the structure has to be faithful - the wording does not,
+# and this repository ships no rulebook text. Verified against the real
+# document 2026-08-25: same line breaks, same lettered sub-tiers, same
+# stray space before a closing curly quote.
+ABILITY = """Simultaneous Timing Priority — Some abilities take
+precedence over others. In order, the timing
 priority of abilities with the same triggering condition is:
-1. Constant abilities, delayed effects, and lasting effects.
-2. Interrupts
-a. Status card “Forced Interrupt” abilities.
-b. “Forced Interrupt” abilities.
-c. “Interrupt” abilities.
-3. “Boost” and “When Revealed” abilities.
-4. Responses
-a. “Forced Response” abilities.
-b. “Response” abilities.
-5. Consequential damage."""
+1. Aaa bbb ccc, ddd eee, and fff ggg.
+2. Hhhh
+a. Status card “Iiii Jjjj” abilities.
+b. “Iiii Jjjj” abilities.
+c. “Jjjj” abilities.
+3. “Kkkk” and “Llll Mmmm” abilities.
+4. Nnnn
+a. “Oooo Pppp” abilities.
+b. “Pppp” abilities.
+5. Qqqq rrrr."""
 
 QUOTED_RULE = (
     "If quotation marks are used around a timing trigger and colon, "
-    "the quoted text is not itself a timing trigger, but is instead "
-    "referring to other abilities with that trigger.\n"
+    "the quoted text refers to other abilities with that trigger.\n"
 )
 
-# Verbatim from the indexed RR, wrapped exactly as extracted. Step 6's
-# See: list wraps onto a second line and step 10 has no See: at all -
-# both are the whole point of the round-structure tests below.
+# Also invented, in the real entry's shape. Step 6's See: list wraps onto a
+# second line and step 10 carries no See: at all - both are exactly what
+# the round-structure tests below exist to catch, and both are properties
+# of the layout rather than of the wording.
 ROUND_OVERVIEW = """The following is an overview of a game round, and the
 glossary entries that cover each part of the game round.
-1. Player phase begins. See: Player Phase
-2. Each player takes a turn. See: Player Turn
-3. Player phase ends. See: End of Player Phase
-4. Villain phase begins. See: Villain Phase
-5. Place threat on main scheme. See: Main Scheme
-6. Villain and minions activate. See: Activation, Attack
-(Enemy Activation), Scheme (Enemy Activation)
-7. Deal encounter cards. See: Deal
-8. Reveal and resolve encounter cards. See: Reveal
-9. Pass the first player token. See: First Player
-10. End the round. Proceed to step one of the next game
-round."""
-
+1. Aaa aaa begins. See: Aaa Aaa
+2. Each bbb takes a ccc. See: Bbb Ccc
+3. Aaa aaa ends. See: End of Aaa Aaa
+4. Ddd eee begins. See: Ddd Eee
+5. Place fff on ggg hhh. See: Ggg Hhh
+6. Ddd and iii activate. See: Activation, Jjj
+(Kkk Activation), Lll (Kkk Activation)
+7. Deal mmm nnn. See: Deal
+8. Reveal and resolve mmm nnn. See: Reveal
+9. Pass the ooo ppp qqq. See: Ooo Ppp
+10. End the rrr. Proceed to step one of the next sss
+rrr."""
 
 def _entry(term, body, page):
     return rules_chunk.Entry(term, body, page, "marvel-champions-rules-reference")
@@ -113,6 +117,24 @@ def conn(tmp_path):
     return c
 
 
+@pytest.fixture
+def tconfig(conn):
+    """The shipped config records digests of the REAL rulebook. These
+    tests run on invented text, so they carry their own - which is the
+    point: what is under test is that a change is detected, not that any
+    particular wording is present."""
+    rows = timing.chart(conn)
+    entries = dict(conn.execute("SELECT term, body FROM rules_entries"))
+    return dict(
+        timing.load_config(),
+        expected_chart={
+            "shape": timing.chart_shape(rows),
+            "text_digest": timing.digest("\n".join(r["text"] for r in rows)),
+        },
+        entry_digests={t: timing.digest(b) for t, b in entries.items()},
+    )
+
+
 # --- the chart -------------------------------------------------------
 
 def test_chart_parses_into_ten_rows(conn):
@@ -127,17 +149,17 @@ def test_chart_captures_lettered_sub_tiers(conn):
     assert subs == [(2, "a"), (2, "b"), (2, "c"), (4, "a"), (4, "b")]
 
 
-def test_parsed_chart_matches_the_expected_chart(conn):
+def test_parsed_chart_matches_the_expected_chart(conn, tconfig):
     """A revision upstream must be reported, not silently absorbed."""
-    assert timing.verify_chart(conn) == []
+    assert timing.verify_chart(conn, tconfig) == []
 
 
-def test_a_changed_chart_is_reported(conn):
+def test_a_changed_chart_is_reported(conn, tconfig):
     conn.execute("UPDATE rules_entries SET body = 'Rewritten.' "
                  "WHERE term = 'Ability'")
     conn.commit()
     timing.build(conn)
-    assert timing.verify_chart(conn)
+    assert timing.verify_chart(conn, tconfig)
 
 
 def test_status_card_forced_interrupts_outrank_ordinary_ones(conn):
@@ -343,15 +365,15 @@ def test_known_non_triggers_are_distinguished_from_gaps(conn):
 
 # --- citations -------------------------------------------------------
 
-def test_citations_verify_against_the_indexed_rules(conn):
-    assert timing.verify_citations(conn) == []
+def test_citations_verify_against_the_indexed_rules(conn, tconfig):
+    assert timing.verify_citations(conn, tconfig) == []
 
 
-def test_a_reworded_rules_entry_fails_loudly(conn):
+def test_a_reworded_rules_entry_fails_loudly(conn, tconfig):
     conn.execute("UPDATE rules_entries SET body = 'Rewritten.' "
                  "WHERE term = 'Forced'")
     conn.commit()
-    broken = timing.verify_citations(conn)
+    broken = timing.verify_citations(conn, tconfig)
     assert any("Forced" in b for b in broken)
 
 
@@ -377,24 +399,23 @@ def test_explain_reports_what_beats_what(conn):
     result = timing.explain(conn, "Response")
     assert result["rung"] == 4
     befores = [b["text"] for b in result["resolves_after"]]
-    assert any("Forced Response" in b for b in befores)
+    assert any("Oooo Pppp" in b for b in befores)
 
 
 def test_explain_includes_the_unlettered_rungs(conn):
     """Rung 1 outranks every trigger and rung 5 follows every one. Filtering
     on a lettered sub-tier hid both."""
     result = timing.explain(conn, "Interrupt")
-    assert any("Constant abilities" in r["text"] for r in result["resolves_after"])
-    assert any("Consequential damage" in r["text"]
-               for r in result["resolves_before"])
+    assert any("Aaa bbb ccc" in r["text"] for r in result["resolves_after"])
+    assert any("Qqqq rrrr" in r["text"] for r in result["resolves_before"])
 
 
 def test_explain_does_not_report_a_category_header(conn):
     result = timing.explain(conn, "Response")
     texts = [r["text"] for r in
              result["resolves_after"] + result["resolves_before"]]
-    assert "Responses" not in texts
-    assert "Interrupts" not in texts
+    assert "Nnnn" not in texts
+    assert "Hhhh" not in texts
 
 
 def test_explain_accepts_an_alias(conn):
@@ -424,7 +445,8 @@ def test_unknown_trigger_is_reported_not_guessed(conn):
     assert timing.explain(conn, "Bamf")["canonical"] is None
 
 
-def test_a_matching_rulebook_is_not_blocked(conn):
+def test_a_matching_rulebook_is_not_blocked(conn, tconfig, monkeypatch):
+    monkeypatch.setattr(timing, "load_config", lambda *a, **k: tconfig)
     assert timing.blocked(conn) == []
 
 
@@ -466,7 +488,7 @@ def test_the_final_step_has_no_see_clause(conn):
     it, and `all(s["see"])` fails on a correct parse."""
     steps = timing.round_structure(conn)
     assert steps[-1]["see"] == []
-    assert steps[-1]["description"].startswith("End the round.")
+    assert steps[-1]["description"].startswith("End the rrr.")
     assert sum(1 for s in steps if s["see"]) == 9
 
 
@@ -474,8 +496,8 @@ def test_a_wrapped_see_list_is_not_truncated(conn):
     """Step 6's See: list wraps onto a second line. Parsing line-by-line
     captures "Activation, Attack" and silently drops the rest."""
     step6 = timing.round_structure(conn)[5]
-    assert step6["see"] == ["Activation", "Attack (Enemy Activation)",
-                            "Scheme (Enemy Activation)"]
+    assert step6["see"] == ["Activation", "Jjj (Kkk Activation)",
+                            "Lll (Kkk Activation)"]
 
 
 # --- the real corpus -------------------------------------------------

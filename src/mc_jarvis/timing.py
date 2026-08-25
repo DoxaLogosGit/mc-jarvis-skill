@@ -61,6 +61,21 @@ def _norm(s: str) -> str:
     return " ".join((s or "").split()).strip().rstrip(":").strip()
 
 
+def digest(text: str) -> str:
+    """A fingerprint of rules text, so a change can be detected without
+    the repository carrying the text itself.
+
+    This project ships code and configuration only - no card text, no
+    rules text. Verification anchors used to be verbatim quotations, which
+    worked but put ~380 words of someone else's rulebook in a public
+    repository. A digest detects any change to the passage, which is
+    strictly stronger than checking that one sentence still appears.
+    """
+    import hashlib
+
+    return hashlib.sha256(_canon(text).encode("utf-8")).hexdigest()[:32]
+
+
 def _canon(s: str) -> str:
     """Compare RR text ignoring curly quotes and the stray space the
     extractor leaves before a closing quote (`“Interrupt ”`)."""
@@ -139,23 +154,39 @@ def orderable(conn) -> list[dict]:
     return [r for r in rows if r["sub"] or r["rung"] not in lettered]
 
 
-def verify_chart(conn) -> list[str]:
-    """Compare the parsed chart against the copy recorded on 2026-08-21."""
-    config = load_config()
-    got = [(r["rung"], r["sub"], _canon(r["text"])) for r in chart(conn)]
-    want = [(r["rung"], r["sub"], _canon(r["text"]))
-            for r in config["expected_chart"]]
-    if got == want:
-        return []
+def chart_shape(rows: list[dict]) -> list[list]:
+    """The chart's structure - rung numbers and sub-tier letters, nothing
+    the rulebook wrote. Kept in config alongside the digest so a mismatch
+    can still say WHICH rung moved rather than only that something did."""
+    return [[r["rung"], r["sub"]] for r in rows]
+
+
+def verify_chart(conn, config: dict | None = None) -> list[str]:
+    """Compare the parsed chart against the shape and digest recorded on
+    2026-08-21.
+
+    Two checks, because they fail differently. The shape catches a tier
+    being added, removed or re-lettered and names it. The digest catches a
+    rewording that leaves the structure intact.
+    """
+    config = config if config is not None else load_config()
+    expected = config["expected_chart"]
+    rows = chart(conn)
+
     problems = []
-    if len(got) != len(want):
-        problems.append(f"chart has {len(got)} rows, expected {len(want)}")
-    for g, w in zip(got, want):
-        if g != w:
-            problems.append(f"rung {w[0]}{w[1] or ''}: expected {w[2]!r}, "
-                            f"got {g[2]!r}")
-    if not problems:
-        problems.append("chart differs from expected_chart")
+    got_shape = chart_shape(rows)
+    want_shape = [list(x) for x in expected["shape"]]
+    if got_shape != want_shape:
+        problems.append(
+            f"chart has {len(got_shape)} rows, expected {len(want_shape)}; "
+            f"structure is {got_shape} against {want_shape}")
+
+    got = digest("\n".join(r["text"] for r in rows))
+    if got != expected["text_digest"]:
+        problems.append(
+            "the chart's wording has changed since this config was "
+            "verified. Run `mc-jarvis rules show Ability` to read it as "
+            "your own rulebook prints it.")
     return problems
 
 
@@ -326,35 +357,29 @@ def _cards_with(conn, canonical: str, limit: int = 15) -> list[dict]:
         (canonical, limit))]
 
 
-def verify_citations(conn) -> list[str]:
-    """Every quote in timing.yaml must still appear in the indexed RR, so a
-    rewording upstream names the stale rule instead of leaving this file
-    quietly wrong."""
-    config = load_config()
-    broken: list[str] = []
-    sources: list[tuple[str, dict]] = [
-        ("chart_source", config["chart_source"]),
-        ("quoted_reference", config["quoted_reference"]),
-    ]
-    for name, r in config["aliases"].items():
-        sources.append((f"alias:{name}", r))
-    for name, r in config["outside_chart"].items():
-        sources.append((f"outside_chart:{name}", r))
-    for i, r in enumerate(config["tie_breaks"]):
-        sources.append((f"tie_break:{i}", r))
+def verify_citations(conn, config: dict | None = None) -> list[str]:
+    """Every Rules Reference entry this config leans on must still say what
+    it said when the mapping was written.
 
-    for label, entry in sources:
+    Each entry is fingerprinted rather than quoted, so the repository
+    carries no rulebook text. That also makes the check stronger: a
+    quotation only catches a rewording of the sentence quoted, while a
+    digest catches any change to the passage the mapping depends on.
+    """
+    config = config if config is not None else load_config()
+    expected = config.get("entry_digests") or {}
+
+    broken: list[str] = []
+    for term, want in sorted(expected.items()):
         row = conn.execute(
             "SELECT body FROM rules_entries WHERE lower(term) = lower(?) "
-            "LIMIT 1", (entry["rr_entry"],)).fetchone()
+            "LIMIT 1", (term,)).fetchone()
         if row is None:
-            broken.append(f"{label}: no RR entry named {entry['rr_entry']!r}")
-            continue
-        quote = entry.get("quote")
-        if quote and _canon(quote) not in _canon(row["body"]):
-            broken.append(f"{label}: quote no longer found in "
-                          f"{entry['rr_entry']!r} "
-                          f"{cite(conn, entry['rr_entry'])}")
+            broken.append(f"no Rules Reference entry named {term!r}")
+        elif digest(row["body"]) != want:
+            broken.append(
+                f"{term!r} {cite(conn, term)} has changed since this "
+                f"config was verified against it")
     return broken
 
 
@@ -367,10 +392,10 @@ def rr_version(conn) -> str | None:
 def blocked(conn) -> list[str]:
     """Why this reference must not answer against the indexed rulebook.
 
-    The chart and the prefix mapping are version-specific, and the RR has
-    changed both between releases: v1.7 lists eight flat rungs and puts
-    "When Defeated" alongside Boost, while v1.8 lists five rungs with
-    lettered tiers and makes it a Forced Interrupt. Answering from the
+    The chart and the prefix mapping are version-specific, and the Rules
+    Reference has changed both between releases: 1.7 lists eight flat rungs
+    and puts "When Defeated" alongside Boost, while 1.8 lists five rungs
+    with lettered tiers and makes it a Forced Interrupt. Answering from the
     wrong one produces a confident, cited, wrong ruling - which is worse
     than no answer at all.
     """
@@ -378,7 +403,7 @@ def blocked(conn) -> list[str]:
 
 
 def _refuse(conn, problems: list[str]) -> int:
-    """The normal reason to land here is a Rules Reference newer than this
+    """The normal reason to land here is a Rules Reference NEWER than this
     config, not an old one: `init` and `update` both take the current
     edition. So the message points at the config being behind the
     rulebook, which is the direction a maintainer needs to act in."""
@@ -397,7 +422,7 @@ def _refuse(conn, problems: list[str]) -> int:
           f"  mc-jarvis timing --round       still works; the game round "
           f"is parsed separately\n\n"
           f"If version {version} is current, config/timing.yaml needs its "
-          f"`expected_chart` and trigger mapping brought up to it.")
+          f"`expected_chart` and `entry_digests` brought up to it.")
     return 1
 
 

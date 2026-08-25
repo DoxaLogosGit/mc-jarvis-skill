@@ -20,20 +20,37 @@ version: 2
 
 chart_source:
   rr_entry: Ability
-  quote: >-
-    the timing priority of abilities with the same triggering condition
 
+# What the chart looked like on 2026-08-21, recorded so a revision
+# upstream is reported rather than silently changing every answer.
+#
+# NO RULEBOOK TEXT LIVES HERE. `shape` is rung numbers and tier letters -
+# structure, not anything FFG wrote - and `text_digest` fingerprints the
+# wording. Together they catch a re-lettered tier by name and a rewording
+# by digest, without this repository carrying the rulebook.
 expected_chart:
-  - {rung: 1, sub: null, text: "Constant abilities, delayed effects, and lasting effects."}
-  - {rung: 2, sub: null, text: "Interrupts"}
-  - {rung: 2, sub: "a",  text: "Status card “Forced Interrupt” abilities."}
-  - {rung: 2, sub: "b",  text: "“Forced Interrupt” abilities."}
-  - {rung: 2, sub: "c",  text: "“Interrupt” abilities."}
-  - {rung: 3, sub: null, text: "“Boost” and “When Revealed” abilities."}
-  - {rung: 4, sub: null, text: "Responses"}
-  - {rung: 4, sub: "a",  text: "“Forced Response” abilities."}
-  - {rung: 4, sub: "b",  text: "“Response” abilities."}
-  - {rung: 5, sub: null, text: "Consequential damage."}
+  shape: [[1, null], [2, null], [2, "a"], [2, "b"], [2, "c"],
+          [3, null], [4, null], [4, "a"], [4, "b"], [5, null]]
+  text_digest: "968770fd0ac6809570c804030673435a"
+
+# Rules Reference entries this mapping depends on, fingerprinted as of
+# Rules Reference 1.8. `verify_citations` re-checks each at build time, so
+# a reworded entry names itself instead of leaving the mapping quietly
+# wrong. A digest is stronger than the quotation it replaced: a quote only
+# catches a rewording of the sentence quoted.
+entry_digests:
+  "Ability":                    "7b836a7ad4189ed2ba89a508d166bce6"
+  "Forced":                     "910c669f0f2815ddd937f2013352a0ac"
+  "First Player":               "388765fa32ae24c55fb7c8895b5e87b6"
+  "Interrupt":                  "e6c0eb8cafbcf77ca6d9a5744520d98c"
+  "Response":                   "a6a743252ac5868fc2ca18f65e19ec7e"
+  "Simultaneous Resolution":    "cf5ef006ce05be113006b63d9026ab42"
+  "Status Cards":               "0eabd7a1ffe192344680f4013707fb1c"
+  "Resource Ability":           "2d388d65cde473e878c6401b8761cbe4"
+  "Special":                    "0a55c6090d1dd240fe0edc94312bfff2"
+  "Setup (Triggered Ability)":  "bb91192720be6bb0457a0e5fddd48cf6"
+  "When Defeated Abilities":    "8200b4e1f7f49993e09bd6defacf0163"
+  "When Completed Abilities":   "06c49358c0ebd26ca4441e06bbeca955"
 
 # Bold prefixes that qualify a trigger without being one. The printed
 # prefix is `<qualifier> <trigger>`, e.g. "Hero Action". Matched
@@ -65,13 +82,9 @@ aliases:
   When Defeated:
     canonical: Forced Interrupt
     rr_entry: When Defeated Abilities
-    quote: >-
-      timing trigger is equivalent to the following trigger
   When Completed:
     canonical: Forced Interrupt
     rr_entry: When Completed Abilities
-    quote: >-
-      timing trigger is equivalent to the following trigger
 
 # Triggers with no rung: they are not tied to a triggering condition, so
 # the chart does not order them. `Forced` is handled as a modifier rather
@@ -88,9 +101,6 @@ outside_chart:
 # chart comes from.
 quoted_reference:
   rr_entry: Ability
-  quote: >-
-    the quoted text is not itself a timing trigger, but is instead
-    referring to other abilities with that trigger
 
 # Misprints in the published card text. Each names the card it appears on
 # so the mapping stays auditable; a fuzzy matcher would not be. Applied
@@ -169,43 +179,27 @@ tie_breaks:
       The first player has the first opportunity at each rung; opportunities
       then proceed in player order.
     rr_entry: First Player
-    quote: >-
-      The first player has the first opportunity to use
   - rule: >-
       If two or more forced abilities would initiate at the same moment,
       the first player chooses the order - regardless of who controls them.
     rr_entry: Forced
-    quote: >-
-      the first player determines the order in which the abilities initiate
   - rule: >-
       Each forced ability resolves as completely as possible before the
       next forced ability on the same triggering condition initiates.
     rr_entry: Forced
-    quote: >-
-      must resolve as completely as possible before the next forced ability
   - rule: >-
       If two effects with the same bold trigger would resolve
       simultaneously, the first player chooses the order.
     rr_entry: Simultaneous Resolution
-    quote: >-
-      the first player determines the order in which the effects resolve
   - rule: >-
       An interrupt using the word "would" resolves before its triggering
       condition initiates, ahead of other interrupts to that condition.
     rr_entry: Interrupt
-    quote: >-
-      resolve before its triggering condition initiates
   - rule: >-
       One effect causing several triggering conditions lets responses to
       each be resolved in any order.
     rr_entry: Response
-    quote: >-
-      responses to each of those triggering conditions can be resolved in
-      any order
   - rule: >-
       Status card abilities take timing priority over any conflicting
       triggered ability - which is why the chart puts them at rung 2a.
     rr_entry: Status Cards
-    quote: >-
-      Status card abilities have timing priority over all conflicting
-      triggered abilities
