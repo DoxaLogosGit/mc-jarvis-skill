@@ -199,6 +199,98 @@ def test_a_group_named_by_a_villain_stage_is_read():
     assert ("Adamantium-Laced Spine", "attachment") in ed.set_aside_groups(rows)
 
 
+# --- the set-aside audit ---------------------------------------------
+
+def _mkdb(tmp_path, sets, cards):
+    """A minimal index. `cards` needs canonical_code, is_reprint and raw:
+    all three are NOT NULL, and a fixture that omits them fails on the
+    constraint rather than on the behaviour under test."""
+    from mc_jarvis import index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO sets (code, name, card_set_type_code) VALUES (?, ?, ?)",
+        sets)
+    conn.executemany(
+        "INSERT INTO cards (code, name, type_code, set_code, text, traits, "
+        "quantity, canonical_code, is_reprint, raw) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '{}')",
+        [(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[0]) for c in cards])
+    conn.commit()
+    return conn
+
+
+def test_audit_is_clean_when_the_text_rule_covers_the_flagged_set(tmp_path):
+    """A scenario whose Setup block sets something aside must have that
+    something identified. Coverage is acknowledged, never inferred."""
+    conn = _mkdb(
+        tmp_path, [("apoc", "Apocalypse", "villain")],
+        [("m1", "The Age of Apocalypse", "main_scheme", "apoc",
+          "<b>Setup</b>: Set aside each [[Prelate]] minion.", "", 1),
+         ("m2", "Heart of the Empire", "main_scheme", "apoc",
+          "The first player reveals a random set-aside [[Prelate]] minion.",
+          "", 1),
+         ("p1", "Prelate Guard", "minion", "apoc", "Guard.", "Prelate.", 2)])
+    assert ed.audit(conn, {"acknowledged": {}}) == []
+
+
+def test_audit_names_a_flagged_set_that_nothing_covers(tmp_path):
+    conn = _mkdb(
+        tmp_path, [("myst", "Mystery", "villain")],
+        [("m1", "A Scheme", "main_scheme", "myst",
+          "<b>Setup</b>: Set the Whatsit attachment aside.", "", 1)])
+    problems = ed.audit(conn, {"acknowledged": {}})
+    assert problems and "myst" in problems[0]
+
+
+def test_a_put_into_play_instruction_also_flags(tmp_path):
+    """`put ... into play` removes cards from the deck just as an aside
+    does. 26 villain sets say it, against 16 that say "set ... aside"."""
+    conn = _mkdb(
+        tmp_path, [("ult", "Ultron", "villain")],
+        [("m1", "Ultron Assembled", "main_scheme", "ult",
+          "<b>Setup</b>: Put the Ultron Drones environment into play.",
+          "", 1)])
+    assert ed.audit(conn, {"acknowledged": {}})
+
+
+def test_an_acknowledged_set_passes_when_its_setup_is_unchanged(tmp_path):
+    conn = _mkdb(
+        tmp_path, [("myst", "Mystery", "villain")],
+        [("m1", "A Scheme", "main_scheme", "myst",
+          "<b>Setup</b>: Set the Whatsit attachment aside.", "", 1)])
+    setup = ed.setup_blocks(conn)["myst"]
+    config = {"acknowledged": {"myst": {
+        "reason": "one attachment, named nowhere else",
+        "setup_digest": ed.digest(setup)}}}
+    assert ed.audit(conn, config) == []
+
+
+def test_a_reworded_setup_invalidates_its_acknowledgment(tmp_path):
+    """The acknowledgment describes a specific sentence. If the scheme is
+    reworded the reason may no longer hold, so it must be re-read rather
+    than kept on file."""
+    conn = _mkdb(
+        tmp_path, [("myst", "Mystery", "villain")],
+        [("m1", "A Scheme", "main_scheme", "myst",
+          "<b>Setup</b>: Set the Whatsit attachment aside.", "", 1)])
+    config = {"acknowledged": {"myst": {
+        "reason": "one attachment", "setup_digest": "0" * 32}}}
+    problems = ed.audit(conn, config)
+    assert problems and "changed" in problems[0]
+
+
+def test_a_set_with_no_setup_block_is_not_flagged(tmp_path):
+    """Rhino's entire Setup is "Advance to stage 1B" - nothing removed,
+    nothing to acknowledge."""
+    conn = _mkdb(
+        tmp_path, [("rhino", "Rhino", "villain")],
+        [("m1", "The Break-In!", "main_scheme", "rhino",
+          "<b>Contents</b>: Rhino and Standard sets. <b>Setup</b>: Advance "
+          "to stage 1B.", "", 1)])
+    assert ed.audit(conn, {"acknowledged": {}}) == []
+
+
 # --- the real corpus -------------------------------------------------
 
 @pytest.mark.integration
@@ -259,3 +351,43 @@ def test_the_set_aside_groups_reach_the_known_scenarios(real_index):
                  ("Captive", "ally"), ("Thunderbolt", "minion"),
                  ("Orbital Decay", "side_scheme")):
         assert want in groups, want
+
+
+@pytest.mark.integration
+def test_the_shipped_config_leaves_no_scenario_unaccounted(real_index):
+    """A scenario whose Setup removes cards, covered by neither the text
+    rules nor an acknowledgment, would have its deck silently mis-counted.
+    Measured 2026-08-26: 33 of 56 villain sets are flagged, 20 are covered
+    by the two text rules, and 13 are acknowledged by hand."""
+    from mc_jarvis import encounterdeck
+
+    assert encounterdeck.audit(real_index) == []
+
+
+@pytest.mark.integration
+def test_every_acknowledgment_still_matches_its_setup_block(real_index):
+    """The reasons describe specific sentences. A reworded scheme must
+    force a re-read rather than keep a stale reason on file - which is
+    what the digest is for, so this asserts it actually fires."""
+    from mc_jarvis import encounterdeck
+
+    config = encounterdeck.load_config()
+    blocks = encounterdeck.setup_blocks(real_index)
+    for code, entry in (config.get("acknowledged") or {}).items():
+        assert code in blocks, f"{code} no longer has a Setup block"
+        assert entry["setup_digest"] == encounterdeck.digest(blocks[code]), code
+        assert entry.get("reason"), code
+        assert "affects_deck" in entry, code
+
+
+@pytest.mark.integration
+def test_a_tampered_acknowledgment_is_caught(real_index):
+    """Guards the guard: if the digest check could not fail, the audit
+    above would pass vacuously."""
+    from mc_jarvis import encounterdeck
+
+    config = encounterdeck.load_config()
+    tampered = {"acknowledged": {
+        k: dict(v, setup_digest="0" * 32)
+        for k, v in (config.get("acknowledged") or {}).items()}}
+    assert encounterdeck.audit(real_index, tampered)

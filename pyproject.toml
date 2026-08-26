@@ -27,6 +27,7 @@ packages = ["src/mc_jarvis"]
 "config/legality.yaml" = "src/mc_jarvis/_bundled/legality.yaml"
 "config/glyphs.yaml"   = "src/mc_jarvis/_bundled/glyphs.yaml"
 "config/timing.yaml"   = "src/mc_jarvis/_bundled/timing.yaml"
+"config/encounter_setup.yaml" = "src/mc_jarvis/_bundled/encounter_setup.yaml"
 "skill"                = "src/mc_jarvis/_bundled/skill"
 
 [tool.pytest.ini_options]
