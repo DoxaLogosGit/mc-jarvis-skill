@@ -270,6 +270,22 @@ CREATE VIRTUAL TABLE IF NOT EXISTS rulings_fts USING fts5(
     question, answer, content='rulings', content_rowid='id'
 );
 
+-- Whether a card is in the encounter deck at all, and whether one that
+-- starts in play later rejoins it (assess spec §5.2, corrected by §14.6).
+-- This is the denominator of every number `assess` reports: get it wrong
+-- and the averages are wrong while looking entirely plausible.
+CREATE TABLE IF NOT EXISTS encounter_role (
+    code            TEXT PRIMARY KEY,
+    role            TEXT NOT NULL,
+    -- A card that starts in play can be discarded and reshuffled in. It
+    -- belongs in the composition statistics, just not the opening deck.
+    returns_to_deck INTEGER NOT NULL DEFAULT 0,
+    -- Which rule decided, so a wrong answer is traceable to its rule
+    -- rather than guessed at.
+    decided_by      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_encounter_role ON encounter_role(role);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'

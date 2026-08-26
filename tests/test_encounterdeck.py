@@ -1,0 +1,261 @@
+"""Encounter-deck membership (assess spec §5.2, as corrected by §14.5-§14.8).
+
+Set membership is the denominator of every average `assess` reports. Get it
+wrong and all the numbers are wrong while looking entirely plausible, which
+is the failure the spec opens with.
+
+Two earlier passes concluded no signal existed. Both were wrong, and both
+times the cause was searching a single spelling — so several tests below
+exist specifically to pin a spelling variant that was once missed.
+"""
+import pytest
+
+from mc_jarvis import encounterdeck as ed
+
+
+def _card(**kw):
+    base = {"code": "x", "name": "X", "type_code": "treachery", "traits": "",
+            "text": "", "permanent": None, "boost": None, "quantity": 1,
+            "set_code": "s"}
+    base.update(kw)
+    return base
+
+
+# --- the type rule ---------------------------------------------------
+
+def test_villains_and_main_schemes_are_never_in_the_deck():
+    for t in ("villain", "main_scheme"):
+        role, _ = ed.classify_card(_card(type_code=t))
+        assert role == ed.STARTS_IN_PLAY, t
+
+
+def test_player_side_types_in_encounter_sets_are_not_encounter_cards():
+    """Every encounter-set `ally` is a rescued-captive type that enters
+    play FOR the players via a side scheme. `upgrade`, `event`, `support`
+    and `resource` in encounter sets are campaign rewards."""
+    for t in ("ally", "upgrade", "event", "support", "resource",
+              "player_side_scheme"):
+        role, _ = ed.classify_card(_card(type_code=t))
+        assert role == ed.NOT_ENCOUNTER, t
+
+
+def test_an_ordinary_treachery_is_in_the_deck():
+    role, returns = ed.classify_card(_card(type_code="treachery", boost=2))
+    assert role == ed.DECK
+    assert returns is True
+
+
+# --- separate decks (§14.5) ------------------------------------------
+
+def test_a_card_belonging_to_another_deck_is_not_in_the_encounter_deck():
+    """The `infinity_gauntlet` modular is 7 cards and NONE is in the
+    encounter deck: the Gauntlet attaches at setup and the six Stones are
+    their own deck. Counting them adds 7 phantom cards."""
+    role, returns = ed.classify_card(_card(
+        type_code="environment", name="Power Stone",
+        text="<b>Special:</b> You are stunned. Place this card in the "
+             "[[infinity stone]] deck discard pile."))
+    assert role == ed.OTHER_DECK
+    assert returns is False
+
+
+def test_referring_to_another_deck_is_not_belonging_to_it():
+    """24 cards name a `[[X]] deck`; only 6 say they go into one.
+    `Infinity Gauntlet` is a setup attachment that merely talks about the
+    stone deck — a mention-match files it as a member and loses its real
+    role."""
+    role, _ = ed.classify_card(_card(
+        type_code="attachment", name="Infinity Gauntlet", permanent=1,
+        text="Permanent. Setup [star] <b>Forced Response</b>: ... put the "
+             "top card of the [[infinity stone]] deck into play."))
+    assert role == ed.SETUP_ATTACHMENT
+
+    for text in ("Shuffle the [[infinity stone]] deck.",
+                 "Reveal the top card of the [[infinity stone]] deck."):
+        role, _ = ed.classify_card(_card(type_code="treachery", text=text))
+        assert role == ed.DECK, text
+
+
+# --- Setup, permanent, and cycling back (§14.6) -----------------------
+
+def test_setup_and_permanent_never_returns():
+    """`permanent` means "cannot be discarded from play", so a Setup card
+    that is also permanent can never reach the discard pile."""
+    role, returns = ed.classify_card(_card(
+        type_code="attachment", name="Infinity Gauntlet", permanent=1,
+        text="Permanent. Setup [star] <b>Forced Response</b>: ..."))
+    assert role == ed.SETUP_ATTACHMENT
+    assert returns is False
+
+
+def test_setup_without_permanent_cycles_back_into_the_deck():
+    """The three [[Setting]] environments start in play, are discarded when
+    another is revealed, and rejoin the deck on reshuffle. Their own text
+    proves it: a When Revealed ability and a boost value are both
+    meaningless for a card that never enters the encounter deck."""
+    role, returns = ed.classify_card(_card(
+        type_code="environment", name="The Savage Land", permanent=None,
+        boost=3,
+        text="Setup. The villain gains retaliate 1. <b>Special</b>: ... "
+             "<b>When Revealed</b>: Discard each other [[Setting]] "
+             "environment in play."))
+    assert role == ed.STARTS_IN_PLAY
+    assert returns is True
+
+
+def test_setup_with_neither_signal_stays_out():
+    """The three `Chief ... Officer` environments FLIP rather than discard,
+    which keeps them out permanently. Unverified whether anything else can
+    discard them, so this asserts the conservative reading."""
+    role, returns = ed.classify_card(_card(
+        type_code="environment", name="Chief Medical Officer",
+        text="Setup. If there are 4 or more secret counters here, flip "
+             "this card. <b>Hero Action</b>: ..."))
+    assert role == ed.STARTS_IN_PLAY
+    assert returns is False
+
+
+def test_the_bare_setup_spelling_is_matched():
+    """FFG writes it both as a bold trigger and as a bare sentence opener.
+    Matching only `<b>Setup</b>` misses `Setup. Attach to the villain.`
+    entirely — which is how the signal was missed the first time."""
+    for text in ("<b>Setup</b>: Attach to the villain. Permanent.",
+                 "Setup. Attach to the villain. Permanent.",
+                 "Permanent. Setup [star] <b>Forced Response</b>: ..."):
+        role, _ = ed.classify_card(_card(
+            type_code="attachment", permanent=1, text=text))
+        assert role == ed.SETUP_ATTACHMENT, text
+
+
+def test_permanent_alone_does_not_remove_a_card_from_the_deck():
+    """The trap. Enchantress's `Trance of Envy` is permanent AND has a When
+    Revealed ability, which only fires on a reveal FROM the encounter deck.
+    It is drawn, then stays. Treating `permanent` as "not in the deck"
+    removes cards that demonstrably are in it."""
+    role, _ = ed.classify_card(_card(
+        type_code="attachment", name="Trance of Envy", permanent=1,
+        text="Permanent. Your identity gains the [[Enthralled]] trait. "
+             "<b>When Revealed</b>: Discard a card you control."))
+    assert role == ed.DECK
+
+
+def test_boost_alone_does_not_remove_a_card_either():
+    """`Armored Rhino Suit` has no boost and `Charge` has 2, which is
+    tempting — but `The Sleeper` is set aside by its scenario and carries
+    boost 1. Absence correlates; presence does not exclude."""
+    role, _ = ed.classify_card(_card(
+        type_code="attachment", name="Armored Rhino Suit",
+        text="Attach to Rhino. <b>Forced Interrupt</b>: ..."))
+    assert role == ed.DECK
+
+
+# --- set-aside groups from card text (§14.7) -------------------------
+
+def test_set_aside_groups_are_read_from_the_hyphenated_form():
+    """FFG writes the adjective hyphenated. Searching `set aside` finds 5
+    cards; `set-aside` finds 91. That one spelling is what made an earlier
+    pass conclude the list was underivable."""
+    rows = [
+        _card(set_code="apocalypse", name="Heart of the Empire",
+              type_code="main_scheme",
+              text="The first player reveals a random set-aside "
+                   "[[Prelate]] minion."),
+        _card(set_code="m.o.d.o.k.", name="Upgrading Adaptoids",
+              type_code="main_scheme",
+              text="put 1 random set-aside [[Adaptoid]] environment into "
+                   "play instead."),
+    ]
+    groups = ed.set_aside_groups(rows)
+    assert groups[("Prelate", "minion")] == {"apocalypse"}
+    assert groups[("Adaptoid", "environment")] == {"m.o.d.o.k."}
+
+
+def test_a_named_card_is_read_as_a_group_of_one():
+    rows = [_card(set_code="magneto_villain", name="Sabotage Master Mold",
+                  type_code="side_scheme",
+                  text="<b>When Defeated</b>: Reveal the set-aside Orbital "
+                       "Decay side scheme.")]
+    assert ("Orbital Decay", "side_scheme") in ed.set_aside_groups(rows)
+
+
+def test_the_nemesis_set_aside_area_is_not_a_card_group():
+    """`set-aside area for your nemesis` is the nemesis area, not a group.
+    One of two regex artefacts named in §14.7."""
+    rows = [_card(set_code="standard_iii", name="Pursued by the Past",
+                  text="Search the set-aside area for your nemesis side "
+                       "scheme and reveal it.")]
+    assert ed.set_aside_groups(rows) == {}
+
+
+def test_a_group_named_by_a_villain_stage_is_read():
+    """Bullseye (I) reads "When Revealed: Set aside Adamantium-Laced
+    Spine"; Bullseye (II) finds and attaches it. Content mc-jarvis has
+    never indexed, and the rule reaches it — which is the point of
+    deriving the list from text rather than enumerating it."""
+    rows = [_card(set_code="bullseye", name="Bullseye", type_code="villain",
+                  text="<b>When Revealed</b>: Find the set-aside "
+                       "Adamantium-Laced Spine attachment and attach it "
+                       "to Bullseye.")]
+    assert ("Adamantium-Laced Spine", "attachment") in ed.set_aside_groups(rows)
+
+
+# --- the real corpus -------------------------------------------------
+
+@pytest.mark.integration
+def test_the_real_corpus_classifies_to_measured_counts(real_index):
+    """Measured 2026-08-26. Each of these is a decision recorded in the
+    spec, not a number the implementation happened to produce."""
+    from mc_jarvis import encounterdeck
+
+    encounterdeck.build(real_index)
+
+    def n(sql):
+        return real_index.execute(sql).fetchone()[0]
+
+    # The six Infinity Stones, and only those, claim membership of another
+    # deck. 24 cards MENTION one; matching mentions gave 15 and mis-filed
+    # `Infinity Gauntlet` as a stone rather than a setup attachment.
+    assert n("SELECT COUNT(*) FROM encounter_role WHERE role='other_deck'") == 6
+
+    # Power Stone, Infinity Gauntlet, Flight, Super Strength, Telepathy.
+    assert n("SELECT COUNT(*) FROM encounter_role "
+             "WHERE role='setup_attachment'") == 5
+
+    # The three [[Setting]] environments: start in play, get discarded when
+    # another is revealed, rejoin the deck on reshuffle.
+    assert n("SELECT COUNT(*) FROM encounter_role "
+             "WHERE returns_to_deck=1 AND role<>'deck'") == 3
+
+
+@pytest.mark.integration
+def test_every_card_has_exactly_one_role(real_index):
+    """The denominator of every assess average. A card missing a role
+    silently leaves the deck; a duplicated one silently doubles."""
+    from mc_jarvis import encounterdeck
+
+    encounterdeck.build(real_index)
+    cards = real_index.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
+    roles = real_index.execute(
+        "SELECT COUNT(*) FROM encounter_role").fetchone()[0]
+    assert roles == cards
+
+    orphans = real_index.execute(
+        "SELECT COUNT(*) FROM encounter_role e "
+        "LEFT JOIN cards c ON c.code = e.code WHERE c.code IS NULL"
+    ).fetchone()[0]
+    assert orphans == 0
+
+
+@pytest.mark.integration
+def test_the_set_aside_groups_reach_the_known_scenarios(real_index):
+    """Derived from card text, and it must find the groups the main scheme
+    Setup blocks name independently — two unrelated places in the data."""
+    from mc_jarvis import encounterdeck
+
+    rows = [dict(r) for r in real_index.execute(
+        "SELECT code, name, type_code, traits, text, set_code FROM cards")]
+    groups = encounterdeck.set_aside_groups(rows)
+    for want in (("Prelate", "minion"), ("Adaptoid", "environment"),
+                 ("Captive", "ally"), ("Thunderbolt", "minion"),
+                 ("Orbital Decay", "side_scheme")):
+        assert want in groups, want

@@ -658,9 +658,23 @@ place for a card that belongs to a *different* deck. Six exist:
 | `[[gift]]`, `[[labor]]` | `hercules` |
 | `[[weather]]` | `storm` |
 
-**15 deck-eligible cards belong to the infinity stone deck alone**, and
-they are detectable: their text says `Place this card in the
-[[infinity stone]] deck`. The `infinity_gauntlet` modular is the sharpest
+**6 cards belong to the infinity stone deck**, and they are detectable by
+that membership claim: their text says `Place this card in the
+[[infinity stone]] deck`.
+
+> **Corrected 2026-08-26 while implementing this.** This section first said
+> 15, measured by matching any card whose text *mentions* `[[infinity
+> stone]]`. That counts referrers, not members: 24 cards name a `[[X]]
+> deck` and only 6 say they go into one — the rest say "put the top card
+> of", "shuffle the", "begins the game with". `Infinity Gauntlet` is the
+> card that makes the difference matter, because it is a **setup
+> attachment** that happens to discuss the stone deck, and a mention-match
+> files it as a member. Both readings keep it out of the encounter deck,
+> so the count of excluded cards was right by accident — but the role was
+> wrong, and the role is what `assess` reports.
+>
+> A sixth instance of the project's recurring failure: a regex matching a
+> mention where a claim was meant. The `infinity_gauntlet` modular is the sharpest
 case in the corpus — **7 cards, none of them in the encounter deck**: the
 Gauntlet attaches at setup, and the six Stones are their own deck. A
 scenario including that modular would gain 7 phantom encounter cards, a
