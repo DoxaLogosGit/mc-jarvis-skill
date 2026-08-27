@@ -538,3 +538,92 @@ def test_printed_keywords_stay_a_minority_of_surge_mentions(real_index):
     for word in ("piercing", "overkill", "ranged"):
         assert rows[word][1] == 0, (word, rows[word])
     assert rows["permanent"][0] == rows["permanent"][1]
+
+
+# --- growing decks (plan Task 8, spec §14.9) -------------------------
+
+def test_a_growing_scenario_reports_the_opening_and_grown_decks(tmp_path):
+    """The Hood, Mojo and Dark Beast add modular sets DURING play. One
+    profile is the wrong answer for most of the game, so report both
+    ends."""
+    c = _mkdb(
+        tmp_path,
+        sets=[("dark_beast", "Dark Beast", "villain"),
+              ("blue_moon", "Blue Moon", "modular"),
+              ("standard", "Standard", "standard")],
+        cards=[("m1", "A Scheme", "main_scheme", "dark_beast", 1, None, "",
+                "", None, 0),
+               ("t1", "Thing", "treachery", "dark_beast", 2, 1, "", "", None,
+                0),
+               ("p1", "Extra", "treachery", "blue_moon", 4, 3, "", "", None,
+                0)],
+        roles=[("m1", "starts_in_play", 0), ("t1", "deck", 1),
+               ("p1", "deck", 1)],
+        modulars=[("dark_beast", "prescribed", None)])
+    s = assess.resolve(c, "dark_beast")
+    s.pool = ["blue_moon"]
+    steps = assess.trajectory(c, s)
+    assert [x["added"] for x in steps] == [0, 1]
+    assert steps[0]["deck_size"] == 2
+    assert steps[1]["deck_size"] == 6
+
+
+def test_a_fixed_scenario_reports_one_step(rhinolike):
+    steps = assess.trajectory(rhinolike, assess.resolve(rhinolike, "rhino"))
+    assert len(steps) == 1
+    assert steps[0]["added"] == 0
+
+
+def test_the_pool_is_read_from_config(tmp_path):
+    c = _mkdb(
+        tmp_path,
+        sets=[("dark_beast", "Dark Beast", "villain"),
+              ("blue_moon", "Blue Moon", "modular"),
+              ("genosha", "Genosha", "modular"),
+              ("savage_land", "Savage Land", "modular"),
+              ("standard", "Standard", "standard")],
+        cards=[("m1", "A Scheme", "main_scheme", "dark_beast", 1, None, "",
+                "", None, 0)],
+        roles=[("m1", "starts_in_play", 0)],
+        modulars=[("dark_beast", "prescribed", None)])
+    s = assess.resolve(c, "dark_beast")
+    assert s.pool == ["blue_moon", "genosha", "savage_land"]
+    assert s.growth == "random"
+
+
+def test_the_hood_refuses_rather_than_assessing_an_empty_pool(tmp_path):
+    """Its seven sets come from the whole collection and nothing can infer
+    them. Assessing it against no pool would report a deck the player
+    never faces."""
+    c = _mkdb(
+        tmp_path,
+        sets=[("the_hood", "The Hood", "villain"),
+              ("standard", "Standard", "standard")],
+        cards=[("m1", "A Scheme", "main_scheme", "the_hood", 1, None, "", "",
+                None, 0)],
+        roles=[("m1", "starts_in_play", 0)],
+        modulars=[("the_hood", "open", None)])
+    with pytest.raises(assess.UnknownScenario, match="--modular"):
+        assess.resolve(c, "the_hood")
+    # Naming the sets on the table is enough.
+    s = assess.resolve(c, "the_hood", modular=[])
+    assert s.growth == "player_chosen"
+
+
+@pytest.mark.integration
+def test_every_growing_scenario_is_examined(real_index):
+    """The reverse gate. §14.9 named three scenarios; the corpus has six
+    cards that shuffle a SET into the encounter deck mid-game, and the
+    other three had to be read and classified. A seventh appearing
+    unexamined means a scenario is being reported as a fixed deck when it
+    is not."""
+    assert assess.growth_gate(real_index) == []
+
+
+@pytest.mark.integration
+def test_dark_beast_grows_by_three_environment_sets(real_index):
+    s = assess.resolve(real_index, "dark_beast")
+    assert s.pool == ["blue_moon", "genosha", "savage_land"]
+    steps = assess.trajectory(real_index, s)
+    assert [x["added"] for x in steps] == [0, 3]
+    assert steps[1]["deck_size"] > steps[0]["deck_size"]

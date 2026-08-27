@@ -54,8 +54,14 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
     counts["timing_triggers"] = timing.build(conn)
     counts.update(encounterdeck.build(conn))
     counts.update(encounterdeck.build_scenarios(conn))
+    from . import assess
     scenario_problems = (encounterdeck.audit(conn)
-                         + encounterdeck.scenario_gate(conn))
+                         + encounterdeck.scenario_gate(conn)
+                         # A new double-sided card would add a phantom
+                         # copy, and a new growing scenario would be
+                         # reported as a fixed deck. Both silently.
+                         + assess.back_face_gate(conn)
+                         + assess.growth_gate(conn))
     if scenario_problems:
         # Not fatal: card and rules commands are unaffected. But every
         # `assess` number for these would be computed over a wrong

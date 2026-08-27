@@ -221,3 +221,92 @@ not_back_faces:
   "01144b": "Ultron ships two Android Efficiency; identical text, both real"
   "50184b": "the [mental] A.I.M. Interference, beside the [energy] one"
   "61033b": "the [mental] Suggestion, beside the [energy] one"
+
+# --- scenarios whose deck grows during play (§14.9) -------------------
+#
+# The pool is NOT parsed. Six cases exist corpus-wide and each is phrased
+# differently, so a parser would be six special cases wearing one regex.
+# Each entry instead carries the set codes and the digest of the sentence
+# that puts them there, re-verified at build time, so a reworded card
+# fails the build rather than leaving a stale pool in force.
+#
+# `mechanism` is load-bearing. A `random` pool makes the grown deck a
+# RANGE - the sets are drawn without replacement and differ in size - so
+# a single mean would be a number that looks exact and is not (§14.9).
+# A `deterministic` addition is exact at both ends.
+growing:
+  dark_beast:
+    mechanism: random
+    pool: [blue_moon, genosha, savage_land]
+    # How many of the three actually arrive depends on which villain
+    # stages a game passes through, which the card data does not settle.
+    # Left unset, so the upper bound is the whole pool - true, if loose.
+    reason: >-
+      Three environment sets are set aside at setup; each villain stage
+      reveals one at random and shuffles the rest of its set in.
+
+  mojo:
+    mechanism: random
+    pool: [crime, fantasy, horror, longshot, sci-fi, sitcom, western]
+    # The player pre-selects 1 + 1 per hero, so the count is a table
+    # decision rather than a card fact. The pool bounds it at seven.
+    reason: >-
+      The player pre-selects 1 + 1 per hero from the MojoMania pack's
+      seven modulars; the main scheme reveals one at random and shuffles
+      the remainder in. The pool is the pack, so it is knowable even
+      though the selection is not.
+
+  the_hood:
+    mechanism: player_chosen
+    pool: []
+    reason: >-
+      Seven modular sets chosen from the whole collection, one shuffled
+      in at random per reveal. Nothing in the data can infer them, so
+      `assess` requires --modular rather than assessing against nothing.
+
+  mister_sinister:
+    mechanism: random
+    pool: [flight, super_strength, telepathy]
+    # Stage 1B removes one stage 2 at random and the other two are both
+    # played, so exactly two of the three sets ever arrive.
+    max_draws: 2
+    reason: >-
+      Flight, Super Strength and Telepathy are set aside at setup. Each
+      stage 2 attaches one set's attachment and shuffles the rest of that
+      set in. Missed by the spec's hand list of three; the growth gate
+      found it.
+
+  escape_the_museum:
+    mechanism: deterministic
+    pool: [ship_command]
+    max_draws: 1
+    reason: >-
+      The Ship Command set is set aside at setup, its Milano support
+      enters play at stage 2, and the remainder is shuffled in at stage
+      3. Certain, not random - both ends are exact.
+
+# Growth that is NOT a random pool. Recorded so the gate cannot call
+# these scenarios fixed-deck, and so a reader knows they were examined.
+adds_during_play:
+  dreadpool:
+    mechanism: deterministic
+    reason: >-
+      A modular set, not a scenario. Its `Crisis of Infinite Deadpools`
+      treachery starts in the deck and the set's other five cards are set
+      aside until it is revealed. Part 1 counts all six in the opening
+      deck, which OVERSTATES it by five copies for any scenario that
+      includes this modular. The audit only reads villain-set main
+      schemes, so intra-modular set-asides are not yet classified.
+
+  morlock_siege:
+    mechanism: deterministic
+    reason: >-
+      One treachery, Hide!, is shuffled in when main scheme stage 2 is
+      revealed. A single card, exact at both ends.
+
+  thunderbolts:
+    mechanism: setup
+    reason: >-
+      Not growth. The chosen modular sets are shuffled in AT SETUP, minus
+      their Elite minions, so they are already in the opening deck. Named
+      here only so the growth gate does not report it as unexamined.

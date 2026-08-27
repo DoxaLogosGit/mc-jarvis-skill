@@ -2011,10 +2011,11 @@ git commit -m "feat: mc-jarvis assess, with growing-deck trajectories"
 ## Done criteria
 
 - [ ] `uv run pytest tests/ -v` passes, unit and integration
-- [ ] `mc-jarvis assess rhino --players 2` matches the hand count in Task 6: 22 cards, boost total 19
-- [ ] `encounterdeck.audit` and `scenario_gate` both return empty, or every remaining entry is acknowledged in config with the sentence that justifies it
+- [ ] `mc-jarvis assess rhino --modular '' --players 2` matches the corrected hand count: **24** cards, boost total **23** (the original 22/19 was the plan's own arithmetic error — see the Task 6 correction)
+- [ ] all four gates return empty — `encounterdeck.audit`, `encounterdeck.scenario_gate`, `assess.back_face_gate`, `assess.growth_gate` — or every remaining entry is acknowledged in config with the sentence that justifies it
 - [ ] `starts_in_play` with `returns_to_deck = 1` is exactly 3 — the `[[Setting]]` environments
-- [ ] `other_deck` is at least 15 — the infinity stone deck
+- [ ] `other_deck` is **6**. The plan said "at least 15"; that came from a regex counting every *mention* of `[[X]] deck` rather than membership, and 15 included cards that merely name the infinity stone deck
+- [ ] printed surge on encounter-deck cards is **80**, against 261 mentions
 - [ ] `mc-jarvis assess the_hood` refuses and names `--modular`
 - [ ] `mc-jarvis assess bullseye` says the scenario is not in the card data
 - [ ] `git status` clean; no fetched artifact tracked

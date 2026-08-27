@@ -7,6 +7,12 @@ import sys
 from typing import Any
 
 
+def _difficulties():
+    """Imported lazily: `assess` pulls in the index layer."""
+    from .assess import DIFFICULTIES
+    return list(DIFFICULTIES)
+
+
 def _leaf(sub, name: str, help_: str, **kw) -> argparse.ArgumentParser:
     p = sub.add_parser(name, help=help_, **kw)
     p.add_argument("--json", action="store_true", help="emit JSON")
@@ -72,6 +78,18 @@ def build_parser() -> argparse.ArgumentParser:
                 "designer rulings the rulebook does not yet cover")
     rul.add_argument("text", nargs="?", default=None,
                      help="search the rulings instead of listing them")
+
+    asr = _leaf(sub, "assess", "what a scenario throws at you")
+    asr.add_argument("villain", help="a scenario, or a villain that names one")
+    asr.add_argument("--modular", action="append",
+                     help="the modular sets on your table; REPLACES the "
+                          "scenario's defaults rather than adding to them")
+    asr.add_argument("--players", type=int, default=1)
+    asr.add_argument("--difficulty", default="standard",
+                     choices=_difficulties())
+    asr.add_argument("--heroic", type=int, default=0,
+                     help="recorded, but does not change the numbers yet")
+    asr.add_argument("--nemesis", action="append")
 
     tim = _leaf(sub, "timing", "trigger ordering and the game round")
     tim.add_argument("trigger", nargs="?", default=None,
@@ -152,6 +170,9 @@ def _dispatch(name: str, args) -> int:
     if name == "rulings":
         from . import rulings
         return rulings.handle(args)
+    if name == "assess":
+        from . import assess
+        return assess.handle(args)
     if name == "timing":
         from . import timing
         return timing.handle(args)

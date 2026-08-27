@@ -58,6 +58,7 @@ default when you are quoting to the user.
 | one card in full | `mc-jarvis card show <name-or-code> [--explain]` |
 | a hero's kit | `mc-jarvis identity <name>` |
 | an encounter set | `mc-jarvis encounter <villain-or-set>` |
+| what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty]` |
 | a rules term | `mc-jarvis rules show <term>` |
 | a rules question | `mc-jarvis rules search <text>` |
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
@@ -180,3 +181,42 @@ Deck coaching, cut-and-add advice, and team analysis are your judgement,
 built on command output. Gather the facts first — `identity`,
 `card search`, `card show --explain` — then reason. Never invent a card, a
 cost, or a rule to support a recommendation.
+
+## Scenario threat profiles
+
+`mc-jarvis assess <scenario>` reports what an encounter deck holds: size,
+boost curve, minions, treacheries, side schemes, keywords. Every number
+names the cards behind it, so cite rather than assert.
+
+`--modular` **replaces** the scenario's defaults rather than adding to
+them. A player naming modular sets is describing the game on their table,
+not amending a recommendation.
+
+Five things to carry into any answer:
+
+- **A scenario is not a villain.** Seven scenarios choose their villain or
+  compose it from several, and six villain sets are components rather than
+  scenarios. Ask for the scenario. Which villain you face does not change
+  the encounter deck — no villain card is ever a deck member — with one
+  exception, `on_the_run`, where the villain drawn decides which minion
+  leaves.
+- **Some scenarios grow while you play.** Dark Beast, Mojo, Mister
+  Sinister and Escape the Museum shuffle sets in mid-game, so `assess`
+  prints the opening deck *and* the fully-grown one. Quote both: a single
+  average is wrong for most of the game. The Hood refuses without
+  `--modular`, because its seven sets come from the whole collection and
+  nothing can infer them.
+- **Printed surge and conditional surge are different numbers.** A card
+  reading "this card gains surge" surges only when its condition holds,
+  and the condition is the point of the card. Rhino's deck has **zero**
+  printed surge and twelve conditional copies; reporting one number would
+  say it surges 86% of the time. Never add them together.
+- **Difficulty changes the numbers.** Omitting the difficulty set
+  understates the boost curve; Expert's three cards average boost 2.3.
+- **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
+  in the card data, that is the honest answer — it may be perfectly
+  playable and simply absent upstream. Do not substitute a similar
+  villain.
+
+`assess` reports facts. Turning "6 Tough minions, 2 answers in the deck"
+into "cut a Tackle" is your job, not the command's.

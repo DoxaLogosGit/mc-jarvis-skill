@@ -14,6 +14,7 @@ question to answer rather than a deck to assemble.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from .encounterdeck import load_config
@@ -40,6 +41,13 @@ class Scenario:
     # Sets that may be shuffled in DURING play (§14.9). Empty for the
     # great majority of scenarios.
     pool: list[str] = field(default_factory=list)
+    # How the pool enters the deck: `random`, `player_chosen`, or `""`
+    # for the great majority of scenarios, which do not grow at all.
+    growth: str = ""
+    # How many pool sets can ever arrive. `None` means the card data does
+    # not settle it, and the whole pool stands as a true - if loose -
+    # upper bound.
+    max_draws: int | None = None
     modular_kind: str = "none"
 
 
@@ -100,6 +108,17 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
                ". No scenario's Contents block names it, so which scenario "
                "faces it cannot be read from the card data."))
 
+    growing = (load_config().get("growing") or {}).get(code) or {}
+    growth = growing.get("mechanism", "")
+    pool = list(growing.get("pool") or [])
+    max_draws = growing.get("max_draws")
+    if growth == "player_chosen" and modular is None:
+        raise UnknownScenario(
+            f"{code!r} draws its sets from the whole collection while you "
+            f"play, and nothing in the card data can infer them. Pass "
+            f"--modular to say which seven are on your table; assessing it "
+            f"against no pool would report a deck you never face.")
+
     mapped = conn.execute(
         "SELECT kind, modular_set FROM scenario_modulars WHERE scenario_set = ?",
         (code,)).fetchall()
@@ -117,7 +136,8 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
 
     return Scenario(scenario_set=code, modulars=modulars,
                     difficulty=difficulty, players=players, heroic=heroic,
-                    nemesis=list(nemesis), modular_kind=kind)
+                    nemesis=list(nemesis), modular_kind=kind,
+                    pool=pool, growth=growth, max_draws=max_draws)
 
 
 def _sets(scenario: Scenario) -> list[str]:
@@ -367,3 +387,126 @@ def _side_schemes(cards: list[dict], players: int) -> dict:
         "icons": {k: v for k, v in icons.items() if v},
         "cards": _named(rows, threat=lambda c: _threat(c, players)),
     }
+
+
+# A card that shuffles a whole encounter SET into the deck mid-game. Six
+# scenarios corpus-wide; the phrasing differs on every one, which is why
+# the pools are config and this is only a gate.
+GROWTH_RE = re.compile(
+    r"shuffle[sd]?\s+[^.]{0,80}?\b(?:set|sets)\b[^.]{0,40}?"
+    r"in(?:to)?\s+the\s+encounter\s+deck", re.I)
+
+
+def growth_gate(conn, config: dict | None = None) -> list[str]:
+    """Scenarios that grow during play and are not yet examined.
+
+    §14.9 named three; the corpus has six. The other three were read and
+    classified - one is a modular set rather than a scenario, one adds a
+    single card, one is setup-time and not growth at all. A seventh
+    appearing here means some scenario is being reported as a fixed deck
+    when it is not.
+    """
+    config = config if config is not None else load_config()
+    known = (set(config.get("growing") or {})
+             | set(config.get("adds_during_play") or {}))
+    problems = []
+    for row in conn.execute(
+            "SELECT DISTINCT c.set_code, c.name, c.text FROM cards c "
+            "JOIN sets s ON s.code = c.set_code "
+            "WHERE s.card_set_type_code IN ('villain', 'modular') "
+            "AND c.text LIKE '%encounter deck%'"):
+        if row["set_code"] in known:
+            continue
+        flat = " ".join((row["text"] or "").split())
+        if not GROWTH_RE.search(flat):
+            continue
+        problems.append(
+            f"{row['set_code']} ({row['name']}): shuffles an encounter set "
+            f"into the deck during play, and nothing says so. Add a "
+            f"`growing` entry with its pool, or an `adds_during_play` entry "
+            f"saying why it is not a random pool.")
+    return sorted(set(problems))
+
+
+def trajectory(conn, scenario: Scenario) -> list[dict]:
+    """The deck at each end of its growth (§14.9).
+
+    Scenarios with an empty pool get one entry - the deck they start and
+    end with. For the ones that grow, report the opening deck and the
+    fully-grown one: two exact profiles and no statistic anyone has to
+    caveat. Predicting where a game stops would be simulation, which §1
+    rules out.
+    """
+    grown = len(scenario.pool)
+    if scenario.max_draws is not None:
+        grown = min(grown, scenario.max_draws)
+    steps = [0] if not grown else [0, grown]
+    out = []
+    for k in steps:
+        entry = profile(conn, scenario, added=k)
+        entry["added"] = k
+        entry["growth"] = scenario.growth
+        out.append(entry)
+    return out
+
+
+def _line(step: dict) -> None:
+    b = step["boost"]
+    m, t, ss = step["minions"], step["treacheries"], step["side_schemes"]
+    print(f"    {step['deck_size']} cards"
+          + (f" ({step['opening_deck_size']} at the start, "
+             f"{len(step['cycles_in'])} cycle in later)"
+             if step["cycles_in"] else ""))
+    print(f"    boost: mean {b['mean']:.2f} over {b['over']} cards, "
+          f"{b['star_copies']} with a star icon")
+    print("    histogram: " + "  ".join(
+        f"{k}:{v}" for k, v in b["histogram"].items()))
+    print(f"    minions {m['copies']}, treacheries {t['copies']}, "
+          f"side schemes {ss['copies']} ({ss['threat_total']} threat)")
+    # Printed and conditional surge are never summed: the condition is the
+    # whole point of a card that says "this card gains surge".
+    print(f"    surge: {t['surge_copies']} printed "
+          f"({t['surge_rate']:.0%}), "
+          f"{t['conditional_surge_copies']} conditional")
+    if m["keywords"]:
+        print("    minion keywords: " + ", ".join(
+            f"{k} {v}" for k, v in sorted(m["keywords"].items())))
+
+
+def handle(args) -> int:
+    from .cards import _open
+    from .cli import emit
+
+    conn = _open()
+    try:
+        scenario = resolve(
+            conn, args.villain, modular=args.modular, players=args.players,
+            difficulty=args.difficulty, heroic=args.heroic,
+            nemesis=args.nemesis or ())
+    except UnknownScenario as exc:
+        print(f"mc-jarvis assess: {exc}")
+        return 1
+
+    steps = trajectory(conn, scenario)
+    if args.json:
+        emit({"scenario": scenario.scenario_set, "pool": scenario.pool,
+              "growth": scenario.growth, "steps": steps}, as_json=True)
+        return 0
+
+    label = {"recommended": " (recommended, not required)",
+             "open": " (you choose these)",
+             "random": " (drawn at random)"}.get(scenario.modular_kind, "")
+    print(f"{scenario.scenario_set} - {scenario.difficulty}, "
+          f"{scenario.players} player(s)")
+    print(f"  modular sets: {', '.join(scenario.modulars) or 'none'}{label}")
+    if scenario.pool:
+        print(f"  grows during play, drawing from: "
+              f"{', '.join(scenario.pool)}")
+    for step in steps:
+        if step["added"] == 0:
+            print("\n  opening deck:")
+        else:
+            print(f"\n  after {step['added']} set(s) shuffled in"
+                  f"{' at random' if step['growth'] == 'random' else ''}:")
+        _line(step)
+    return 0
