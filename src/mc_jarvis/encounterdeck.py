@@ -394,6 +394,9 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
         "SELECT code, name, type_code, traits, text, permanent, boost, "
         "quantity, set_code FROM cards")]
 
+    named_aside = {c for codes in setup_named_asides(conn).values()
+                   for c in codes}
+
     conn.execute("DELETE FROM encounter_role")
     counts: Counter = Counter()
     payload = []
@@ -414,6 +417,14 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
             decided = "setup_text"
         else:
             decided = "type"
+
+        # The scenario's own Setup block names this card as leaving the
+        # deck. That beats the text rule, which only sees the card itself
+        # and cannot know what its scenario does with it - `Hide!` reads
+        # like an ordinary treachery and is set aside until stage 2.
+        if role == DECK and row["code"] in named_aside:
+            role, returns, decided = SET_ASIDE, False, "setup_names_it"
+
         payload.append((row["code"], role, int(returns), decided))
         counts[role] += 1
 
@@ -423,3 +434,70 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
         payload)
     conn.commit()
     return {f"role_{k}": v for k, v in counts.items()}
+
+# A Setup sentence that removes cards from the deck, kept whole so the
+# card NAMES inside it can be read. Sentence-scoped for the reason §14.10
+# records: a 60-character window unflagged eight scenarios because one
+# clause named four side schemes.
+ASIDE_SENTENCE_RE = re.compile(r"[^.]*\bset\b[^.]*\baside\b[^.]*\.", re.I)
+INTO_PLAY_SENTENCE_RE = re.compile(r"[^.]*\bput\b[^.]*\binto play\b[^.]*\.",
+                                   re.I)
+# Short names collide with ordinary words; `Setup` blocks are prose.
+MIN_NAME = 4
+
+
+def setup_named_asides(conn) -> dict[str, set[str]]:
+    """Cards a scenario's own Setup block names as leaving the deck.
+
+    The audit that came before this one checked coverage at SET level: one
+    matching `set-aside` phrase anywhere in a set marked the whole set
+    covered. That passed 25 scenarios that name a specific card - `Hide!`,
+    `The Sleeper`, `Kang's Dominion` x4 - while the card stayed classified
+    `deck`, overstating those opening decks by 46 copies in total.
+
+    Matched by name against the scenario's own set, because the Setup
+    block names the card and the card is right there. Restricted to the
+    scenario's own set so this does not depend on `scenario_modulars`,
+    which `build` has not populated yet when it runs.
+    """
+    out: dict[str, set[str]] = {}
+    for scenario, setup in setup_blocks(conn).items():
+        clauses = " ".join(ASIDE_SENTENCE_RE.findall(setup)
+                           + INTO_PLAY_SENTENCE_RE.findall(setup))
+        if not clauses:
+            continue
+        named = set()
+        for row in conn.execute(
+                "SELECT code, name FROM cards WHERE set_code = ?",
+                (scenario,)):
+            name = row["name"] or ""
+            if len(name) < MIN_NAME:
+                continue
+            if re.search(rf"(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])",
+                         clauses):
+                named.add(row["code"])
+        if named:
+            out[scenario] = named
+    return out
+
+
+def aside_gate(conn) -> list[str]:
+    """A card its own Setup block sets aside must not be in the deck.
+
+    The mirror of `growth_gate`, and it exists for the same reason: the
+    forward rule reads card text, and nothing was checking the reverse
+    direction. Without it a new scenario naming a set-aside card is
+    counted in its own opening deck, silently.
+    """
+    problems = []
+    for scenario, codes in sorted(setup_named_asides(conn).items()):
+        marks = ",".join("?" * len(codes))
+        for row in conn.execute(
+                f"SELECT c.code, c.name FROM cards c "
+                f"JOIN encounter_role e ON e.code = c.code "
+                f"WHERE c.code IN ({marks}) AND e.role = 'deck'", list(codes)):
+            problems.append(
+                f"{scenario}: its Setup block names {row['name']!r} "
+                f"({row['code']}) as leaving the deck, but it is still "
+                f"classified `deck` and counted in the opening deck.")
+    return problems

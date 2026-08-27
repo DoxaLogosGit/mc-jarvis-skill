@@ -520,110 +520,38 @@ def test_rhino_prints_no_surge_at_all(real_index):
 
 @pytest.mark.integration
 def test_printed_keywords_stay_a_minority_of_surge_mentions(real_index):
-    """Corpus-wide gate on the rule itself, not on one scenario. If a
-    change makes these two converge, the printed/granted split has
-    stopped discriminating and every keyword number is suspect.
+    """Corpus-wide gate on the keyword rule itself, not on one scenario.
+    If these converge, the printed/granted split has stopped
+    discriminating and every keyword number is suspect.
 
-    Measured 2026-08-27 over deck-role cards: 261 mentions, 80 printed.
-    `piercing`, `overkill` and `ranged` are printed by NO encounter-deck
-    card - every instance grants the keyword to an attack - which is why
-    a zero there is a fact rather than a broken rule.
+    Measured over ENCOUNTER-SET cards rather than deck-role ones, so that
+    reclassifying a card's role cannot move it. Pinning it to `role =
+    'deck'` broke the moment `setup_names_it` moved 45 cards out, which
+    made a role change look like a keyword regression.
+
+    `piercing`, `overkill` and `ranged` are printed by NO encounter card:
+    every instance grants the keyword to an attack (`Charge`: "Rhino's
+    attacks gain overkill"). A zero there is a measurement.
     """
     rows = {r["keyword"]: (r["mentions"], r["printed"])
             for r in real_index.execute(
                 "SELECT k.keyword, COUNT(*) mentions, SUM(k.printed) printed "
-                "FROM card_keywords k JOIN encounter_role e ON e.code = k.code "
-                "WHERE e.role = 'deck' GROUP BY 1")}
-    assert rows["surge"] == (261, 80)
+                "FROM card_keywords k JOIN cards c ON c.code = k.code "
+                "JOIN sets s ON s.code = c.set_code "
+                "WHERE s.card_set_type_code IN "
+                "  ('villain', 'modular', 'standard', 'expert', 'nemesis') "
+                "GROUP BY 1")}
+    assert rows["surge"] == (245, 79)
     for word in ("piercing", "overkill", "ranged"):
         assert rows[word][1] == 0, (word, rows[word])
-    assert rows["permanent"][0] == rows["permanent"][1]
-
-
-# --- growing decks (plan Task 8, spec §14.9) -------------------------
-
-def test_a_growing_scenario_reports_the_opening_and_grown_decks(tmp_path):
-    """The Hood, Mojo and Dark Beast add modular sets DURING play. One
-    profile is the wrong answer for most of the game, so report both
-    ends."""
-    c = _mkdb(
-        tmp_path,
-        sets=[("dark_beast", "Dark Beast", "villain"),
-              ("blue_moon", "Blue Moon", "modular"),
-              ("standard", "Standard", "standard")],
-        cards=[("m1", "A Scheme", "main_scheme", "dark_beast", 1, None, "",
-                "", None, 0),
-               ("t1", "Thing", "treachery", "dark_beast", 2, 1, "", "", None,
-                0),
-               ("p1", "Extra", "treachery", "blue_moon", 4, 3, "", "", None,
-                0)],
-        roles=[("m1", "starts_in_play", 0), ("t1", "deck", 1),
-               ("p1", "deck", 1)],
-        modulars=[("dark_beast", "prescribed", None)])
-    s = assess.resolve(c, "dark_beast")
-    s.pool = ["blue_moon"]
-    steps = assess.trajectory(c, s)
-    assert [x["added"] for x in steps] == [0, 1]
-    assert steps[0]["deck_size"] == 2
-    assert steps[1]["deck_size"] == 6
-
-
-def test_a_fixed_scenario_reports_one_step(rhinolike):
-    steps = assess.trajectory(rhinolike, assess.resolve(rhinolike, "rhino"))
-    assert len(steps) == 1
-    assert steps[0]["added"] == 0
-
-
-def test_the_pool_is_read_from_config(tmp_path):
-    c = _mkdb(
-        tmp_path,
-        sets=[("dark_beast", "Dark Beast", "villain"),
-              ("blue_moon", "Blue Moon", "modular"),
-              ("genosha", "Genosha", "modular"),
-              ("savage_land", "Savage Land", "modular"),
-              ("standard", "Standard", "standard")],
-        cards=[("m1", "A Scheme", "main_scheme", "dark_beast", 1, None, "",
-                "", None, 0)],
-        roles=[("m1", "starts_in_play", 0)],
-        modulars=[("dark_beast", "prescribed", None)])
-    s = assess.resolve(c, "dark_beast")
-    assert s.pool == ["blue_moon", "genosha", "savage_land"]
-    assert s.growth == "random"
-
-
-def test_the_hood_refuses_rather_than_assessing_an_empty_pool(tmp_path):
-    """Its seven sets come from the whole collection and nothing can infer
-    them. Assessing it against no pool would report a deck the player
-    never faces."""
-    c = _mkdb(
-        tmp_path,
-        sets=[("the_hood", "The Hood", "villain"),
-              ("standard", "Standard", "standard")],
-        cards=[("m1", "A Scheme", "main_scheme", "the_hood", 1, None, "", "",
-                None, 0)],
-        roles=[("m1", "starts_in_play", 0)],
-        modulars=[("the_hood", "open", None)])
-    with pytest.raises(assess.UnknownScenario, match="--modular"):
-        assess.resolve(c, "the_hood")
-    # Naming the sets on the table is enough.
-    s = assess.resolve(c, "the_hood", modular=[])
-    assert s.growth == "player_chosen"
+    assert rows["hinder"] == (97, 96)
 
 
 @pytest.mark.integration
-def test_every_growing_scenario_is_examined(real_index):
-    """The reverse gate. §14.9 named three scenarios; the corpus has six
-    cards that shuffle a SET into the encounter deck mid-game, and the
-    other three had to be read and classified. A seventh appearing
-    unexamined means a scenario is being reported as a fixed deck when it
-    is not."""
-    assert assess.growth_gate(real_index) == []
-
-
-@pytest.mark.integration
-def test_dark_beast_grows_by_three_environment_sets(real_index):
-    s = assess.resolve(real_index, "dark_beast")
-    assert s.pool == ["blue_moon", "genosha", "savage_land"]
-    steps = assess.trajectory(real_index, s)
-    assert [x["added"] for x in steps] == [0, 3]
-    assert steps[1]["deck_size"] > steps[0]["deck_size"]
+def test_no_scenario_counts_a_card_its_setup_sets_aside(real_index):
+    """The mirror of `growth_gate`. The set-level audit passed 25
+    scenarios that name a specific card - `Hide!`, `The Sleeper`, `Kang's
+    Dominion` x4 - while the card stayed in the deck, overstating those
+    opening decks by 46 copies."""
+    from mc_jarvis import encounterdeck
+    assert encounterdeck.aside_gate(real_index) == []

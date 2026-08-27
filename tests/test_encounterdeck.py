@@ -491,3 +491,40 @@ def test_the_setup_flag_is_scoped_to_a_sentence_not_a_window(real_index):
                or encounterdeck.FLAGS_INTO_PLAY_RE.search(v)]
     assert len(flagged) == 41
     assert "wrecking_crew" in flagged
+
+
+def test_a_card_its_setup_names_as_set_aside_is_not_in_the_deck(tmp_path):
+    """The set-level audit passed 25 scenarios that name a specific card
+    while the card stayed classified `deck` - 46 overstated copies. A
+    Setup block naming a card outranks the text rule, which sees only the
+    card and cannot know what its scenario does with it."""
+    conn = _mkdb(
+        tmp_path,
+        sets=[("morlock_siege", "Morlock Siege", "villain")],
+        cards=[("m1", "Knock, Knock", "main_scheme", "morlock_siege",
+                "<b>Setup</b>: Set the Hide! treachery and each Morlock ally "
+                "aside. Put the Routed environment into play.", "", 1),
+               ("t1", "Hide!", "treachery", "morlock_siege", "Hide.", "", 1),
+               ("t2", "Seek the Weak", "treachery", "morlock_siege", "Seek.",
+                "", 3)])
+    ed.build(conn)
+    roles = {r["name"]: r["role"] for r in conn.execute(
+        "SELECT c.name, e.role FROM cards c "
+        "JOIN encounter_role e ON e.code = c.code")}
+    assert roles["Hide!"] == ed.SET_ASIDE
+    assert roles["Seek the Weak"] == ed.DECK
+    assert ed.aside_gate(conn) == []
+
+
+def test_the_aside_gate_names_a_card_left_in_the_deck(tmp_path):
+    conn = _mkdb(
+        tmp_path,
+        sets=[("v", "V", "villain")],
+        cards=[("m1", "A Scheme", "main_scheme", "v",
+                "<b>Setup</b>: Set the Whatsit attachment aside.", "", 1),
+               ("a1", "Whatsit", "attachment", "v", "Attach.", "", 1)])
+    conn.execute("INSERT INTO encounter_role (code, role, returns_to_deck, "
+                 "decided_by) VALUES ('a1', 'deck', 1, 'test')")
+    conn.commit()
+    problems = ed.aside_gate(conn)
+    assert problems and "Whatsit" in problems[0]

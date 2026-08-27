@@ -60,6 +60,7 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
                          # A new double-sided card would add a phantom
                          # copy, and a new growing scenario would be
                          # reported as a fixed deck. Both silently.
+                         + encounterdeck.aside_gate(conn)
                          + assess.back_face_gate(conn)
                          + assess.growth_gate(conn))
     if scenario_problems:
