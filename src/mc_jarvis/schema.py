@@ -122,6 +122,11 @@ CREATE TABLE IF NOT EXISTS card_traits (
 CREATE TABLE IF NOT EXISTS card_keywords (
     code    TEXT NOT NULL,
     keyword TEXT NOT NULL,
+    -- Whether the CARD carries the keyword, as against granting it to
+    -- something else or gaining it on a condition. 261 encounter-deck
+    -- cards mention `surge`; 80 print it. Consumers that ignore this
+    -- column report a card's abilities as its own properties.
+    printed INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (code, keyword)
 );
 

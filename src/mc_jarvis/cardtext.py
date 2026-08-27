@@ -32,6 +32,28 @@ KEYWORDS = (
 )
 KEYWORD_RE = {k: re.compile(rf"\b{k}\b", re.I) for k in KEYWORDS}
 
+# A keyword the card PRINTS, as against one it grants to something else.
+# The distinction is load-bearing and the naive match gets it badly wrong:
+# 261 encounter-deck cards mention `surge` and only 80 print it. Rhino's
+# entire treachery suite says "this card gains surge" - conditional, and
+# the condition is the point of the card - so a rule that counts the word
+# reports an 86% surge rate for a deck whose printed rate is zero.
+#
+# The rule is FFG's own typography rather than a lookbehind window: a
+# printed keyword stands as its own sentence, carrying nothing but
+# keywords, their values, and icon tokens. Grants always carry a subject
+# and a verb - `gains X`, `gains X and Y`, `loses X`, `attacks gain X` -
+# and every one of those forms was measured in the corpus.
+KEYWORD_ALT_RE = re.compile(
+    rf"(?<![A-Za-z])({'|'.join(KEYWORDS)})\b", re.I)
+# What may share a printed keyword's sentence without disqualifying it:
+# its numeric value, a per-hero or resource icon, and `X`.
+KEYWORD_FILLER_RE = re.compile(r"\[[^\]]*\]|\d+|\bX\b|[.,]")
+# Reminder text is the publisher explaining a keyword, never a second one.
+REMINDER_RE = re.compile(r"<i>.*?</i>", re.S)
+BLOCK_SPLIT_RE = re.compile(r"\n|<hr\s*/?>")
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.])\s+")
+
 
 # `<b>Hero Interrupt</b> (defense): ...` - the parenthetical names which
 # basic power the ability attaches to. Real game information, not noise.
@@ -85,6 +107,35 @@ def parse_keywords(text: str | None) -> list[str]:
         return []
     plain = TAG_RE.sub(" ", text)
     return [k for k in KEYWORDS if KEYWORD_RE[k].search(plain)]
+
+
+def parse_printed_keywords(text: str | None) -> list[str]:
+    """Keywords the card itself carries, in `KEYWORDS` order.
+
+    Everything before the first `<b>` trigger on a line is the card's own
+    statement; anything after it is an ability, and a keyword there is
+    granted or conditional. `Full Auto` is the card that makes this
+    concrete - `<b>When Revealed (Alter-Ego)</b>: Surge.` surges only in
+    alter-ego, so it does not print Surge.
+    """
+    if not text:
+        return []
+    found: set[str] = set()
+    for block in BLOCK_SPLIT_RE.split(REMINDER_RE.sub(" ", text)):
+        own = block.split("<b>")[0]
+        for sentence in SENTENCE_SPLIT_RE.split(own):
+            here = {m.group(1).lower()
+                    for m in KEYWORD_ALT_RE.finditer(sentence)}
+            if not here:
+                continue
+            rest = KEYWORD_FILLER_RE.sub(
+                " ", KEYWORD_ALT_RE.sub(" ", sentence))
+            # Anything left over is a subject or a verb, so the keyword is
+            # being granted rather than printed.
+            if rest.strip():
+                continue
+            found |= here
+    return [k for k in KEYWORDS if k in found]
 
 
 def _strip(s: str) -> str:
@@ -193,7 +244,9 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
             "SELECT code, text FROM cards WHERE text IS NOT NULL"):
         code, text = row["code"], row["text"]
         traits.extend((code, t) for t in parse_traits(text))
-        keywords.extend((code, k) for k in parse_keywords(text))
+        printed = set(parse_printed_keywords(text))
+        keywords.extend((code, k, int(k in printed))
+                        for k in parse_keywords(text))
         clauses.extend(
             (code, c.ordinal, c.ability_type, c.qualifier, c.timing,
              c.cost, c.effect, int(c.ambiguous), c.raw)
@@ -203,8 +256,8 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
         "INSERT OR IGNORE INTO card_traits (code, trait) VALUES (?, ?)",
         traits)
     conn.executemany(
-        "INSERT OR IGNORE INTO card_keywords (code, keyword) VALUES (?, ?)",
-        keywords)
+        "INSERT OR IGNORE INTO card_keywords (code, keyword, printed) "
+        "VALUES (?, ?, ?)", keywords)
     conn.executemany(
         "INSERT OR REPLACE INTO cost_clauses "
         "(code, ordinal, ability_type, qualifier, timing, cost, effect, "

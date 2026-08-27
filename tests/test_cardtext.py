@@ -248,3 +248,68 @@ def test_render_strips_presentation_markup_but_keeps_icon_tokens():
 def test_render_of_nothing_is_empty():
     assert cardtext.render(None) == ""
     assert cardtext.render("") == ""
+
+
+# --- printed vs granted keywords -------------------------------------
+
+def test_a_granted_keyword_is_not_a_printed_one():
+    """`card_keywords` matched the word, not the meaning. Rhino's whole
+    treachery suite says "this card gains surge" - a CONDITIONAL surge
+    whose condition is the card's entire point - and every one was counted
+    as printed Surge. Corpus-wide that is 261 mentions against 80 printed
+    cards, and it would have been the headline number of the treachery
+    section."""
+    assert cardtext.parse_printed_keywords(
+        "<b>When Revealed</b>: Rhino heals 4 damage. If no damage was "
+        "healed this way, this card gains surge.") == []
+
+
+def test_a_printed_keyword_is_its_own_sentence():
+    assert cardtext.parse_printed_keywords("Guard.") == ["guard"]
+
+
+def test_several_printed_keywords_share_the_opening_line():
+    got = cardtext.parse_printed_keywords(
+        "Hinder 2[per_hero]. Surge. Victory 2.\nThe villain cannot take "
+        "damage.")
+    assert got == ["surge", "hinder"]
+
+
+def test_a_keyword_printed_after_an_attach_instruction_still_counts():
+    """`Attach to the villain. Permanent.` - the keyword is not the first
+    sentence, so a prefix rule would miss all 41 printed `Permanent`s."""
+    assert cardtext.parse_printed_keywords(
+        "Attach to the villain. Permanent.") == ["permanent"]
+
+
+def test_a_grant_with_words_between_is_still_a_grant():
+    """The forms measured in the corpus: `gains X`, `gains X and Y`,
+    `loses X`, `attacks gain X`. A lookbehind window catches only the
+    first; the rule is that a printed keyword's sentence contains nothing
+    but keywords and their values."""
+    for text in ("Each [[Dark Riders]] minion gains toughness.",
+                 "Apocalypse gains retaliate 1 and stalwart.",
+                 "Attached enemy loses stalwart.",
+                 "[star] Red Skull's attacks gain piercing and ranged.",
+                 "Each other encounter card gains incite 1."):
+        assert cardtext.parse_printed_keywords(text) == [], text
+
+
+def test_a_keyword_inside_a_trigger_clause_is_not_printed():
+    """`Full Auto` reads `<b>When Revealed (Alter-Ego)</b>: Surge.` - it
+    surges only in alter-ego, so it is conditional. The card a future
+    reader will re-litigate."""
+    assert cardtext.parse_printed_keywords(
+        "<b>When Revealed (Alter-Ego)</b>: Surge.\n"
+        "<b>When Revealed (Hero)</b>: Discard X cards.") == []
+
+
+def test_reminder_text_does_not_make_a_keyword_printed_or_hide_one():
+    """`Heart-Shaped Herb` prints `Surge` with reminder text and no full
+    stop; `Escaped Convict` prints it with neither."""
+    assert cardtext.parse_printed_keywords(
+        "Surge <i>(After this card resolves, reveal 1 additional encounter "
+        "card)</i>\n<b>When Revealed</b>: Give the villain retaliate 1."
+    ) == ["surge"]
+    assert cardtext.parse_printed_keywords("Surge\n<hr />\n[star] "
+                                           "<b>Boost</b>: Move.") == ["surge"]

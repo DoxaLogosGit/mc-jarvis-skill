@@ -9,7 +9,7 @@ import pytest
 from mc_jarvis import assess, index
 
 
-def _mkdb(tmp_path, sets, cards, roles, modulars=()):
+def _mkdb(tmp_path, sets, cards, roles, modulars=(), keywords=()):
     """A minimal index.
 
     `cards` rows are (code, name, type_code, set_code, quantity, boost,
@@ -32,6 +32,9 @@ def _mkdb(tmp_path, sets, cards, roles, modulars=()):
     conn.executemany(
         "INSERT INTO scenario_modulars (scenario_set, kind, modular_set) "
         "VALUES (?, ?, ?)", modulars)
+    conn.executemany(
+        "INSERT INTO card_keywords (code, keyword, printed) VALUES (?, ?, ?)",
+        keywords)
     conn.commit()
     return conn
 
@@ -390,3 +393,148 @@ def test_the_pvp_difficulty_set_ships_each_card_twice(real_index):
     for row in rows:
         assert row["n"] == 4, dict(row)
         assert row["r"] == 2, dict(row)
+
+
+# --- minions, treacheries, schemes, keywords (plan Task 7) -----------
+
+@pytest.fixture
+def rhinolike(tmp_path):
+    """Shaped from the real `rhino` set: three minions with the keywords
+    those cards actually print, and two side schemes, one fixed-threat and
+    one per-hero."""
+    c = _mkdb(
+        tmp_path,
+        sets=[("rhino", "Rhino", "villain"),
+              ("standard", "Standard", "standard")],
+        cards=[
+            ("m0", "The Break-In!", "main_scheme", "rhino", 1, None, "", "",
+             None, 0),
+            ("m1", "Hydra Mercenary", "minion", "rhino", 2, 1, "Guard.", "",
+             None, 0),
+            ("m2", "Sandman", "minion", "rhino", 1, 2, "Toughness.", "", None,
+             0),
+            ("m3", "Shocker", "minion", "rhino", 1, 2, "", "", None, 0),
+            ("t1", "Stampede", "treachery", "rhino", 3, 1,
+             "<b>When Revealed (Alter-Ego)</b>: This card gains surge.", "",
+             None, 0),
+            ("t2", "Diabolical Discs", "treachery", "rhino", 1, 1, "Surge.",
+             "", None, 0),
+            ("ss1", "Breakin' & Takin'", "side_scheme", "rhino", 1, 2, "", "",
+             None, 0),
+            ("ss2", "Crowd Control", "side_scheme", "rhino", 1, 2, "", "",
+             None, 0),
+        ],
+        roles=[("m0", "starts_in_play", 0), ("m1", "deck", 1),
+               ("m2", "deck", 1), ("m3", "deck", 1), ("t1", "deck", 1),
+               ("t2", "deck", 1), ("ss1", "deck", 1), ("ss2", "deck", 1)],
+        modulars=[("rhino", "prescribed", None)],
+        keywords=[("m1", "guard", 1), ("m2", "toughness", 1),
+                  ("t1", "surge", 0), ("t2", "surge", 1)])
+    c.executemany("UPDATE cards SET health=?, attack=?, scheme=?, "
+                  "health_per_hero=? WHERE code=?",
+                  [(3, 1, 0, None, "m1"), (4, 3, 2, 1, "m2"),
+                   (3, 2, 1, None, "m3")])
+    c.executemany("UPDATE cards SET base_threat=?, base_threat_fixed=? "
+                  "WHERE code=?", [(2, 1, "ss1"), (2, None, "ss2")])
+    c.commit()
+    return c
+
+
+def test_minion_profile_reports_ranges_and_keywords(rhinolike):
+    got = assess.profile(rhinolike, assess.resolve(rhinolike, "rhino"))
+    m = got["minions"]
+    assert m["copies"] == 4
+    assert m["health"] == {"min": 3, "max": 4}
+    assert m["scales_per_hero"] == 1          # Sandman only
+    assert m["keywords"]["guard"] == 2        # quantity-weighted
+    assert m["keywords"]["toughness"] == 1
+
+
+def test_a_granted_keyword_is_never_folded_into_a_printed_count(rhinolike):
+    """The defect this task uncovered. `Stampede` says "this card gains
+    surge"; counting it as Surge reports an 86% surge rate for a deck
+    whose printed rate is 25%. The two are reported apart and never
+    summed, because the condition is the point of the card."""
+    t = assess.profile(rhinolike,
+                       assess.resolve(rhinolike, "rhino"))["treacheries"]
+    assert t["copies"] == 4
+    assert t["surge_copies"] == 1                       # Diabolical Discs
+    assert t["conditional_surge_copies"] == 3           # Stampede x3
+    assert t["surge_rate"] == pytest.approx(1 / 4)
+    assert "surge_total" not in t
+
+
+def test_fixed_threat_is_not_scaled_by_player_count(rhinolike):
+    """§4.6: applying per-hero scaling to a fixed-threat scheme produces a
+    wrong number in exactly the way printing raw villain HP did."""
+    at_one = assess.profile(
+        rhinolike, assess.resolve(rhinolike, "rhino", players=1))
+    at_four = assess.profile(
+        rhinolike, assess.resolve(rhinolike, "rhino", players=4))
+    assert at_one["side_schemes"]["threat_total"] == 2 + 2
+    assert at_four["side_schemes"]["threat_total"] == 2 + 2 * 4
+
+
+def test_every_number_can_name_its_cards(rhinolike):
+    """§8: so the model can cite rather than assert."""
+    got = assess.profile(rhinolike, assess.resolve(rhinolike, "rhino"))
+    assert got["by_type"]["treachery"]["cards"]
+    assert got["minions"]["cards"]
+    assert got["side_schemes"]["cards"][0]["threat"]
+
+
+@pytest.mark.integration
+def test_rhino_sections_match_a_hand_count(real_index):
+    """Rhino + Standard at 2 players, no modulars. The plan's expected
+    numbers were derived from its own wrong deck size of 22 and are
+    corrected here: treacheries are 14 copies, not 12.
+
+    Minions: Hydra Mercenary x2 (Guard, 3 HP), Sandman (Toughness, 4 HP),
+    Shocker (3 HP). Side schemes: Breakin' & Takin' 2 fixed, Crowd Control
+    2 per hero -> 2 + 4 at two players.
+    """
+    p = assess.profile(
+        real_index, assess.resolve(real_index, "rhino", modular=[],
+                                   players=2))
+    assert p["deck_size"] == 24
+    assert p["minions"]["copies"] == 4
+    assert p["minions"]["health"] == {"min": 3, "max": 4}
+    assert p["minions"]["keywords"] == {"guard": 2, "toughness": 1}
+    assert p["treacheries"]["copies"] == 14
+    assert p["side_schemes"]["threat_total"] == 6
+
+
+@pytest.mark.integration
+def test_rhino_prints_no_surge_at_all(real_index):
+    """The measurement that made this task worth doing. Every Rhino and
+    Standard treachery reads "this card gains surge" - conditional. The
+    naive keyword match reported 12 of 14 copies as Surge; the deck's
+    printed surge rate is zero."""
+    t = assess.profile(
+        real_index,
+        assess.resolve(real_index, "rhino", modular=[]))["treacheries"]
+    assert t["surge_copies"] == 0
+    assert t["conditional_surge_copies"] == 12
+    assert t["surge_rate"] == 0.0
+
+
+@pytest.mark.integration
+def test_printed_keywords_stay_a_minority_of_surge_mentions(real_index):
+    """Corpus-wide gate on the rule itself, not on one scenario. If a
+    change makes these two converge, the printed/granted split has
+    stopped discriminating and every keyword number is suspect.
+
+    Measured 2026-08-27 over deck-role cards: 261 mentions, 80 printed.
+    `piercing`, `overkill` and `ranged` are printed by NO encounter-deck
+    card - every instance grants the keyword to an attack - which is why
+    a zero there is a fact rather than a broken rule.
+    """
+    rows = {r["keyword"]: (r["mentions"], r["printed"])
+            for r in real_index.execute(
+                "SELECT k.keyword, COUNT(*) mentions, SUM(k.printed) printed "
+                "FROM card_keywords k JOIN encounter_role e ON e.code = k.code "
+                "WHERE e.role = 'deck' GROUP BY 1")}
+    assert rows["surge"] == (261, 80)
+    for word in ("piercing", "overkill", "ranged"):
+        assert rows[word][1] == 0, (word, rows[word])
+    assert rows["permanent"][0] == rows["permanent"][1]

@@ -1526,6 +1526,53 @@ git commit -m "feat: quantity-weighted composition and boost curve, gated by han
 
 ## Task 7: Minions, treacheries, schemes, keywords
 
+> **Corrected 2026-08-27. The task's keyword rule was wrong, and wrong in
+> the direction that produces a confident headline number.**
+>
+> The plan re-implements keyword matching in `assess.py` with
+> `\b{word}\b` over card text. `card_keywords` already exists and does
+> exactly that - and it is what made the defect visible: **261
+> encounter-deck cards mention `surge` and only 80 print it.** Rhino's
+> entire treachery suite reads *"this card gains surge"* - a conditional
+> whose condition is the point of the card - so the naive count reports
+> **12 of 14 copies surging** for a deck whose printed surge rate is
+> **zero**.
+>
+> Corrections:
+>
+> 1. **The fix belongs in `cardtext.py`, not `assess.py`.** `KEYWORDS`
+>    lives there, `card_keywords` is built there, and every consumer of
+>    that table has the same overcount. Adding a second keyword list in
+>    `assess.py` would fix one caller and leave the rest wrong.
+>    `card_keywords` gains `printed INTEGER NOT NULL DEFAULT 0`;
+>    `SCHEMA_VERSION` 18 -> 19.
+> 2. **The rule is FFG's typography, not a lookbehind.** A first attempt
+>    excluded `gains?\s+$` and left nine keywords at a suspicious ratio of
+>    exactly 1.00 - the shape of a rule that never fires. The grant forms
+>    measured in the corpus are `gains X`, `gains X and Y`, `loses X`,
+>    `attacks gain X`, `has X`, `with X`; no window catches them all. What
+>    does: a printed keyword stands as **its own sentence**, carrying
+>    nothing but keywords, their values and icon tokens. Grants always
+>    carry a subject and a verb.
+> 3. **Four residue cards were read individually.** `Heart-Shaped Herb`
+>    prints Surge with reminder text and no full stop - printed.
+>    `Escaped Convict` (two rows) prints it with neither - printed.
+>    `Full Auto` reads `<b>When Revealed (Alter-Ego)</b>: Surge.`, so it
+>    surges only in alter-ego - **conditional**. That last is the one a
+>    future reader will re-litigate.
+> 4. **Report the two apart and never sum them:** `surge_copies` and
+>    `conditional_surge_copies`. `surge_rate` is over printed surge only.
+> 5. **`piercing`, `overkill` and `ranged` are printed by NO
+>    encounter-deck card.** Every instance grants the keyword to an attack
+>    (`Charge`: "Rhino's attacks gain overkill"). A zero there is a
+>    measurement, not a broken rule, and the gate asserts it.
+>
+> **Gate**, re-measured. Rhino + Standard, 2 players, no modulars: deck
+> size **24** (not 22), minions **4 copies**, treacheries **14 copies**
+> (not 12), side schemes **2** with threat total **6** (Breakin' & Takin'
+> 2 fixed + Crowd Control 2 per hero x2), `guard` **2**, `toughness`
+> **1**, printed surge **0**, conditional surge **12**.
+
 The rest of §8. Each number carries the cards behind it.
 
 **Files:**

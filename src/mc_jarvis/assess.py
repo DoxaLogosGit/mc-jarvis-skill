@@ -256,4 +256,114 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
         },
         "by_type": _by_type(cards),
         "by_set": dict(by_set),
+        "minions": _minions(conn, cards),
+        "treacheries": _treacheries(conn, cards),
+        "side_schemes": _side_schemes(cards, scenario.players),
+        "scheme_pressure": {
+            # Acceleration icons raise the main scheme every round, so
+            # they compound in a way a threat total does not.
+            "acceleration_icons": sum(
+                (c.get("scheme_acceleration") or 0) * c["quantity"]
+                for c in cards),
+        },
+        "keywords": _keyword_copies(conn, cards, printed=True),
+    }
+
+# The four scheme icons carried as columns (§4.1). Counted, never summed
+# with threat: an acceleration icon is a rate, threat is a quantity.
+ICON_FIELDS = ("scheme_acceleration", "scheme_amplify", "scheme_crisis",
+               "scheme_hazard")
+
+
+def _keyword_copies(conn, cards: list[dict], *, printed: bool) -> dict:
+    """Keyword counts, quantity-weighted, from `card_keywords`.
+
+    Read from the table rather than re-matched here, so the keyword list
+    has one home. `printed` selects the card's own keywords over the ones
+    it grants or gains on a condition - a split worth 261 mentions against
+    80 printed cards for `surge` alone.
+    """
+    if not cards:
+        return {}
+    by_code = {c["code"]: c["quantity"] for c in cards}
+    marks = ",".join("?" * len(by_code))
+    out: dict[str, int] = {}
+    for row in conn.execute(
+            f"SELECT code, keyword FROM card_keywords "
+            f"WHERE code IN ({marks}) AND printed = ?",
+            list(by_code) + [int(printed)]):
+        out[row["keyword"]] = out.get(row["keyword"], 0) + by_code[row["code"]]
+    return dict(sorted(out.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def _span(cards: list[dict], field_: str) -> dict | None:
+    values = [c[field_] for c in cards if c.get(field_) is not None]
+    return {"min": min(values), "max": max(values)} if values else None
+
+
+def _named(cards: list[dict], **extra) -> list[dict]:
+    return [{"code": c["code"], "name": c["name"], "quantity": c["quantity"],
+             **{k: f(c) for k, f in extra.items()}} for c in cards]
+
+
+def _threat(card: dict, players: int) -> int:
+    """`*_fixed` means the value does not scale with player count (§4.6).
+
+    Applying per-hero scaling to a fixed-threat scheme is the same error as
+    printing raw villain HP: a number that is right for one table and
+    silently wrong for every other.
+    """
+    base = card.get("base_threat") or 0
+    return base if card.get("base_threat_fixed") else base * players
+
+
+def _minions(conn, cards: list[dict]) -> dict:
+    rows = [c for c in cards if c["type_code"] == "minion"]
+    return {
+        "rows": len(rows),
+        "copies": sum(c["quantity"] for c in rows),
+        "health": _span(rows, "health"),
+        "attack": _span(rows, "attack"),
+        "scheme": _span(rows, "scheme"),
+        # A per-hero minion is a different card at 4 players than at 1.
+        "scales_per_hero": sum(1 for c in rows if c.get("health_per_hero")),
+        "keywords": _keyword_copies(conn, rows, printed=True),
+        "granted_keywords": _keyword_copies(conn, rows, printed=False),
+        "cards": _named(rows),
+    }
+
+
+def _treacheries(conn, cards: list[dict]) -> dict:
+    rows = [c for c in cards if c["type_code"] == "treachery"]
+    copies = sum(c["quantity"] for c in rows)
+    printed = _keyword_copies(conn, rows, printed=True)
+    granted = _keyword_copies(conn, rows, printed=False)
+    surge = printed.get("surge", 0)
+    return {
+        "rows": len(rows),
+        "copies": copies,
+        # Two fields, never one. A card that says "this card gains surge"
+        # surges only when its condition holds, and the condition is the
+        # whole card. Rhino's suite is 12 conditional copies and 0 printed
+        # ones; a single number would report an 86% surge rate for a deck
+        # that never surges on its own.
+        "surge_copies": surge,
+        "conditional_surge_copies": granted.get("surge", 0),
+        "surge_rate": (surge / copies) if copies else 0.0,
+        "keywords": printed,
+        "cards": _named(rows),
+    }
+
+
+def _side_schemes(cards: list[dict], players: int) -> dict:
+    rows = [c for c in cards if c["type_code"] == "side_scheme"]
+    icons = {f.replace("scheme_", ""):
+             sum((c.get(f) or 0) * c["quantity"] for c in rows)
+             for f in ICON_FIELDS}
+    return {
+        "rows": len(rows),
+        "copies": sum(c["quantity"] for c in rows),
+        "threat_total": sum(_threat(c, players) * c["quantity"] for c in rows),
+        "icons": {k: v for k, v in icons.items() if v},
+        "cards": _named(rows, threat=lambda c: _threat(c, players)),
     }
