@@ -2010,9 +2010,9 @@ git commit -m "feat: mc-jarvis assess, with growing-deck trajectories"
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/ -v` passes, unit and integration
-- [ ] `mc-jarvis assess rhino --modular '' --players 2` matches the corrected hand count: **24** cards, boost total **23** (the original 22/19 was the plan's own arithmetic error — see the Task 6 correction)
-- [ ] all four gates return empty — `encounterdeck.audit`, `encounterdeck.scenario_gate`, `assess.back_face_gate`, `assess.growth_gate` — or every remaining entry is acknowledged in config with the sentence that justifies it
+- [ ] `uv run pytest tests/ -v` passes, unit and integration, except the two network-bound tests in `tests/test_manifest.py` (`fetch_from_wayback` and the FFG CDN resolve check), which make live requests and fail without the archive reachable
+- [ ] `assess.profile(conn, assess.resolve(conn, 'rhino', modular=[], players=2))` matches the corrected hand count: **24** cards, boost total **23** (the original 22/19 was the plan's own arithmetic error — see the Task 6 correction)
+- [ ] all five gates return empty — `encounterdeck.audit`, `encounterdeck.scenario_gate`, `encounterdeck.aside_gate`, `assess.back_face_gate`, `assess.growth_gate` — or every remaining entry is acknowledged in config with the sentence that justifies it
 - [ ] `starts_in_play` with `returns_to_deck = 1` is exactly 3 — the `[[Setting]]` environments
 - [ ] `other_deck` is **6**. The plan said "at least 15"; that came from a regex counting every *mention* of `[[X]] deck` rather than membership, and 15 included cards that merely name the infinity stone deck
 - [ ] printed surge on encounter-deck cards is **80**, against 261 mentions

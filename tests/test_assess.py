@@ -555,3 +555,19 @@ def test_no_scenario_counts_a_card_its_setup_sets_aside(real_index):
     opening decks by 46 copies."""
     from mc_jarvis import encounterdeck
     assert encounterdeck.aside_gate(real_index) == []
+
+
+@pytest.mark.integration
+def test_a_known_overstatement_is_printed_not_just_configured(real_index):
+    """`dreadpool` sets aside five of its six cards until its own
+    treachery is revealed, and the set-aside derivation reads scenario
+    Setup blocks, so a modular that sets aside its OWN cards is not
+    covered. Recorded in config - and surfaced in the output, because a
+    config comment is invisible to someone reading a deck size."""
+    s = assess.Scenario(scenario_set="rhino", modulars=["dreadpool"])
+    got = assess.profile(real_index, s)
+    assert got["caveats"] and "dreadpool" in got["caveats"][0]
+
+    clean = assess.profile(real_index,
+                           assess.resolve(real_index, "rhino", modular=[]))
+    assert clean["caveats"] == []

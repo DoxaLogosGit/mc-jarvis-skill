@@ -290,6 +290,9 @@ growing:
 adds_during_play:
   dreadpool:
     mechanism: deterministic
+    # Surfaced in `assess` output, not just here: a comment in a config
+    # file is invisible to someone reading a deck size on their terminal.
+    overstates_opening_deck: 5
     reason: >-
       A modular set, not a scenario. Its `Crisis of Infinite Deadpools`
       treachery starts in the deck and the set's other five cards are set

@@ -229,6 +229,28 @@ def _by_type(cards: list[dict]) -> dict[str, dict]:
     return {k: dict(v) for k, v in sorted(out.items())}
 
 
+def caveats(scenario: Scenario, sets: list[str],
+            config: dict | None = None) -> list[str]:
+    """Known overstatements in this particular deck.
+
+    A limitation recorded only in config is invisible to someone reading a
+    deck size on their terminal. `dreadpool` is the case: five of its six
+    cards are set aside until its own treachery is revealed, and the
+    set-aside derivation reads scenario Setup blocks, so a modular set
+    that sets aside its own cards is not yet covered.
+    """
+    config = config if config is not None else load_config()
+    out = []
+    for code, entry in (config.get("adds_during_play") or {}).items():
+        over = (entry or {}).get("overstates_opening_deck")
+        if over and code in sets:
+            out.append(
+                f"the {code} set is counted in full, but {over} of its cards "
+                f"are set aside until its own card is revealed - the opening "
+                f"deck is {over} copies smaller than shown")
+    return out
+
+
 def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
     """What a scenario's encounter deck contains, with the cards behind it.
 
@@ -274,6 +296,8 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
             "star_copies": sum(c["quantity"] for c in cards
                                if c.get("boost_star")),
         },
+        "caveats": caveats(scenario, _sets(scenario)
+                           + scenario.pool[:added]),
         "by_type": _by_type(cards),
         "by_set": dict(by_set),
         "minions": _minions(conn, cards),
@@ -453,6 +477,8 @@ def trajectory(conn, scenario: Scenario) -> list[dict]:
 def _line(step: dict) -> None:
     b = step["boost"]
     m, t, ss = step["minions"], step["treacheries"], step["side_schemes"]
+    for note in step["caveats"]:
+        print(f"    NOTE: {note}")
     print(f"    {step['deck_size']} cards"
           + (f" ({step['opening_deck_size']} at the start, "
              f"{len(step['cycles_in'])} cycle in later)"
