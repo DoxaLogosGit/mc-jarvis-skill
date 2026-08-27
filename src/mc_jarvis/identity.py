@@ -105,12 +105,12 @@ def titles_for(conn, code: str) -> set[str]:
 
 
 def matches(conn, code_a: str, code_b: str) -> bool:
-    """RR p.45. Two unique cards match if EITHER:
+    """Whether two unique cards count as the same identity (RR p.45).
 
-      - they share a title and both have no subtitle and no alter-ego
-        title; or
-      - the subtitle or alter-ego title of one matches the title,
-        subtitle, or alter-ego title of the other.
+    Two branches, and the rulebook states both: one covers bare titles
+    with nothing else to compare, the other cross-matches any name a card
+    carries against any name the other carries. Run `mc-jarvis rules show
+    "Identity"` for the wording; it is not reproduced here.
 
     The two clauses must stay separate. Flattening every name into one
     set and intersecting - the obvious implementation - reports the two
@@ -141,9 +141,9 @@ VILLAIN_TYPES = ("villain",)
 def matching_pairs(conn, codes) -> list[tuple[str, str]]:
     """Every matching pair within a set of cards.
 
-    This is the deckbuilding scope: "During deckbuilding, a player cannot
-    include multiple matching cards in their deck. The identity is
-    included in this evaluation." (RR p.45)
+    This is the deckbuilding scope (RR p.45): matching cards cannot be
+    doubled up in one deck, and the chosen identity counts as one of the
+    cards being compared.
     """
     codes = list(dict.fromkeys(codes))
     # Faces of one identity always share titles with each other. They are
@@ -170,10 +170,10 @@ def _type_of(conn, code: str) -> str | None:
 def blocks_entering_play(conn, code: str, in_play: list[str]) -> list[str]:
     """Which in-play cards stop `code` from entering play (RR p.46).
 
-    "A non-villain card in an out-of-play state that matches a card in
-    play cannot enter play." This spans the whole table, not one player:
-    if the Nebula identity is in play, Gamora's signature Nebula ally
-    cannot enter play from any deck.
+    The rule bars a non-villain card from entering play while something
+    it matches is already there, and it spans the whole table rather than
+    one player: with the Nebula identity in play, Gamora's signature
+    Nebula ally cannot enter from any deck.
 
     Villains are exempt as the card entering play. RR p.45 also permits a
     scenario whose villain matches a chosen identity, so a matching
@@ -189,9 +189,9 @@ def blocks_entering_play(conn, code: str, in_play: list[str]) -> list[str]:
 def identities_conflict(conn, identity_keys) -> list[tuple[str, str]]:
     """Identity pairs that cannot be chosen together (RR p.45).
 
-    "When choosing identities during setup, players cannot choose
-    identities that match." Compared face-to-face, since every face
-    contributes its titles to the identity.
+    The rulebook bars two players from picking identities that match.
+    Compared face-to-face, since every face contributes its titles to the
+    identity.
     """
     keys = list(dict.fromkeys(identity_keys))
     faces = {}
@@ -212,10 +212,9 @@ def villain_matches_identity(conn, villain_code: str,
                              identity_key: str) -> bool:
     """Whether a villain matches a chosen identity.
 
-    Reported, never enforced: RR p.45 says "The players may choose a
-    scenario even if one or more villains match one or more chosen
-    identities." So Nebula may face the Nebula villain. Worth surfacing
-    as a flavour note, not as an error.
+    Reported, never enforced: RR p.45 explicitly allows a scenario whose
+    villains match chosen identities, so Nebula may face the Nebula
+    villain. Worth surfacing as a flavour note, not as an error.
     """
     return any(matches(conn, villain_code, face)
                for face in [r["code"] for r in conn.execute(

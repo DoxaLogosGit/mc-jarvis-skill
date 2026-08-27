@@ -111,6 +111,30 @@ Two rules follow from that table, for anyone adding to `config/`:
    replaced had missed `vulnerable` since Agents of S.H.I.E.L.D. and still
    carried `uppercut`, which is in no rulebook and on no card.
 
+### What enforces it
+
+Not this README. `mc_jarvis.policy` compares every tracked file against
+the Rules Reference and card text **as they sit in your built index** — if
+a phrase in the repository appears verbatim in the corpus, the repository
+is shipping that text. No length heuristic can make that call; a
+40-character quotation is still a quotation, and a long explanation in
+your own words is not.
+
+```bash
+uv run python -m mc_jarvis.policy            # exits non-zero on a hit
+ln -sf ../../tools/pre-commit .git/hooks/pre-commit   # block it at commit
+```
+
+`tests/test_policy.py` runs the same check as part of the integration
+suite, asserts that the word-window sits at the bottom of its measured
+band, and — because a gate nobody has seen fail is a gate nobody knows
+works — asserts that a planted quotation is caught.
+
+The one exemption is the LICENCE's own: software may name part of a
+document in order to parse it. Mark such a line `# policy: locator` with
+a reason. There is one today, the phrase that finds the timing chart, and
+a test keeps the count from growing quietly.
+
 ## Development
 
 ```bash

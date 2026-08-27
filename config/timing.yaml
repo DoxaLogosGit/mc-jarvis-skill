@@ -171,11 +171,12 @@ not_triggers:
 # rule from the wildcard the plan forbids. It cannot speak for a trigger
 # FFG has not printed yet; the corpus check is what would catch one.
 not_trigger_patterns:
-  # "Give to the Tony Stark player." and ~45 siblings, including the four
-  # printed without "the" or without the full stop, and two that print
-  # "Player" capitalised.
+  # A bolded instruction handing a card to a named player - ~46 of them,
+  # including four printed without "the" or without the full stop, and
+  # two that capitalise the second word.
   - "^Give to (the )?.+? [Pp]layer\\.?$"
-  # "Wrecker's Side Scheme.", "Proxima Midnight's Scheme.", ...
+  # A bolded possessive naming a villain's own scheme, with or without
+  # the word "Side".
   - "^.+?'s (Side )?Scheme\\.$"
 
 # Refinements the chart does not carry.

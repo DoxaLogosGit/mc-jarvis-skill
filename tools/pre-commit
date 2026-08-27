@@ -1,0 +1,26 @@
+#!/bin/sh
+# Blocks a commit that would ship card or rules text.
+#
+# Install:  ln -sf ../../tools/pre-commit .git/hooks/pre-commit
+#
+# The check needs a built index, because it compares the repository
+# against the actual Rules Reference and card data rather than guessing
+# from string length. With no index it skips rather than blocking - a
+# hook that fails on a fresh clone is a hook people delete.
+set -e
+if ! uv run python -c "
+import sys
+from mc_jarvis import paths
+sys.exit(0 if paths.db_path().exists() else 1)
+" 2>/dev/null; then
+    echo "pre-commit: no index built; skipping the distribution-rule check."
+    echo "            run \`uv run mc-jarvis init\` to enable it."
+    exit 0
+fi
+
+if ! uv run python -m mc_jarvis.policy; then
+    echo
+    echo "pre-commit: refusing to commit. See README, 'What is derived,"
+    echo "            and what ships'."
+    exit 1
+fi

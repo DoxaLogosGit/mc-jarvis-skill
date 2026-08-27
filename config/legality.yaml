@@ -91,7 +91,7 @@ deckbuilding_overrides:
     equal_aspects: true
     text_digest: "d38089696d974656b8e2bbb13e268662"
     note: >-
-      Must include an equal number of cards from the two chosen aspects.
+      The two chosen aspects must contribute the same number of cards.
 
   - identity: warlock
     aspects: 4
@@ -129,8 +129,8 @@ deckbuilding_overrides:
       limit: 6
     text_digest: "d916c57313692b93bbab678b10c62b93"
     note: >-
-      Up to 6 attack and/or thwart events from aspects other than the
-      chosen one. The cap is on the total, not per trait.
+      Off-aspect events are capped at six, counting attacks and thwarts
+      together. The cap is on the total, not per trait.
 
   - identity: maria_hill
     off_aspect_allowance:

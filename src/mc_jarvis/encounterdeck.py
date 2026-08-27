@@ -65,7 +65,7 @@ ASIDE_TRAIT_RE = re.compile(
     rf"set-aside\s+\[\[([^\]]+)\]\]\s+({_ASIDE_TYPES})", re.I)
 ASIDE_NAMED_RE = re.compile(
     rf"set-aside\s+([A-Z][A-Za-z'’ -]{{2,28}}?)\s+({_ASIDE_TYPES})")
-# "the set-aside area for your nemesis" is the nemesis area, not a group.
+# A reference to the nemesis set-aside area is a place, not a card group.
 NOT_A_GROUP_RE = re.compile(r"^area\b", re.I)
 
 
@@ -133,18 +133,19 @@ def set_aside_groups(rows: list[dict]) -> dict[tuple[str, str], set[str]]:
 # form FFG uses. Measured over the 56 villain sets: 16 say "set ... aside",
 # 26 say "put ... into play", 9 say both - so 33 need covering.
 # Scoped to a SENTENCE rather than an arbitrary character window. The
-# first version allowed 60 characters between "put" and "into play", and
-# Breakout's "Put the Day of Reckoning, Thunderstruck, Pile It On!, and
-# Clear the Road side schemes into play" is 85 - so the whole Wrecking
-# Crew scenario slipped the audit unflagged, and its four side schemes
-# stayed classified as deck cards. An unmeasured cutoff again.
+# first version allowed 60 characters between "put" and "into play";
+# Breakout names four side schemes in one clause and runs to 85, so the
+# whole Wrecking Crew scenario slipped the audit unflagged and its four
+# side schemes stayed classified as deck cards. An unmeasured cutoff
+# again.
 FLAGS_ASIDE_RE = re.compile(r"\bset\b[^.]*\baside\b", re.I)
 FLAGS_INTO_PLAY_RE = re.compile(r"\bput\b[^.]*\binto play\b", re.I)
 
 
 # Cards a Setup block puts into play by name. These leave the encounter
-# deck exactly as a set-aside card does, and are named the same way -
-# "Put the Ultron Drones environment into play". Anchored on the TYPE word
+# deck exactly as a set-aside card does, and are named the same way: a
+# put-into-play verb, the card's name, then its type. Anchored on the TYPE
+# word
 # rather than guessing where the name ends: a non-greedy name match
 # truncated "Kree Command Ship" to "Kree Comm".
 _PUT_TYPES = ("environment|minion|side scheme|main scheme|attachment"

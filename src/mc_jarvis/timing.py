@@ -26,6 +26,8 @@ QUOTED_RE = re.compile(r'^["“](.*)["”]$')
 # The full sentence wraps across two extracted lines, so the anchor is the
 # fragment that fits on one.
 CHART_HEAD_RE = re.compile(
+    # policy: locator - this phrase anchors the chart parse and must stay
+    # verbatim or it stops locating the passage.
     r"of abilities with the same triggering condition", re.I)
 CHART_RUNG_RE = re.compile(r"^(\d)\.\s+(.*)$")
 CHART_SUB_RE = re.compile(r"^([a-e])\.\s+(.*)$")
