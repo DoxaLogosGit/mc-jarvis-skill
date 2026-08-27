@@ -1,0 +1,56 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    # Everything that needs neither the network nor a built index.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra dev
+      - name: Unit tests
+        run: uv run pytest -q -m "not integration"
+      - name: Package contents
+        # Builds the wheel and the sdist and checks what is in them. Needs
+        # no index, so it belongs here rather than with the corpus job.
+        run: uv run pytest -q -m integration tests/test_packaging.py
+
+  distribution-rule:
+    # The repository ships code and configuration only. This compares
+    # every tracked file against the real corpus, so it needs one.
+    #
+    # It fetches the CARD data - a public repository - and not FFG's
+    # rulebooks, which this project has no business pulling on every push.
+    # So it covers the card half; the rules half is covered by the
+    # pre-commit hook and by `pytest -m integration` against a full local
+    # index. `python -m mc_jarvis.policy` prints which sources it had, and
+    # refuses outright if it had none, so a partial run cannot read as a
+    # complete one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra dev
+      - name: Build a card-only index
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          from mc_jarvis import index, sources
+
+          root = Path("ci-data")
+          root.mkdir(exist_ok=True)
+          report = sources.fetch_card_data(root / "marvelsdb")
+          print("fetched:", report)
+          conn = index.connect(Path("ci-index.sqlite"))
+          print("cards:", index.load_cards(conn, root / "marvelsdb").cards)
+          PY
+      - name: No shipped card text
+        run: uv run python -m mc_jarvis.policy --db ci-index.sqlite
+      - name: Never keep the fetched data
+        if: always()
+        run: rm -rf ci-data ci-index.sqlite

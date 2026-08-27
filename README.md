@@ -125,6 +125,14 @@ uv run python -m mc_jarvis.policy            # exits non-zero on a hit
 ln -sf ../../tools/pre-commit .git/hooks/pre-commit   # block it at commit
 ```
 
+It runs in CI on every push and pull request. CI fetches the **card
+data** — a public repository — and not FFG's rulebooks, which this project
+has no business pulling on every push, so CI covers the card half and the
+pre-commit hook covers both. The command prints which sources it had, and
+**refuses with exit 2 if it had none**: a check with nothing to compare
+against must not report clean, which is the failure this module exists to
+catch, turned on itself.
+
 `tests/test_policy.py` runs the same check as part of the integration
 suite, asserts that the word-window sits at the bottom of its measured
 band, and — because a gate nobody has seen fail is a gate nobody knows
@@ -151,7 +159,11 @@ nothing the wheel needs gets trimmed out.
 uv sync
 uv run pytest -q -m "not integration"   # unit tests, no network or index
 uv run pytest -q                        # adds real-data gates
+uv run python -m mc_jarvis.policy       # ships no card or rules text
 ```
+
+CI (`.github/workflows/checks.yml`) runs the unit suite, the packaging
+checks, and the distribution-rule check on every push and pull request.
 
 The test suite is in two tiers because the repository ships no data. Unit
 tests run on fixtures shaped from observed data; integration tests run

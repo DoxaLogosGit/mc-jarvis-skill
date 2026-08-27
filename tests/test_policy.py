@@ -170,3 +170,28 @@ def test_only_a_comment_can_claim_the_exemption(tmp_path):
 
     found = policy.locators(root, scope=("",))
     assert [m["line"] for m in found] == [2]
+
+
+def test_an_empty_corpus_refuses_rather_than_reporting_clean(tmp_path):
+    """CI runs this against a card-only index, so the degraded case is a
+    real one, not hypothetical. A check with nothing to compare against
+    must not print "clean" - that is the exact failure this whole module
+    exists to catch, turned on itself."""
+    db = tmp_path / "empty.sqlite"
+    assert policy.main(["--db", str(db)]) == 2
+
+
+def test_coverage_names_a_source_it_does_not_have(tmp_path):
+    """`corpus_grams` degrades silently when a table is empty: it just
+    contributes nothing. `coverage` is what makes the degradation
+    visible, so a partial run cannot read as a complete one."""
+    from mc_jarvis import index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.execute(
+        "INSERT INTO cards (code, name, text, canonical_code, is_reprint, "
+        "raw) VALUES ('c1', 'C', 'Some text.', 'c1', 0, '{}')")
+    conn.commit()
+    got = policy.coverage(conn)
+    assert got["cards"] == 1
+    assert got["rules_entries"] == 0

@@ -88,6 +88,22 @@ def _grams(words: list[str], window: int = WINDOW) -> set[str]:
             for i in range(len(words) - window + 1)}
 
 
+def coverage(conn) -> dict[str, int]:
+    """How much corpus this check actually has to compare against.
+
+    A check that silently checks less is worse than no check, because it
+    reports green. CI can fetch the card data - a public repository - but
+    not FFG's rulebooks, so it covers the card half only, and it has to
+    SAY so rather than pass quietly.
+    """
+    rules = conn.execute(
+        "SELECT COUNT(*) FROM rules_entries WHERE body IS NOT NULL"
+    ).fetchone()[0]
+    cards = conn.execute(
+        "SELECT COUNT(*) FROM cards WHERE text IS NOT NULL").fetchone()[0]
+    return {"rules_entries": rules, "cards": cards}
+
+
 def corpus_grams(conn, window: int = WINDOW) -> set[str]:
     """Every word window in the rulebooks and the card text."""
     out: set[str] = set()
@@ -182,11 +198,35 @@ def report(findings: list[dict]) -> str:
     return "\n".join(out)
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    import argparse
+
     from . import index, paths
 
-    conn = index.connect(paths.db_path())
-    findings = scan(conn)
+    parser = argparse.ArgumentParser(
+        prog="python -m mc_jarvis.policy",
+        description="Check that the repository ships no card or rules text.")
+    parser.add_argument("--db", default=None,
+                        help="index to compare against (default: the built "
+                             "index)")
+    parser.add_argument("--all", action="store_true",
+                        help="cover documents and tests too, which are "
+                             "knowingly relaxed and are not packaged")
+    args = parser.parse_args(argv)
+
+    conn = index.connect(Path(args.db) if args.db else paths.db_path())
+    have = coverage(conn)
+    if not any(have.values()):
+        print("No corpus to compare against: build the index first, or "
+              "pass --db. Refusing to report a clean run against nothing.")
+        return 2
+
+    for source, count in sorted(have.items()):
+        state = f"{count} rows" if count else "NOT CHECKED - none indexed"
+        print(f"corpus: {source}: {state}")
+    print()
+
+    findings = scan(conn, scope=("",) if args.all else SHIPPED)
     print(report(findings))
     return 1 if findings else 0
 
