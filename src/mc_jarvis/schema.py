@@ -286,6 +286,20 @@ CREATE TABLE IF NOT EXISTS encounter_role (
 );
 CREATE INDEX IF NOT EXISTS idx_encounter_role ON encounter_role(role);
 
+-- Which modular sets a scenario prescribes, parsed from its own main
+-- scheme's Contents block (assess spec §14.1, correcting §4.7).
+-- `kind` separates prescribed from recommended from player-chosen,
+-- because a player picking modulars needs to know which the box imposes.
+CREATE TABLE IF NOT EXISTS scenario_modulars (
+    villain_set TEXT NOT NULL,
+    kind        TEXT NOT NULL,   -- prescribed|recommended|open|random|none
+    modular_set TEXT             -- NULL when the scenario names none
+);
+-- SQLite forbids an expression in PRIMARY KEY, so the slot's uniqueness
+-- lives in an index. NULL is a real value here: it means "names none".
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scenario_modulars
+    ON scenario_modulars(villain_set, COALESCE(modular_set, ''));
+
 CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
     name, subname, text, traits, flavor,
     content='cards', content_rowid='rowid'

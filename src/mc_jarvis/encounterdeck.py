@@ -233,6 +233,142 @@ def audit(conn, config: dict | None = None) -> list[str]:
     return problems
 
 
+# The scenario's own contents, printed on its main scheme (§14.1,
+# correcting §4.7). Three kinds of scenario, and they must stay apart: a
+# player choosing modulars needs to know which the box imposes.
+_MOD_NUM = r"(?:One|Two|Three|Four|Five|\d+(?:[-\u2013]\d+)?)"
+MODULAR_NAMED_RE = re.compile(
+    rf"{_MOD_NUM}\s+modular(?:\s+encounter)?\s+sets?\s*(?:<i>)?\s*"
+    rf"\(([^)]+)\)", re.I)
+MODULAR_OPEN_RE = re.compile(
+    rf"(?:Choose\s+\d+\s+modular)"
+    rf"|(?:{_MOD_NUM}\s+modular(?:\s+encounter)?\s+sets?)", re.I)
+MODULAR_RANDOM_RE = re.compile(r"random\s+modular", re.I)
+RECOMMENDED_RE = re.compile(r"^\s*recommended\s*:\s*", re.I)
+# Three spellings of the heading: `<b>Contents</b>:`, `<b> Contents: </b>`
+# with the colon inside the tag, and `<b>Scenario Contents</b>`. A LIKE on
+# the first misses hela and the whole Wrecking Crew.
+CONTENTS_HEADING_RE = re.compile(
+    r"<b>\s*(?:Scenario\s+)?Contents\s*:?\s*</b>", re.I)
+
+
+def has_contents(text: str) -> bool:
+    return bool(CONTENTS_HEADING_RE.search(text or ""))
+
+
+def parse_contents(text: str) -> dict:
+    """The modular clause of a main scheme's `Contents` block.
+
+    `prescribed` names the sets the box imposes, `recommended` names a
+    suggestion the player may substitute freely, `open` leaves the choice
+    to the player, and `random` draws one. Flattening recommended into
+    prescribed would state a constraint the box does not impose.
+    """
+    flat = " ".join((text or "").split())
+    if MODULAR_RANDOM_RE.search(flat):
+        return {"kind": "random", "names": [], "count": None}
+
+    m = MODULAR_NAMED_RE.search(flat)
+    if m:
+        clause = m.group(1)
+        kind = "recommended" if RECOMMENDED_RE.search(clause) else "prescribed"
+        clause = RECOMMENDED_RE.sub("", clause)
+        # Inner markup left in the capture cost five sets; a stop inside
+        # the parentheses cost two more.
+        clause = re.sub(r"<[^>]+>", "", clause)
+        names = [n.strip(" .,") for n in re.split(r",| and ", clause)
+                 if n.strip(" .,")]
+        return {"kind": kind, "names": names, "count": len(names)}
+
+    if MODULAR_OPEN_RE.search(flat):
+        return {"kind": "open", "names": [], "count": None}
+    return {"kind": "none", "names": [], "count": None}
+
+
+def build_scenarios(conn) -> dict[str, int]:
+    """Store each villain set's modular mapping, read from its own main
+    scheme rather than hand-authored (§14.1)."""
+    config = load_config()
+    aliases = config.get("modular_aliases") or {}
+    by_name = {r["name"]: r["code"] for r in conn.execute(
+        "SELECT code, name FROM sets WHERE card_set_type_code = 'modular'")}
+
+    conn.execute("DELETE FROM scenario_modulars")
+    counts: Counter = Counter()
+    rows = []
+    for row in conn.execute(
+            "SELECT DISTINCT c.set_code, c.text FROM cards c "
+            "JOIN sets s ON s.code = c.set_code "
+            "WHERE c.type_code = 'main_scheme' "
+            "AND s.card_set_type_code = 'villain' "
+            "AND c.text LIKE '%Contents%'"):
+        if not has_contents(row["text"]):
+            continue
+        parsed = parse_contents(row["text"])
+        counts[parsed["kind"]] += 1
+        if not parsed["names"]:
+            rows.append((row["set_code"], parsed["kind"], None))
+            continue
+        for name in parsed["names"]:
+            code = by_name.get(name) or by_name.get(aliases.get(name, ""))
+            # An unresolved name is marked, not dropped: a silently
+            # missing modular is a scenario assessed against the wrong
+            # deck.
+            rows.append((row["set_code"], parsed["kind"],
+                         code or f"?{name}"))
+    conn.executemany(
+        "INSERT OR REPLACE INTO scenario_modulars "
+        "(villain_set, kind, modular_set) VALUES (?, ?, ?)", rows)
+    conn.commit()
+    return {f"scenario_{k}": v for k, v in counts.items()}
+
+
+def scenario_gate(conn, config: dict | None = None) -> list[str]:
+    """Three directions, as §7 requires plus one §14.1 adds.
+
+    A hand-maintained list does not converge on its own, and neither does
+    a parsed one: a renamed set leaves a stale mapping, and a new release
+    would otherwise be assessed against no modulars at all, silently.
+    """
+    config = config if config is not None else load_config()
+    known_gaps = set(config.get("no_contents_block") or {})
+    problems = []
+
+    have = {r["villain_set"] for r in conn.execute(
+        "SELECT DISTINCT villain_set FROM scenario_modulars")}
+    # Only sets that ARE scenarios. A villain set with no main scheme is a
+    # component of one - the four Wrecking Crew sets share `wrecking_crew`,
+    # and `marauders` is used by two different scenarios - so gating it as
+    # a scenario asks for a mapping it was never meant to have.
+    for row in conn.execute(
+            "SELECT DISTINCT set_code FROM cards WHERE type_code = 'villain' "
+            "AND set_code IN (SELECT set_code FROM cards "
+            "                 WHERE type_code = 'main_scheme')"):
+        code = row["set_code"]
+        if code not in have and code not in known_gaps:
+            problems.append(
+                f"{code}: no Contents block and no config entry. It would "
+                f"be assessed against no modular sets at all, silently.")
+
+    for row in conn.execute(
+            "SELECT villain_set, modular_set FROM scenario_modulars "
+            "WHERE modular_set LIKE '?%'"):
+        problems.append(
+            f"{row['villain_set']}: names modular set "
+            f"{row['modular_set'][1:]!r}, which does not resolve. Add a "
+            f"`modular_aliases` entry if it is an upstream spelling.")
+
+    real = {r["code"] for r in conn.execute("SELECT code FROM sets")}
+    for row in conn.execute(
+            "SELECT villain_set, modular_set FROM scenario_modulars "
+            "WHERE modular_set IS NOT NULL AND modular_set NOT LIKE '?%'"):
+        if row["modular_set"] not in real:
+            problems.append(
+                f"{row['villain_set']}: maps to {row['modular_set']!r}, "
+                f"which is not a set. A renamed set leaves a stale mapping.")
+    return problems
+
+
 def build(conn: sqlite3.Connection) -> dict[str, int]:
     rows = [dict(r) for r in conn.execute(
         "SELECT code, name, type_code, traits, text, permanent, boost, "

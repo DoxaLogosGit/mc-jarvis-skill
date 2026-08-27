@@ -108,6 +108,8 @@ def status(args) -> int:
         # not kept.
         "rulings_outstanding": count("rulings"),
         "timing_broken": json.loads(meta.get("timing_broken") or "[]"),
+        "scenarios_incomplete": json.loads(
+            meta.get("scenarios_incomplete") or "[]"),
     }
     if getattr(args, "json", False):
         emit(payload, as_json=True)
@@ -125,6 +127,11 @@ def status(args) -> int:
         if missing:
             print(f"\nNo rules indexed from: {', '.join(missing)}\n"
                   f"`update` cannot fetch a rulebook — run `mc-jarvis init`")
+        if payload["scenarios_incomplete"]:
+            print("\nScenario data is incomplete; `assess` would report "
+                  "wrong numbers for these:")
+            for problem in payload["scenarios_incomplete"]:
+                print(f"  {problem}")
         if payload["timing_broken"]:
             print("\nThe timing reference no longer matches the rules it "
                   "is built from:")

@@ -13,8 +13,8 @@ import sys
 from pathlib import Path
 
 from . import (cardtext, deckrules, doctor, identity, index, manifest,
-               outofdeck, paths, pdf, rules, rules_chunk, rulings,
-               sources, timing)
+               encounterdeck, outofdeck, paths, pdf, rules, rules_chunk,
+               rulings, sources, timing)
 
 # Below this many index entries, a rulebook is treated as having no
 # alphabetical index and is chunked by page instead: searchable, but not
@@ -52,6 +52,18 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
     counts["rules_links"] = rules.build_links(conn)
 
     counts["timing_triggers"] = timing.build(conn)
+    counts.update(encounterdeck.build(conn))
+    counts.update(encounterdeck.build_scenarios(conn))
+    scenario_problems = (encounterdeck.audit(conn)
+                         + encounterdeck.scenario_gate(conn))
+    if scenario_problems:
+        # Not fatal: card and rules commands are unaffected. But every
+        # `assess` number for these would be computed over a wrong
+        # denominator, so name the scenario rather than serving it.
+        print("WARNING: scenario data is incomplete; `assess` would report "
+              "wrong numbers for these:", file=sys.stderr)
+        for problem in scenario_problems:
+            print(f"  {problem}", file=sys.stderr)
     counts.update(_rebuild_rulings(conn, data_root))
     broken = timing.verify_chart(conn) + timing.verify_citations(conn)
     if broken:
@@ -68,7 +80,8 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
         [("built_at", _dt.datetime.now(_dt.timezone.utc).isoformat()),
          ("card_count", str(counts["cards"])),
          ("rules_resolved", str(counts.get("rules_resolved", 0))),
-         ("timing_broken", json.dumps(broken))])
+         ("timing_broken", json.dumps(broken)),
+         ("scenarios_incomplete", json.dumps(scenario_problems))])
     conn.commit()
     return counts
 

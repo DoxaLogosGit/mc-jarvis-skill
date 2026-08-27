@@ -291,6 +291,76 @@ def test_a_set_with_no_setup_block_is_not_flagged(tmp_path):
     assert ed.audit(conn, {"acknowledged": {}}) == []
 
 
+# --- the scenario -> modular mapping (§14.1) -------------------------
+
+def test_prescribed_modulars_are_read_from_the_contents_block():
+    """§4.7 said this mapping was not in the data. It checked for a
+    structured FIELD; FFG prints it in the scenario's own main scheme
+    Contents block, and 49 of 56 villain sets have one."""
+    got = ed.parse_contents(
+        "<b>Contents</b>: Unus (I) and Unus (II). Unus, Infinites, and "
+        "Standard sets. One modular set <i>(Dystopian Nightmare)</i>. "
+        "<b>Setup</b>: Reveal the Gene Pool side scheme.")
+    assert got["kind"] == "prescribed"
+    assert got["names"] == ["Dystopian Nightmare"]
+
+
+def test_two_named_modulars_are_split():
+    got = ed.parse_contents(
+        "<b>Contents</b>: ... Two modular sets <i>(Dark Riders and "
+        "Infinites)</i>.")
+    assert got["names"] == ["Dark Riders", "Infinites"]
+
+
+def test_a_recommendation_is_not_a_prescription():
+    """`(recommended: Bomb Scare)` and `(Dystopian Nightmare)` are
+    different strings in FFG's own text. Flattening them states a
+    constraint the box does not impose."""
+    got = ed.parse_contents(
+        "<b>Contents</b>: ... One modular encounter set "
+        "<i>(recommended: Bomb Scare)</i>.")
+    assert got["kind"] == "recommended"
+    assert got["names"] == ["Bomb Scare"]
+
+
+def test_markup_and_trailing_stops_are_stripped():
+    """Five sets failed to resolve because the capture kept inner <i>
+    tags; two more because the stop sat inside the parentheses."""
+    got = ed.parse_contents(
+        "<b>Contents</b>: ... Two modular sets (<i>Acolytes</i> and "
+        "<i>Mystique</i>.).")
+    assert got["names"] == ["Acolytes", "Mystique"]
+
+
+def test_a_player_chosen_scenario_names_nothing():
+    """Thunderbolts and the PvP scenarios let the player choose. There is
+    no mapping to infer, and inventing one would be worse than none."""
+    got = ed.parse_contents(
+        "<b>Contents</b>: ... <b>Setup</b>: Choose 1 modular set, plus "
+        "1[per_hero] additional modular sets, each with an [[Elite]] minion.")
+    assert got["kind"] == "open"
+    assert got["names"] == []
+
+
+def test_a_random_scenario_is_marked_random():
+    got = ed.parse_contents(
+        "<b>Contents</b>: ... 1 random modular set from the collection.")
+    assert got["kind"] == "random"
+
+
+def test_no_contents_block_at_all():
+    assert ed.parse_contents("<b>Setup</b>: Advance to stage 1B.")["kind"] \
+        == "none"
+
+
+def test_a_modular_clause_without_italics_still_parses():
+    """`brotherhood_of_badoon` prints it in bare parentheses."""
+    got = ed.parse_contents(
+        "<b>Contents</b>: ... One modular encounter set (Band of Badoon).")
+    assert got["kind"] == "prescribed"
+    assert got["names"] == ["Band of Badoon"]
+
+
 # --- the real corpus -------------------------------------------------
 
 @pytest.mark.integration

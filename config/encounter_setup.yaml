@@ -127,3 +127,23 @@ acknowledged:
 # upstream typo, or a phrasing the pattern was not built for. Empty is the
 # goal; a non-empty entry is a parser gap, not a data gap.
 unresolved: {}
+
+# --- scenario -> modular mapping (§14.1) -----------------------------
+#
+# The mapping itself is NOT here. It is read from each scenario's own main
+# scheme Contents block, because FFG prints it there and marvelsdb carries
+# the text verbatim - 49 of 56 villain sets. This section holds only what
+# the parse cannot resolve.
+
+# Upstream spellings that do not match `sets.name`.
+modular_aliases:
+  # FFG's own typo, on the Batroc main scheme.
+  "Batrocs's Brigade": "Batroc's Brigade"
+  # The set name carries the final stop.
+  "S.H.I.E.L.D": "S.H.I.E.L.D."
+
+# Villain sets whose main scheme carries no Contents block at all. Each
+# needs its modulars from the printed insert, or an explicit statement
+# that it prescribes none - `assess` must not silently assess them
+# against nothing.
+no_contents_block: {}
