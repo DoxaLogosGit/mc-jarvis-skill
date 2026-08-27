@@ -31,6 +31,27 @@ packages = ["src/mc_jarvis"]
 "config/keywords.yaml" = "src/mc_jarvis/_bundled/keywords.yaml"
 "skill"                = "src/mc_jarvis/_bundled/skill"
 
+# The source distribution needs an explicit list. Hatchling's default is
+# everything git tracks, which shipped 28 test files and the design docs -
+# and those are the two places this project's distribution rule is
+# knowingly relaxed. Test fixtures carry real card text because a parser
+# test with invented input tests nothing, and the specs quote Contents
+# blocks as evidence. Neither belongs in a package someone installs.
+#
+# `uv build` builds the WHEEL FROM THE SDIST, so this list must still
+# carry everything the wheel's force-include needs: config/ and skill/.
+# `tests/test_packaging.py` builds both and checks them.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/config",
+    "/skill",
+    "/tools",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: requires a built index; skipped when absent"]

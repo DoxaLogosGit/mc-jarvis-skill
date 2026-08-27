@@ -106,6 +106,9 @@ def test_the_functional_identification_exemption_stays_small(real_index):
     of rewriting a line."""
     marks = policy.locators()
     assert len(marks) <= 3, marks
+    assert len(marks) >= 1, ("the exemption is unused - if that is real, "
+                             "delete the mechanism rather than keeping a "
+                             "door nobody watches")
     for mark in marks:
         assert mark["file"].startswith("src/"), mark
 
@@ -147,5 +150,23 @@ def test_a_document_cannot_excuse_itself(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
 
-    files = {m["file"] for m in policy.locators(root)}
+    files = {m["file"] for m in policy.locators(root, scope=("",))}
     assert files == {"src/p.py"}
+
+
+def test_only_a_comment_can_claim_the_exemption(tmp_path):
+    """Without this, the module's own `LOCATOR_MARK = "policy: locator"`
+    claimed it, and so did every test string that mentions it. A marker
+    that a string literal can trip is a marker an attacker - or a hurried
+    contributor - can trip."""
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "p.py").write_text(
+        'MARK = "policy: locator"\n'
+        '# policy: locator - a real one\n', encoding="utf-8")
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+
+    found = policy.locators(root, scope=("",))
+    assert [m["line"] for m in found] == [2]

@@ -23,12 +23,17 @@ import subprocess
 from pathlib import Path
 
 # The window length, measured 2026-08-27 rather than picked. Below 7 the
-# hits are ordinary game vocabulary that any description of a card shares
-# with the card - "from the top of the deck", "in play under a player's
-# control" - and at 8 three real quotations slipped through. 7 is the
-# bottom of the band where every hit was a genuine one, which is where a
-# cutoff belongs: `test_the_window_is_at_the_bottom_of_its_measured_band`
-# re-measures both edges.
+# hits are ordinary game vocabulary that any honest description of a card
+# shares with the card itself - phrases about drawing, about control, the
+# common furniture of the game. At 8, three real quotations slipped
+# through. 7 is the bottom of the band where every hit was genuine, which
+# is where a cutoff belongs:
+# `test_the_window_is_at_the_bottom_of_its_measured_band` re-measures both
+# edges.
+#
+# (The first draft of this comment listed its examples verbatim and the
+# check caught it, which is the most reassuring failure this module has
+# produced.)
 WINDOW = 7
 
 # Files whose whole job is to carry examples of the corpus. Tests and
@@ -50,6 +55,10 @@ GENERATED_BODY = re.compile(r"^Listed in the Rules Reference index at page")
 # so the exemption sits where the reader is, and counted by `report` so it
 # cannot quietly become the place quotations go to hide.
 LOCATOR_MARK = "policy: locator"
+# The marker only counts inside a COMMENT. Without that, this module's own
+# definition of the constant claims the exemption, and so does any string
+# literal that mentions it - which is exactly what happened.
+LOCATOR_IN_COMMENT = re.compile(r"#[^\n]*" + re.escape(LOCATOR_MARK))
 # A marker naturally sits in a comment ABOVE the line it excuses, so it
 # covers a short run rather than one line. Deliberately short: a wide
 # exemption is a place for quotations to hide behind one marker.
@@ -123,7 +132,7 @@ def scan(conn, root: Path | None = None, *, scope=SHIPPED,
         excused: set[int] = set()
         if LOCATOR_FILES.search(name):
             for number, line in enumerate(lines, 1):
-                if LOCATOR_MARK in line:
+                if LOCATOR_IN_COMMENT.search(line):
                     excused |= set(range(number, number + LOCATOR_SPAN + 1))
         for number, line in enumerate(lines, 1):
             if number in excused:
@@ -135,7 +144,7 @@ def scan(conn, root: Path | None = None, *, scope=SHIPPED,
     return findings
 
 
-def locators(root: Path | None = None) -> list[dict]:
+def locators(root: Path | None = None, *, scope=SHIPPED) -> list[dict]:
     """Every line claiming the functional-identification exemption.
 
     Enumerated so the exemption is visible. A carve-out nobody counts is
@@ -144,14 +153,16 @@ def locators(root: Path | None = None) -> list[dict]:
     root = root or Path(__file__).resolve().parents[2]
     out = []
     for name in tracked_files(root):
+        if not any(name.startswith(prefix) for prefix in scope):
+            continue
+        if not LOCATOR_FILES.search(name):
+            continue
         try:
             text = (root / name).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if not LOCATOR_FILES.search(name):
-            continue
         for number, line in enumerate(text.splitlines(), 1):
-            if LOCATOR_MARK in line:
+            if LOCATOR_IN_COMMENT.search(line):
                 out.append({"file": name, "line": number,
                             "text": line.strip()})
     return out

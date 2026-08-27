@@ -135,6 +135,16 @@ document in order to parse it. Mark such a line `# policy: locator` with
 a reason. There is one today, the phrase that finds the timing chart, and
 a test keeps the count from growing quietly.
 
+**Two places are knowingly relaxed, and neither is packaged.** Test
+fixtures carry real card text, because a parser test with invented input
+tests nothing; the design documents under `docs/` quote `Contents` blocks
+as the evidence for a measurement, and go away as features settle. Both
+are excluded from the built wheel *and* the source distribution — note
+that `uv build` builds the wheel **from the sdist**, so an unscoped sdist
+is the real deliverable. `tests/test_packaging.py` builds both artifacts
+and checks them, in both directions: nothing unshipped leaks in, and
+nothing the wheel needs gets trimmed out.
+
 ## Development
 
 ```bash
