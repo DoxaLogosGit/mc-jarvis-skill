@@ -1058,6 +1058,42 @@ git commit -m "feat: parse the scenario-modular mapping from the main scheme"
 
 ## Task 5: Scenario assembly
 
+> **Corrections applied 2026-08-27, measured against the built index.**
+> The code below was written before §14.10 and before the a/b measurement,
+> and is wrong in five ways. Implement the corrected form.
+>
+> 1. **`scenario_modulars.villain_set` no longer exists**; the column is
+>    `scenario_set` (§14.10). The SQL below throws as written.
+> 2. **`Scenario.villain_set` is renamed `scenario_set`** for the same
+>    reason. Leaving the old name re-introduces the wrong model at the API
+>    surface.
+> 3. **`deck_cards` must filter `is_reprint = 0`.** 10 deck-role rows are
+>    reprints of a card already counted.
+> 4. **`deck_cards` must drop back faces.** 70 deck-role rows are the back
+>    of a card whose front is also a deck row - `aoa_mission` returns 10
+>    rows for 5 missions. Two candidate rules were cross-checked: rows
+>    named by some card's `back_link` (66) against rows whose code is
+>    `X+b` with an `X+a` sibling (70). The `back_link` set is a strict
+>    subset; the 4 extras were read individually and only ONE is a back
+>    face (`45104b`, whose front carries an upstream-wrong `back_link`).
+>    The other three - `01144b` Android Efficiency, `50184b` A.I.M.
+>    Interference, `61033b` Suggestion - are separate physical cards that
+>    happen to share a code stem. So: use `back_link`, plus a config list
+>    for the upstream-broken case.
+> 5. **The Task 5 tests all use `rhino`, where set == scenario**, so
+>    nothing exercises what §14.10 says Part 1 must do. Add the two
+>    missing directions: a component set (`marauders`, `exp_kang`, the
+>    four wrecking-crew sets) must name its host scenario rather than
+>    report no mapping, and a scenario with no villain set of its own
+>    (`morlock_siege`, `on_the_run`, the PvP four) must resolve normally.
+>
+> **Decision on `returns_to_deck`** (the code and the schema comment
+> disagreed): `deck_cards` includes the 3 `returns_to_deck = 1` cards -
+> The Savage Land, Genosha, Blue Area of the Moon - because each carries a
+> boost value and a When Revealed ability, which are only meaningful from
+> the deck. Each row carries its `role`, so `profile` can report them
+> apart from the opening deck rather than hiding them in one number.
+
 Turns a villain plus options into the multiset of cards a player faces.
 
 **Files:**
@@ -1258,6 +1294,42 @@ git commit -m "feat: assemble a scenario from its villain, modulars and difficul
 ---
 
 ## Task 6: Aggregation, and the hand-computed gate
+
+> **The gate's own arithmetic is wrong. Corrected 2026-08-27 by re-reading
+> the `rhino` and `standard` sets from the index.**
+>
+> | set | card | qty | boost | contributed |
+> |---|---|---|---|---|
+> | rhino | Charge | 2 | 2 | 4 |
+> | rhino | Enhanced Ivory Horn | 1 | 2 | 2 |
+> | rhino | Armored Rhino Suit | 1 | - | 0 |
+> | rhino | Hydra Mercenary | 2 | 1 | 2 |
+> | rhino | Sandman | 1 | 2 | 2 |
+> | rhino | Shocker | 1 | 2 | 2 |
+> | rhino | Hard to Keep Down | 2 | - | 0 |
+> | rhino | "I'm Tough" | 2 | - | 0 |
+> | rhino | Stampede | 3 | 1 | 3 |
+> | rhino | Breakin' & Takin' | 1 | 2 | 2 |
+> | rhino | Crowd Control | 1 | 2 | 2 |
+> | standard | Advance | 2 | - | 0 |
+> | standard | Assault | 2 | - | 0 |
+> | standard | Caught Off Guard | 1 | 1 | 1 |
+> | standard | Gang-Up | 1 | 1 | 1 |
+> | standard | Shadow of the Past | 1 | 2 | 2 |
+>
+> `rhino` is **17 copies / 19 boost** - the plan's sum had six terms and
+> dropped Breakin' & Takin' and Crowd Control. `standard` is 5 rows but
+> **7 copies**, not 5; its boost total of 4 was right. So the gate reads
+> `deck_size == 24`, `by_set["standard"] == 7`, `boost.total == 23`,
+> `mean == 23/24`.
+>
+> Note the trap this set: `by_set["rhino"] == 17` was the one assertion
+> that was already correct, which made a systematic error look like a
+> single mismatch.
+>
+> **`rhino` has no a/b deck rows**, so this gate cannot catch the
+> back-face double-count. Add a second gate on `aoa_mission`: 5 missions,
+> 10 rows before de-duping, **5 after**.
 
 Implements §8. The gate is §12's: a scenario worked out by hand and compared against what `assess` emits.
 

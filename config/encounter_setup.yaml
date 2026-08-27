@@ -199,3 +199,25 @@ modular_aliases:
 # that it prescribes none - `assess` must not silently assess them
 # against nothing.
 no_contents_block: {}
+
+# --- back faces the data does not link (§14.11) -----------------------
+#
+# A double-sided card is two rows in marvelsdb, and counting both doubles
+# it. The rule is `back_link`: a row named as some card's back face is not
+# a separate card. That covers 66 of the 70 deck-role rows whose code is
+# `X+b` beside an `X+a` sibling.
+#
+# The other 4 were read one at a time. Three are genuinely two cards that
+# share a code stem - the set ships both. One is an upstream break.
+back_faces:
+  # Front is 45104a "Heart of the Empire", whose `back_link` points at
+  # 45105b instead of at this card. One physical side scheme, two rows.
+  "45104b": "its front's back_link is wrong upstream"
+
+# Rows the suffix pattern flags that are NOT back faces: separate physical
+# cards printed with an a/b code stem. Listed so `back_face_gate` can tell
+# a decided case from an unexamined one.
+not_back_faces:
+  "01144b": "Ultron ships two Android Efficiency; identical text, both real"
+  "50184b": "the [mental] A.I.M. Interference, beside the [energy] one"
+  "61033b": "the [mental] Suggestion, beside the [energy] one"
