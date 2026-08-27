@@ -27,101 +27,153 @@ acknowledged:
   absorbing_man:
     reason: >-
       An environment is discarded from the deck at random and put into
-      play; the discard pile is then shuffled back. One environment
-      leaves the deck and which one is not determinable.
+      play; the discard pile is shuffled back. One environment leaves
+      the deck and which one is not determinable.
     affects_deck: true
     setup_digest: "fe5550266a3ce5d3de49fa56cfa1c6bd"
 
   baron_zemo:
     reason: >-
-      Every [[Board Member]] environment starts in play. Trait-named
-      rather than card-named, which the into-play rule does not read.
+      Every [[Board Member]] environment starts in play. Named by
+      trait, which the into-play rule reads only by card name.
     affects_deck: true
     setup_digest: "eefdc993b3c141bd9be92b9e6e683707"
+
+  brotherhood_of_badoon:
+    reason: >-
+      Two cards start in play, named in one clause with two different
+      type words. The rule reads one type word per clause.
+    affects_deck: true
+    setup_digest: "f244274b62d6d207f68cb61897168c56"
+
+  dark_beast:
+    reason: >-
+      Three whole encounter sets are set aside. A set-selection
+      question rather than a per-card role; see scenario assembly.
+    affects_deck: false
+    setup_digest: "60a834047b0349f1d87b00d4ddf8e4a9"
 
   enchantress_villain:
     reason: >-
       One Hypnotic Gaze attaches to each identity and the rest are set
-      aside, so none remains in the deck. Uses the verb form 'Set ...
+      aside, so none remains in the deck. Uses the verb form of 'set
       aside', not the hyphenated adjective the text rule reads.
     affects_deck: true
     setup_digest: "22442b9ac5b0a464c610cc0282aeb3b8"
 
+  hela:
+    reason: >-
+      Two cards are revealed and four more set aside by bare name,
+      with no type word for the rule to anchor on.
+    affects_deck: true
+    setup_digest: "bb5dc3617df860d7e5b4f9630d763835"
+
   juggernaut:
     reason: >-
-      Juggernaut's Helmet is attached at setup and leaves the deck.
-      The other named card is an ally, which is never an
-      encounter-deck card.
+      An attachment is attached at setup and leaves the deck. The
+      other named card is an ally, never an encounter-deck card, and
+      is misspelled upstream.
     affects_deck: true
     setup_digest: "e6042e5946f07c93e7c94a0ed34d9ac7"
 
+  kang:
+    reason: >-
+      Villain stages and a side scheme are set aside by bare name, and
+      each player's obligations leave the game.
+    affects_deck: true
+    setup_digest: "8a7ec2866e58cca26ae9b6be550c538f"
+
+  magog:
+    reason: >-
+      Two environments start in play, written as 'environment card'
+      rather than the bare type word.
+    affects_deck: true
+    setup_digest: "25f742fb85fd2abef34c4a8cc21bcc45"
+
+  master_mold:
+    reason: >-
+      An ally starts in play under a player's control. Allies are
+      never encounter-deck cards, so the deck is unchanged.
+    affects_deck: false
+    setup_digest: "4fc4dd73202e15fcebc52d2e8eaf418d"
+
   mister_sinister:
     reason: >-
-      Three whole encounter sets are set aside. That is a
-      set-selection question - which sets are in play - rather than a
-      per-card role, and belongs to scenario assembly.
+      Three whole encounter sets are set aside. A set-selection
+      question rather than a per-card role.
     affects_deck: false
     setup_digest: "be7a62d7bbc46f11c17edbae291db790"
 
   mysterio:
     reason: >-
-      An Apparition minion is put into play per player, so the number
-      leaving the deck scales with player count.
+      A minion is put into play per player, so the number leaving the
+      deck scales with player count.
     affects_deck: true
     setup_digest: "7be1c9596beef1213b32a00cf2e64f37"
+
+  nebula:
+    reason: >-
+      Two cards start in play in a two-type clause, and further cards
+      are attached from the top of the deck per player.
+    affects_deck: true
+    setup_digest: "c3cb40e6a7ee06b9128b724de6d7dca4"
 
   on_the_run:
     reason: >-
       One random [[MARAUDER]] villain is chosen and the minion sharing
-      its title is removed from the game. Which minion leaves is
-      random.
+      its title leaves the game. Which minion depends on the villain
+      drawn.
     affects_deck: true
     setup_digest: "8e4e463b72f401e6995b67b728280f99"
 
   red_skull:
     reason: >-
-      Every side scheme except one moves to a separate side-scheme
-      deck beside the encounter deck, and The Sleeper is set aside.
-      The side schemes are not in the encounter deck at all.
+      Every side scheme but one moves to a separate side-scheme deck
+      beside the encounter deck, and one minion is set aside.
     affects_deck: true
     setup_digest: "ac0161d5967234965200197147b1d15e"
 
+  ronan:
+    reason: >-
+      Two cards start in play in a two-type clause, plus two
+      attachments placed at setup.
+    affects_deck: true
+    setup_digest: "6aa26adc53d020e49fb68e44f1b5eb89"
+
   sandman:
     reason: >-
-      The City Streets environment is searched out of the deck and put
-      into play. Phrased as 'Search ... and put it into play', which
-      the into-play rule does not read.
+      An environment is searched out of the deck and put into play,
+      phrased as 'search ... and put it into play'.
     affects_deck: true
     setup_digest: "f770df6996b216ef97e6ea46afb326c4"
 
+  spiral:
+    reason: >-
+      A side scheme and one random [[SHOW]] environment start in play;
+      the remaining [[SHOW]] environments form a separate deck.
+    affects_deck: true
+    setup_digest: "5b4bac098754159f3fa04a78c21b393f"
+
   stryfe:
     reason: >-
-      Stryfe's Grasp is revealed at setup and leaves the deck. The
+      A side scheme is revealed at setup and leaves the deck. The
       other named card is an ally.
     affects_deck: true
     setup_digest: "184f1c77bd5293ad1e1d336ad34b559a"
 
   the_hood:
     reason: >-
-      Seven modular sets are set aside and one is shuffled in, with
-      more added during play. A growing deck rather than a set-aside
-      list; see the assess spec on scenarios whose deck grows.
+      Seven modular sets are set aside and one shuffled in, with more
+      added during play. A growing deck rather than a set-aside list.
     affects_deck: false
     setup_digest: "7d768e66b95917672829ac3e8d8b15b0"
 
   tower_defense:
     reason: >-
-      Only a second main scheme stage is put into play, and main
-      schemes are never encounter-deck cards.
+      A second main scheme stage is put into play, referred to by
+      pronoun. Main schemes are never encounter-deck cards.
     affects_deck: false
     setup_digest: "ab89daa5dfb2b03fd4a60dcb1134219c"
-
-  venom_goblin:
-    reason: >-
-      Three main schemes are put into play and the first is flipped
-      aside. Main schemes are never encounter-deck cards.
-    affects_deck: false
-    setup_digest: "d160db4142abf3acc8f5dc837c4c45e6"
 
 # Groups the set-aside rule extracts but that resolve to no card - an
 # upstream typo, or a phrasing the pattern was not built for. Empty is the

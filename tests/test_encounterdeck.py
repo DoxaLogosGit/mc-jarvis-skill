@@ -461,3 +461,33 @@ def test_a_tampered_acknowledgment_is_caught(real_index):
         k: dict(v, setup_digest="0" * 32)
         for k, v in (config.get("acknowledged") or {}).items()}}
     assert encounterdeck.audit(real_index, tampered)
+
+
+@pytest.mark.integration
+def test_a_multi_card_into_play_clause_is_read_whole(real_index):
+    """The Wrecking Crew's Breakout names four side schemes in one clause.
+    Extracting one of the four let the audit's `all()` check pass on the
+    subset found, which is worse than extracting nothing: the scenario
+    looked covered while three side schemes stayed classified as deck
+    cards."""
+    from mc_jarvis import encounterdeck
+
+    setup = encounterdeck.setup_blocks(real_index)["wrecking_crew"]
+    names = {n for n, _ in encounterdeck.into_play_named(setup)}
+    assert names == {"Day of Reckoning", "Thunderstruck", "Pile It On!",
+                     "Clear the Road"}
+
+
+@pytest.mark.integration
+def test_the_setup_flag_is_scoped_to_a_sentence_not_a_window(real_index):
+    """A 60-character window between "put" and "into play" silently
+    unflagged 8 scenarios, Breakout among them at 85 characters. An
+    unmeasured cutoff hides exactly what it is too small for."""
+    from mc_jarvis import encounterdeck
+
+    blocks = encounterdeck.setup_blocks(real_index)
+    flagged = [k for k, v in blocks.items()
+               if encounterdeck.FLAGS_ASIDE_RE.search(v)
+               or encounterdeck.FLAGS_INTO_PLAY_RE.search(v)]
+    assert len(flagged) == 41
+    assert "wrecking_crew" in flagged

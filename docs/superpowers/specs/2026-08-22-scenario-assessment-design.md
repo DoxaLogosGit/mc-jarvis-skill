@@ -561,6 +561,20 @@ or put-into-play instruction is one where the type rule is unreliable:
 | **needs acknowledgment (either)** | **33** |
 | **type rule alone is sufficient** | **23** |
 
+> **Corrected to 41 on 2026-08-27.** Those counts came from matching
+> within an arbitrary 60-character window between "put" and "into play".
+> The Wrecking Crew's Breakout reads *"Put the Day of Reckoning,
+> Thunderstruck, Pile It On!, and Clear the Road side schemes into play"* —
+> 85 characters — so the whole scenario slipped the audit unflagged and its
+> four side schemes stayed classified as deck cards. Scoped to a sentence
+> instead, **41 of 56** scenarios remove cards at setup, not 33.
+>
+> Two lessons, both already on this project's list. An unmeasured cutoff
+> hides exactly what it is too small for — the same failure as the 40-char
+> trigger-prefix limit. And a rule that extracts *some* of a list passed an
+> `all(...)` check on the subset it found, which is worse than extracting
+> nothing: `wrecking_crew` looked covered.
+
 So the design is the `timing` refusal, not a silent approximation:
 
 - The type rule stands for all 56, and is complete for 23 of them.
@@ -914,3 +928,47 @@ opening deck and the fully-grown deck — and name the pool. That is two
 exact profiles and no statistics anyone has to caveat, and it already
 answers "what does this scenario throw at me" better than a single
 number that is wrong for the whole game.
+
+### 14.10 A scenario is not a villain
+
+Raised 2026-08-27: Fear No Evil ships five scenarios, each of which lets
+you choose among five villains. That breaks the assumption that a villain
+set *is* a scenario — and the assumption is already broken in the data
+mc-jarvis holds, before FNE arrives.
+
+Of 57 sets carrying a main scheme, **7 have no villain set of their own**:
+
+| Scenario | Where its villain comes from |
+|---|---|
+| `morlock_siege`, `on_the_run` | a chosen `[[MARAUDER]]` villain |
+| `registration`, `resistance`, and their `synthezoid_` variants | the PvP "chosen leader" |
+| `wrecking_crew` | four separate villain sets at once |
+
+And 6 villain sets have no main scheme, because they are *components*:
+the four Wrecking Crew sets, `marauders`, and `exp_kang`.
+
+So the mapping is many-to-many in both directions, and the column that
+recorded it was misnamed `villain_set`. It is now `scenario_set`: the set
+holding the main scheme, which is what a scenario actually is.
+
+**But this changes the threat profile far less than it appears.**
+Measured: **no villain card is ever an encounter-deck member** — the type
+rule excludes every one — so choosing Bullseye rather than Kingpin in the
+same scenario yields *the same encounter deck*. The profile is a property
+of the scenario; the villain contributes its own stats, which §13.2
+already separates out as an open question.
+
+**One exception, and only one.** `on_the_run` reads *"Put 1 random
+[[MARAUDER]] villain into play. Remove the minion with the same title as
+the villain … from the game."* There the villain chosen determines which
+minion leaves the deck. It is already acknowledged in
+`encounter_setup.yaml` with `affects_deck: true`, which is exactly what
+that flag is for.
+
+**What Part 1 must therefore do:** key the profile on the scenario, accept
+a villain as a way of naming one, and — where a scenario offers a choice —
+say so rather than picking silently. Modelling which villains a scenario
+can host is only needed once §13.2's villain-stats section is built, and
+FNE cannot be tested against until marvelcdb publishes it
+(`2026-08-25-card-data-sources.md`).
+

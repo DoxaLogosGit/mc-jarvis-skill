@@ -132,8 +132,14 @@ def set_aside_groups(rows: list[dict]) -> dict[tuple[str, str], set[str]]:
 # A `Setup` block that removes cards from the encounter deck, in either
 # form FFG uses. Measured over the 56 villain sets: 16 say "set ... aside",
 # 26 say "put ... into play", 9 say both - so 33 need covering.
-FLAGS_ASIDE_RE = re.compile(r"\bset\b.{0,40}\baside\b", re.I)
-FLAGS_INTO_PLAY_RE = re.compile(r"\bput\b.{0,60}\binto play\b", re.I)
+# Scoped to a SENTENCE rather than an arbitrary character window. The
+# first version allowed 60 characters between "put" and "into play", and
+# Breakout's "Put the Day of Reckoning, Thunderstruck, Pile It On!, and
+# Clear the Road side schemes into play" is 85 - so the whole Wrecking
+# Crew scenario slipped the audit unflagged, and its four side schemes
+# stayed classified as deck cards. An unmeasured cutoff again.
+FLAGS_ASIDE_RE = re.compile(r"\bset\b[^.]*\baside\b", re.I)
+FLAGS_INTO_PLAY_RE = re.compile(r"\bput\b[^.]*\binto play\b", re.I)
 
 
 # Cards a Setup block puts into play by name. These leave the encounter
@@ -143,15 +149,29 @@ FLAGS_INTO_PLAY_RE = re.compile(r"\bput\b.{0,60}\binto play\b", re.I)
 # truncated "Kree Command Ship" to "Kree Comm".
 _PUT_TYPES = ("environment|minion|side scheme|main scheme|attachment"
               "|treachery|support|ally")
+# One type word can govern a LIST of names: Breakout names four side
+# schemes in one clause. Capturing a single name matched one of the four
+# and let the audit pass on it.
 INTO_PLAY_NAMED_RE = re.compile(
-    rf"\bPut\s+(?:the|a|an|each|\d+ random)\s+"
-    rf"([A-Z][A-Za-z'’.\- ]{{2,34}}?)\s+({_PUT_TYPES})s?\b", re.I)
+    rf"\bPut\s+(?:the|a|an|each|\d+ random)\s+(.{{3,160}}?)\s+"
+    rf"({_PUT_TYPES})s?\s+into play", re.I)
+_NAME_SPLIT_RE = re.compile(r",\s*and\s+|,\s*|\s+and\s+", re.I)
 
 
 def into_play_named(setup: str) -> list[tuple[str, str]]:
-    """`(name, type)` pairs a Setup block puts into play by name."""
-    return [(m.group(1).strip(" ."), m.group(2).lower().replace(" ", "_"))
-            for m in INTO_PLAY_NAMED_RE.finditer(setup or "")]
+    """`(name, type)` pairs a Setup block puts into play by name.
+
+    One clause can name several cards sharing a type word, so the capture
+    is the whole list and it is split afterwards.
+    """
+    out: list[tuple[str, str]] = []
+    for m in INTO_PLAY_NAMED_RE.finditer(setup or ""):
+        kind = m.group(2).lower().replace(" ", "_")
+        for name in _NAME_SPLIT_RE.split(m.group(1)):
+            name = name.strip(" .")
+            if name and name[0].isupper():
+                out.append((name, kind))
+    return out
 
 
 class AuditError(RuntimeError):
@@ -318,7 +338,7 @@ def build_scenarios(conn) -> dict[str, int]:
                          code or f"?{name}"))
     conn.executemany(
         "INSERT OR REPLACE INTO scenario_modulars "
-        "(villain_set, kind, modular_set) VALUES (?, ?, ?)", rows)
+        "(scenario_set, kind, modular_set) VALUES (?, ?, ?)", rows)
     conn.commit()
     return {f"scenario_{k}": v for k, v in counts.items()}
 
@@ -334,8 +354,8 @@ def scenario_gate(conn, config: dict | None = None) -> list[str]:
     known_gaps = set(config.get("no_contents_block") or {})
     problems = []
 
-    have = {r["villain_set"] for r in conn.execute(
-        "SELECT DISTINCT villain_set FROM scenario_modulars")}
+    have = {r["scenario_set"] for r in conn.execute(
+        "SELECT DISTINCT scenario_set FROM scenario_modulars")}
     # Only sets that ARE scenarios. A villain set with no main scheme is a
     # component of one - the four Wrecking Crew sets share `wrecking_crew`,
     # and `marauders` is used by two different scenarios - so gating it as
@@ -351,20 +371,20 @@ def scenario_gate(conn, config: dict | None = None) -> list[str]:
                 f"be assessed against no modular sets at all, silently.")
 
     for row in conn.execute(
-            "SELECT villain_set, modular_set FROM scenario_modulars "
+            "SELECT scenario_set, modular_set FROM scenario_modulars "
             "WHERE modular_set LIKE '?%'"):
         problems.append(
-            f"{row['villain_set']}: names modular set "
+            f"{row['scenario_set']}: names modular set "
             f"{row['modular_set'][1:]!r}, which does not resolve. Add a "
             f"`modular_aliases` entry if it is an upstream spelling.")
 
     real = {r["code"] for r in conn.execute("SELECT code FROM sets")}
     for row in conn.execute(
-            "SELECT villain_set, modular_set FROM scenario_modulars "
+            "SELECT scenario_set, modular_set FROM scenario_modulars "
             "WHERE modular_set IS NOT NULL AND modular_set NOT LIKE '?%'"):
         if row["modular_set"] not in real:
             problems.append(
-                f"{row['villain_set']}: maps to {row['modular_set']!r}, "
+                f"{row['scenario_set']}: maps to {row['modular_set']!r}, "
                 f"which is not a set. A renamed set leaves a stale mapping.")
     return problems
 
