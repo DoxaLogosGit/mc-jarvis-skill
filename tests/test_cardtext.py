@@ -313,3 +313,115 @@ def test_reminder_text_does_not_make_a_keyword_printed_or_hide_one():
     ) == ["surge"]
     assert cardtext.parse_printed_keywords("Surge\n<hr />\n[star] "
                                            "<b>Boost</b>: Move.") == ["surge"]
+
+
+# --- the keyword list, derived from the Rules Reference --------------
+
+def _rr(tmp_path, entries):
+    from mc_jarvis import index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO rules_entries (term, body, page, source_doc) "
+        "VALUES (?, ?, 1, 'rr')", entries)
+    conn.commit()
+    return conn
+
+
+def test_keywords_come_from_the_rules_reference_enumeration(tmp_path):
+    conn = _rr(tmp_path, [
+        ("Keywords", "The following keywords are used in the game:\n"
+                     "• • Guard: While a minion with guard is engaged.\n"
+                     "• • Hinder X: A card with the hinder X keyword.\n"),
+    ])
+    got = {k: s for k, s, _ in cardtext.derive_keywords(conn)}
+    assert got == {"guard": "enumerated", "hinder": "enumerated"}
+
+
+def test_a_keyword_the_enumeration_omits_is_still_found(tmp_path):
+    """`vulnerable` has its own entry and is absent from the RR's own
+    keyword list. Trusting the enumeration alone loses a keyword printed
+    on 8 encounter cards; a hard-coded list lost it for a year."""
+    conn = _rr(tmp_path, [
+        ("Keywords", "• • Guard: While a minion with guard is engaged."),
+        ("Vulnerable", "When a character with vulnerable becomes confused, "
+                       "that character is discarded. The vulnerable keyword "
+                       "is equivalent to a forced interrupt."),
+    ])
+    got = {k: s for k, s, _ in cardtext.derive_keywords(conn)}
+    assert got["vulnerable"] == "entry"
+    assert got["guard"] == "enumerated"
+
+
+def test_a_parenthetical_term_is_card_anatomy_not_a_keyword(tmp_path):
+    """`Linked (Card Title)`, `Requirement (Resources)`, `Teamwork
+    (Trait)` and `Uses (X "Type")` all describe themselves the way a
+    keyword entry does, and none is a keyword."""
+    conn = _rr(tmp_path, [
+        ("Teamwork (Trait)", "A card with teamwork may be played by."),
+        ("Uses (X \"Type\")", "A card with uses enters play with counters."),
+    ])
+    assert cardtext.derive_keywords(conn) == []
+
+
+def test_the_gate_reports_a_new_keyword_rather_than_absorbing_it(tmp_path):
+    conn = _rr(tmp_path, [
+        ("Keywords", "• • Guard: text.\n• • Rampage: text."),
+    ])
+    problems = cardtext.keyword_gate(conn, {"expected": ["guard"]})
+    assert problems and "rampage" in problems[0]
+
+
+def test_the_gate_reports_a_keyword_that_stopped_being_found(tmp_path):
+    """The serious direction: it means the derivation broke, not that FFG
+    withdrew a keyword."""
+    conn = _rr(tmp_path, [("Keywords", "• • Guard: text.")])
+    problems = cardtext.keyword_gate(conn, {"expected": ["guard", "surge"]})
+    assert problems and "surge" in problems[0]
+
+
+def test_an_unindexed_rules_reference_yields_nothing_not_a_wrong_list(
+        tmp_path):
+    """`init` builds cards before it has read the rules on a cold start.
+    Deriving an empty list there must not empty `card_keywords`."""
+    from mc_jarvis import index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    assert cardtext.derive_keywords(conn) == []
+    assert cardtext.keyword_gate(conn) == []
+    assert cardtext.active_keywords(conn) == cardtext.KEYWORDS
+
+
+@pytest.mark.integration
+def test_the_real_rules_reference_yields_the_expected_keywords(real_index):
+    """25 keywords, of which `vulnerable` is found only by its own entry
+    and `form` only by the enumeration. Both asymmetries are why the
+    derivation is a union rather than either source alone."""
+    derived = {k: s for k, s, _ in cardtext.derive_keywords(real_index)}
+    assert len(derived) == 25
+    assert derived["vulnerable"] == "entry"
+    assert derived["form"] == "enumerated"
+    assert "uppercut" not in derived
+    assert cardtext.keyword_gate(real_index) == []
+
+
+@pytest.mark.integration
+def test_excluded_keywords_never_reach_card_keywords(real_index):
+    excluded = set(cardtext.load_keyword_config()["excluded"])
+    assert excluded == {"form", "setup"}
+    for word in excluded:
+        n = real_index.execute(
+            "SELECT COUNT(*) FROM card_keywords WHERE keyword = ?",
+            (word,)).fetchone()[0]
+        assert n == 0, word
+
+
+@pytest.mark.integration
+def test_vulnerable_is_now_visible_on_encounter_cards(real_index):
+    """The gap the hard-coded list hid: 8 encounter-deck cards print it."""
+    rows = real_index.execute(
+        "SELECT COUNT(*) FROM card_keywords k "
+        "JOIN encounter_role e ON e.code = k.code "
+        "WHERE k.keyword = 'vulnerable' AND e.role = 'deck' "
+        "AND k.printed = 1").fetchone()[0]
+    assert rows == 8

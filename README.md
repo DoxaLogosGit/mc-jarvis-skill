@@ -83,6 +83,34 @@ swapped in.
 `mc-jarvis update` refreshes everything, including designer rulings issued
 since the rulebook.
 
+### What is derived, and what ships
+
+This repository ships **code and configuration only** — no card text, no
+rules text, no rulebooks, no built index. Anything that would otherwise be
+someone else's words is *derived at `init`/`update`* from the copy on your
+own machine, and the repo carries only a pointer and a fingerprint.
+
+| Thing | Where it comes from | What ships here |
+|---|---|---|
+| The Rules Reference | fetched from FFG at `init` | nothing |
+| Card text | marvelsdb, fetched at `init` | nothing |
+| Timing chart | parsed from the RR's `Ability` entry | its shape and a digest |
+| Timing tie-breaks | the RR entry each one names | a note and search terms |
+| The keyword list | the RR's `Keywords` entry plus its per-keyword entries | the expected list, as a gate |
+| Set-aside and scenario data | parsed from card text | reasons and digests |
+
+Two rules follow from that table, for anyone adding to `config/`:
+
+1. **Never paste a sentence you did not write.** If the answer needs FFG's
+   wording, store the `rr_entry` it lives in and read the wording from
+   `rules_entries` at print time. `config/timing.yaml`'s `tie_breaks` is
+   the worked example.
+2. **Every derived thing needs a gate.** Deriving means the value can
+   change under you, so pin the expectation and report the drift. The
+   keyword list is the case that proves it: the hard-coded list it
+   replaced had missed `vulnerable` since Agents of S.H.I.E.L.D. and still
+   carried `uppercut`, which is in no rulebook and on no card.
+
 ## Development
 
 ```bash

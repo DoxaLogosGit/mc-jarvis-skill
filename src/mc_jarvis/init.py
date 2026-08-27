@@ -42,18 +42,30 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
     config = outofdeck.load_config()
     counts["out_of_deck"] = outofdeck.classify(conn, config, strict=True)
 
+    # Rules FIRST: the keyword list is derived from the Rules Reference,
+    # and `cardtext.build` needs it. `rules.build_links` still runs after
+    # both, which is the ordering constraint the docstring names.
+    counts.update(_rebuild_rules(conn, data_root))
+    counts.update(cardtext.build_keywords(conn))
+    keyword_problems = cardtext.keyword_gate(conn)
+
     counts.update(cardtext.build(conn))
     counts.update(cardtext.build_limits(conn))
 
     deckrules.check(conn, config)
     counts["deckbuilding_overrides"] = len(deckrules.scan(conn))
 
-    counts.update(_rebuild_rules(conn, data_root))
     counts["rules_links"] = rules.build_links(conn)
 
     counts["timing_triggers"] = timing.build(conn)
     counts.update(encounterdeck.build(conn))
     counts.update(encounterdeck.build_scenarios(conn))
+    if keyword_problems:
+        print("WARNING: the Rules Reference keyword list has changed:",
+              file=sys.stderr)
+        for problem in keyword_problems:
+            print(f"  {problem}", file=sys.stderr)
+
     from . import assess
     scenario_problems = (encounterdeck.audit(conn)
                          + encounterdeck.scenario_gate(conn)

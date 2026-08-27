@@ -1,0 +1,65 @@
+# The game's keyword list is NOT here. It is derived from the Rules
+# Reference on the user's own machine at `init` and `update`, by
+# `cardtext.derive_keywords`, and stored in `rules_keywords`.
+#
+# This file holds only the expectation, so that a keyword FFG adds is
+# ANNOUNCED rather than appearing silently in every count. The game has
+# been stable for seven years; the change that matters is a new keyword,
+# which is exactly what this gate is for.
+#
+# The list this replaced was hard-coded in `cardtext.py` and had drifted
+# in both directions: it missed `vulnerable` (printed on 8 encounter
+# cards, its own RR entry, added with Agents of S.H.I.E.L.D.) and carried
+# `uppercut`, which has no RR entry and matches nothing in the corpus.
+
+version: 1
+
+# What the Rules Reference yielded when this gate was last verified.
+# `keyword_gate` reports anything added or removed. A REMOVAL is the
+# serious one: it means the derivation stopped finding something, not
+# that FFG withdrew a keyword.
+expected:
+  - alliance
+  - assault
+  - form
+  - guard
+  - hinder
+  - incite
+  - overkill
+  - patrol
+  - peril
+  - permanent
+  - piercing
+  - quickstrike
+  - ranged
+  - restricted
+  - retaliate
+  - setup
+  - stalwart
+  - steady
+  - surge
+  - team-up
+  - temporary
+  - toughness
+  - victory
+  - villainous
+  - vulnerable
+
+# Derived keywords deliberately kept OUT of `card_keywords`, each with
+# the classifier that already owns the word. A second view of the same
+# cards is a second thing to disagree with.
+excluded:
+  form: >-
+    `form` is ordinary English in this game's own text. Measured: 270
+    cards match it and NONE prints it as a keyword - 191 are the phrase
+    "hero form" / "alter-ego form" / "either form" and the rest are the
+    same use. It is enumerated in the RR's keyword list but has no
+    standalone entry, so nothing links to it either. Keeping it would add
+    270 rows of noise to `granted_keywords`.
+
+  setup: >-
+    `Setup` is both an RR keyword and a bold timing trigger. `timing`
+    already classifies the trigger from `timing.yaml`'s `outside_chart`,
+    and `encounterdeck.SETUP_RE` already reads it as the marker for a
+    card that starts in play. A third reading of the same 39 cards would
+    be a third place for them to disagree.

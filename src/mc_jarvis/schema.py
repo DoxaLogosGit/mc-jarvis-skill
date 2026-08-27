@@ -119,6 +119,20 @@ CREATE TABLE IF NOT EXISTS card_traits (
     PRIMARY KEY (code, trait)
 );
 
+-- The game's keyword list, DERIVED from the Rules Reference on the
+-- user's machine rather than hard-coded here (spec: the repository ships
+-- code and configuration only). Two sources, because neither is complete:
+-- the RR's own `Keywords` entry enumerates 24 and omits `vulnerable`,
+-- while the standalone entries carry `vulnerable` and omit `Form` and
+-- `Victory`. A hard-coded list missed `vulnerable` for a year.
+CREATE TABLE IF NOT EXISTS rules_keywords (
+    keyword  TEXT PRIMARY KEY,
+    -- `enumerated` | `entry` | `both`, so a keyword that appears in only
+    -- one source can be told from one both agree on.
+    source   TEXT NOT NULL,
+    rr_entry TEXT
+);
+
 CREATE TABLE IF NOT EXISTS card_keywords (
     code    TEXT NOT NULL,
     keyword TEXT NOT NULL,

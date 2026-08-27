@@ -7,6 +7,7 @@ structured questions the raw text cannot answer.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 import sqlite3
 from dataclasses import dataclass
 
@@ -25,12 +26,44 @@ TIMING_ONLY_RE = re.compile(r"^\s*(When|After)\b.*$", re.S | re.I)
 # `If ...` is undecided by the rules text - flag, do not guess.
 CONDITION_RE = re.compile(r"^\s*If\b", re.I)
 
+# The fallback list, used only when the Rules Reference is not indexed -
+# unit tests, and the window during `init` before the rules are read. The
+# real list is DERIVED from the RR by `derive_keywords` and stored in
+# `rules_keywords`; `keyword_gate` reports any divergence from
+# `config/keywords.yaml`, so a keyword FFG adds is announced rather than
+# appearing silently.
+#
+# This tuple is what a hard-coded list looks like after a year: it misses
+# `vulnerable` (printed on 8 encounter cards, its own RR entry, added with
+# Agents of S.H.I.E.L.D.) and carries `uppercut`, which has no RR entry
+# and matches nothing in the corpus.
 KEYWORDS = (
     "surge", "toughness", "retaliate", "piercing", "overkill", "guard",
     "stalwart", "steady", "ranged", "permanent", "patrol", "quickstrike",
     "uppercut", "peril", "hinder", "restricted", "incite", "villainous",
 )
 KEYWORD_RE = {k: re.compile(rf"\b{k}\b", re.I) for k in KEYWORDS}
+
+
+def _keyword_re(words) -> dict:
+    return {k: re.compile(rf"\b{re.escape(k)}\b", re.I) for k in words}
+
+
+def active_keywords(conn=None) -> tuple[str, ...]:
+    """The keyword list this build is using.
+
+    Derived from the Rules Reference when it is indexed, and the built-in
+    tuple otherwise. Callers that hold a connection should pass it; the
+    parse helpers accept an explicit list so a caller never has to.
+    """
+    if conn is None:
+        return KEYWORDS
+    try:
+        rows = conn.execute(
+            "SELECT keyword FROM rules_keywords ORDER BY keyword").fetchall()
+    except Exception:
+        return KEYWORDS
+    return tuple(r["keyword"] for r in rows) or KEYWORDS
 
 # A keyword the card PRINTS, as against one it grants to something else.
 # The distinction is load-bearing and the naive match gets it badly wrong:
@@ -102,14 +135,126 @@ def parse_traits(text: str | None) -> list[str]:
     return out
 
 
-def parse_keywords(text: str | None) -> list[str]:
+def parse_keywords(text: str | None, keywords=None) -> list[str]:
     if not text:
         return []
+    words = tuple(keywords) if keywords is not None else KEYWORDS
+    patterns = KEYWORD_RE if keywords is None else _keyword_re(words)
     plain = TAG_RE.sub(" ", text)
-    return [k for k in KEYWORDS if KEYWORD_RE[k].search(plain)]
+    return [k for k in words if patterns[k].search(plain)]
 
 
-def parse_printed_keywords(text: str | None) -> list[str]:
+# The RR enumerates its keywords as bullets inside one entry, each
+# `• • Name: explanation`. `Hinder X` and friends carry their value in the
+# name.
+KEYWORD_BULLET_RE = re.compile(r"•\s*•\s*([A-Z][A-Za-z-]*)(?:\s+X)?:")
+# An entry that describes ITSELF as a keyword. Catches `vulnerable`, which
+# the enumeration omits.
+KEYWORD_SELF_RE = "|".join([
+    r"\bthe\s+{k}\s+keyword\b",
+    r"\ba\s+card\s+with\s+(?:the\s+)?{k}\b",
+    r"\ba\s+character\s+with\s+{k}\b",
+])
+# A term with a parenthetical qualifier is card anatomy, not a keyword:
+# `Linked (Card Title)`, `Requirement (Resources)`, `Teamwork (Trait)`,
+# `Uses (X "Type")`. All four match the self-describing pattern and none
+# of them is a keyword.
+QUALIFIED_TERM_RE = re.compile(r"\(")
+
+
+def derive_keywords(conn) -> list[tuple[str, str, str | None]]:
+    """The game's keywords, read from the indexed Rules Reference.
+
+    Returns `(keyword, source, rr_entry)`, source being `enumerated`,
+    `entry`, or `both`.
+
+    The union of two sources, because neither is complete on its own. The
+    RR's `Keywords` entry lists 24 and omits `vulnerable`; the standalone
+    entries carry `vulnerable` and omit `Form` and `Victory`. Trusting
+    either alone loses a real keyword, and `vulnerable` is printed on 8
+    encounter cards.
+    """
+    enumerated: set[str] = set()
+    row = conn.execute(
+        "SELECT body FROM rules_entries WHERE lower(term) = 'keywords' "
+        "LIMIT 1").fetchone()
+    if row:
+        enumerated = {m.group(1).lower()
+                      for m in KEYWORD_BULLET_RE.finditer(row["body"] or "")}
+
+    entries: dict[str, str] = {}
+    for entry in conn.execute(
+            "SELECT term, body FROM rules_entries WHERE body IS NOT NULL"):
+        term = (entry["term"] or "").strip()
+        if not term or QUALIFIED_TERM_RE.search(term):
+            continue
+        bare = re.sub(r"\s+X$", "", term)
+        pattern = "|".join(
+            part.format(k=re.escape(bare.lower())) for part in
+            KEYWORD_SELF_RE.split("|"))
+        if re.search(pattern, entry["body"] or "", re.I):
+            entries[bare.lower()] = term
+
+    out = []
+    for word in sorted(enumerated | set(entries)):
+        if word in enumerated and word in entries:
+            source = "both"
+        elif word in enumerated:
+            source = "enumerated"
+        else:
+            source = "entry"
+        out.append((word, source, entries.get(word)))
+    return out
+
+
+KEYWORD_CONFIG_PATH = Path(__file__).parent / "_bundled" / "keywords.yaml"
+
+
+def load_keyword_config(path=None) -> dict:
+    import yaml
+
+    return yaml.safe_load(
+        (path or KEYWORD_CONFIG_PATH).read_text(encoding="utf-8"))
+
+
+def keyword_gate(conn, config: dict | None = None) -> list[str]:
+    """Report any drift between the RR's keywords and the expectation.
+
+    Not fatal. A new keyword is a real event - `vulnerable` arrived with
+    Agents of S.H.I.E.L.D. - and the right response is to look at it, not
+    to have every keyword count change quietly underneath the answers.
+    """
+    config = config if config is not None else load_keyword_config()
+    expected = set(config.get("expected") or [])
+    derived = {k for k, _, _ in derive_keywords(conn)}
+    if not derived:
+        return []
+    problems = []
+    for word in sorted(derived - expected):
+        problems.append(
+            f"the Rules Reference now describes {word!r} as a keyword and "
+            f"config/keywords.yaml does not list it. Add it - and check "
+            f"whether `assess` and `rules` should report it.")
+    for word in sorted(expected - derived):
+        problems.append(
+            f"{word!r} is expected but the Rules Reference no longer yields "
+            f"it. More likely the derivation broke than that FFG withdrew a "
+            f"keyword; read the RR entry before editing the list.")
+    return problems
+
+
+def build_keywords(conn) -> dict[str, int]:
+    """Store the derived keyword list. Empty when the RR is not indexed."""
+    derived = derive_keywords(conn)
+    conn.execute("DELETE FROM rules_keywords")
+    conn.executemany(
+        "INSERT OR REPLACE INTO rules_keywords (keyword, source, rr_entry) "
+        "VALUES (?, ?, ?)", derived)
+    conn.commit()
+    return {"rules_keywords": len(derived)}
+
+
+def parse_printed_keywords(text: str | None, keywords=None) -> list[str]:
     """Keywords the card itself carries, in `KEYWORDS` order.
 
     Everything before the first `<b>` trigger on a line is the card's own
@@ -120,22 +265,23 @@ def parse_printed_keywords(text: str | None) -> list[str]:
     """
     if not text:
         return []
+    words = tuple(keywords) if keywords is not None else KEYWORDS
+    alt = (KEYWORD_ALT_RE if keywords is None else re.compile(
+        rf"(?<![A-Za-z])({'|'.join(re.escape(w) for w in words)})\b", re.I))
     found: set[str] = set()
     for block in BLOCK_SPLIT_RE.split(REMINDER_RE.sub(" ", text)):
         own = block.split("<b>")[0]
         for sentence in SENTENCE_SPLIT_RE.split(own):
-            here = {m.group(1).lower()
-                    for m in KEYWORD_ALT_RE.finditer(sentence)}
+            here = {m.group(1).lower() for m in alt.finditer(sentence)}
             if not here:
                 continue
-            rest = KEYWORD_FILLER_RE.sub(
-                " ", KEYWORD_ALT_RE.sub(" ", sentence))
+            rest = KEYWORD_FILLER_RE.sub(" ", alt.sub(" ", sentence))
             # Anything left over is a subject or a verb, so the keyword is
             # being granted rather than printed.
             if rest.strip():
                 continue
             found |= here
-    return [k for k in KEYWORDS if k in found]
+    return [k for k in words if k in found]
 
 
 def _strip(s: str) -> str:
@@ -237,6 +383,9 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
     for table in ("card_traits", "card_keywords", "cost_clauses"):
         conn.execute(f"DELETE FROM {table}")
 
+    words = tuple(
+        w for w in active_keywords(conn)
+        if w not in set(load_keyword_config().get("excluded") or {}))
     traits: list[tuple] = []
     keywords: list[tuple] = []
     clauses: list[tuple] = []
@@ -244,9 +393,9 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
             "SELECT code, text FROM cards WHERE text IS NOT NULL"):
         code, text = row["code"], row["text"]
         traits.extend((code, t) for t in parse_traits(text))
-        printed = set(parse_printed_keywords(text))
+        printed = set(parse_printed_keywords(text, words))
         keywords.extend((code, k, int(k in printed))
-                        for k in parse_keywords(text))
+                        for k in parse_keywords(text, words))
         clauses.extend(
             (code, c.ordinal, c.ability_type, c.qualifier, c.timing,
              c.cost, c.effect, int(c.ambiguous), c.raw)
