@@ -953,10 +953,17 @@ holding the main scheme, which is what a scenario actually is.
 
 **But this changes the threat profile far less than it appears.**
 Measured: **no villain card is ever an encounter-deck member** — the type
-rule excludes every one — so choosing Bullseye rather than Kingpin in the
-same scenario yields *the same encounter deck*. The profile is a property
-of the scenario; the villain contributes its own stats, which §13.2
-already separates out as an open question.
+rule excludes every one — so which villain a scenario hosts does not
+change its encounter deck. `morlock_siege` is the in-data proof: it
+shuffles all seven `[[MARAUDER]]` villains into a villain deck and turns
+them up in random order, and its encounter deck is identical every time.
+The profile is a property of the scenario; the villain contributes its
+own stats, which §13.2 already separates out as an open question.
+
+Bullseye and Kingpin are **not** an example of this. They are not
+alternatives within one scenario: Kingpin is his own scenario and the
+Fear No Evil campaign's final encounter. A villain choice is a choice
+*within* a scenario, and only the scenarios listed above offer one.
 
 **One exception, and only one.** `on_the_run` reads *"Put 1 random
 [[MARAUDER]] villain into play. Remove the minion with the same title as
