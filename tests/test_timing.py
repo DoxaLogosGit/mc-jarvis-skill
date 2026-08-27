@@ -557,7 +557,7 @@ def test_the_prefix_cutoff_sits_in_measured_empty_space(real_index):
             # Compound keys are exempt from the cutoff by design, so they
             # say nothing about where it may sit.
             if (not prefix or timing.is_known_non_trigger(prefix)
-                    or prefix in timing.load_config()["compounds"]):
+                    or timing.compound_for(prefix) is not None):
                 continue
             if timing.classify_all(prefix):
                 longest_ok = max(longest_ok, len(prefix))
@@ -591,3 +591,48 @@ def test_no_not_trigger_pattern_swallows_a_real_prefix(real_index):
         for rx in patterns:
             assert not rx.match(row["raw_prefix"]), \
                 f"{rx.pattern!r} swallows {row['raw_prefix']!r}"
+
+
+# --- the config carries no rulebook or card text ---------------------
+
+def test_the_config_ships_no_rules_prose():
+    """The distribution rule, asserted rather than trusted. `tie_breaks`
+    once held seven close paraphrases of RR rules and `compounds` held a
+    whole printed ability; both are now a pointer plus the maintainer's
+    own words, with the wording read from the user's own copy at print
+    time.
+
+    `about` and `match` are ours. A long value anywhere in this file is
+    the shape the prose had, so the check is on length rather than on a
+    list of phrases nobody will maintain.
+    """
+    config = timing.load_config()
+    for entry in config["tie_breaks"]:
+        assert "rule" not in entry, entry
+        assert len(entry["about"]) < 70, entry["about"]
+        for term in entry["match"]:
+            # A locator, not a quotation - the role a grep pattern plays.
+            assert len(term) < 32, term
+    for key in config["compounds"]:
+        # A trigger name is functional identification; anything longer is
+        # card text and must be keyed by digest instead.
+        assert key.startswith("digest:") or len(key) <= 40, key
+
+
+@pytest.mark.integration
+def test_every_tie_break_still_finds_its_sentence(real_index):
+    """A `match` that stops matching drops silently to the citation alone,
+    which reads like a rule with no wording rather than an error. The
+    digests in `entry_digests` catch a REWORDING; this catches a locator
+    that was wrong to begin with."""
+    for entry in timing.tie_breaks(real_index):
+        assert entry["text"], entry["about"]
+        assert entry["rr_page"], entry["about"]
+
+
+@pytest.mark.integration
+def test_the_seven_tie_breaks_point_at_seven_distinct_sentences(real_index):
+    """Two entries cite `Forced`. Printing the entry body gave the same
+    four paragraphs twice; they must resolve to different sentences."""
+    seen = [e["text"] for e in timing.tie_breaks(real_index)]
+    assert len(set(seen)) == len(seen), seen

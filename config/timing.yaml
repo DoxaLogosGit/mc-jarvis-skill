@@ -129,20 +129,26 @@ compounds:
   # 21147 Hela's Crown prints `<b>Forced Response<b>:` - an opening tag
   # where a closing one belongs. The bold span therefore runs to the next
   # `</b>`, swallowing the ability text AND the card's Boost trigger. The
-  # only malformed bold span in the corpus, so it is corrected by name
-  # rather than by a rule about colons inside bold text.
-  "Forced Response: After Hela schemes, give her a facedown boost card. [star] Boost":
+  # only malformed bold span in the corpus, so it is corrected by this one
+  # card rather than by a rule about colons inside bold text.
+  #
+  # Keyed by DIGEST, not by the span itself. The span is a whole printed
+  # ability - FFG's words, not a trigger name - and this repository ships
+  # no card text. "When Revealed/Defeated" above stays literal because a
+  # trigger name is functional identification, not a quotation.
+  "digest:f3f1def6a68ba157b0d745ea7aafb2e8":
     parts: ["Forced Response", "Boost"]
     seen_on: ["21147"]            # Hela's Crown
 
 # A bold span longer than this is prose bolded for emphasis on a villain
-# or scheme card ("If Odin leaves play, the players lose the game."), not
-# a timing trigger. Measured 2026-08-22 across all 4,379 cards: the
-# longest span that classifies is 29 characters ("When Revealed (Norman
-# Osborn)") and the shortest bolded sentence is 41 ("Threat cannot be
-# removed from Gjallerbru."), so the cutoff sits in an 11-character empty
-# band rather than on top of anything. `compounds` keys are exempt.
-# `test_the_prefix_cutoff_sits_in_measured_empty_space` re-measures.
+# or scheme card - a lose condition, a restriction - rather than a timing
+# trigger. Measured 2026-08-22 across all 4,379 cards: the longest span
+# that classifies is 29 characters (a When Revealed with a parenthetical
+# qualifier) and the shortest bolded sentence is 41, so the cutoff sits in
+# an 11-character empty band rather than on top of anything. `compounds`
+# keys are exempt.
+# `test_the_prefix_cutoff_sits_in_measured_empty_space` re-measures it
+# against the corpus, so the band is checked rather than remembered.
 max_prefix_chars: 40
 
 # Bold text that is not a triggered ability at all.
@@ -172,34 +178,38 @@ not_trigger_patterns:
   # "Wrecker's Side Scheme.", "Proxima Midnight's Scheme.", ...
   - "^.+?'s (Side )?Scheme\\.$"
 
-# Refinements the chart does not carry, each cited. Pages come from the
-# index at print time.
+# Refinements the chart does not carry.
+#
+# NO RULEBOOK TEXT LIVES HERE. `about` is a maintainer's own note saying
+# what this entry settles and why the chart alone is not enough; the
+# WORDING comes from `rules_entries` on the user's machine at print time,
+# fetched by `init` from FFG. That is the same move `expected_chart` and
+# `entry_digests` already make, applied to the last place prose survived:
+# these seven were close paraphrases of RR rules, which is still someone
+# else's rulebook in a public repository.
+#
+# Each `rr_entry` is fingerprinted in `entry_digests` above, so a
+# reworded entry is reported rather than quietly changing what `timing`
+# prints.
 tie_breaks:
-  - rule: >-
-      The first player has the first opportunity at each rung; opportunities
-      then proceed in player order.
+  - about: who acts first at a rung, and in what order after that
     rr_entry: First Player
-  - rule: >-
-      If two or more forced abilities would initiate at the same moment,
-      the first player chooses the order - regardless of who controls them.
+    match: ["first opportunity", "interrupt"]
+  - about: ordering two forced abilities that initiate at the same moment
     rr_entry: Forced
-  - rule: >-
-      Each forced ability resolves as completely as possible before the
-      next forced ability on the same triggering condition initiates.
+    match: ["two or more", "same moment"]
+  - about: whether a forced ability finishes before the next one starts
     rr_entry: Forced
-  - rule: >-
-      If two effects with the same bold trigger would resolve
-      simultaneously, the first player chooses the order.
+    match: ["completely as possible"]
+  - about: ordering two effects that share a bold trigger
     rr_entry: Simultaneous Resolution
-  - rule: >-
-      An interrupt using the word "would" resolves before its triggering
-      condition initiates, ahead of other interrupts to that condition.
+    match: ["simultaneously"]
+  - about: where a "would" interrupt sits relative to other interrupts
     rr_entry: Interrupt
-  - rule: >-
-      One effect causing several triggering conditions lets responses to
-      each be resolved in any order.
+    match: ["would", "imminent"]
+  - about: one effect causing several triggering conditions
     rr_entry: Response
-  - rule: >-
-      Status card abilities take timing priority over any conflicting
-      triggered ability - which is why the chart puts them at rung 2a.
+    match: ["multiple triggering conditions"]
+  - about: why status card abilities sit at rung 2a
     rr_entry: Status Cards
+    match: ["timing priority"]

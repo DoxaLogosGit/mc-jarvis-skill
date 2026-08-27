@@ -61,6 +61,52 @@ def _norm(s: str) -> str:
     return " ".join((s or "").split()).strip().rstrip(":").strip()
 
 
+def tie_breaks(conn, config: dict | None = None) -> list[dict]:
+    """The refinements the chart does not carry, worded by the RR itself.
+
+    `about` is the maintainer's own note on what each entry settles. The
+    WORDING is read from `rules_entries` - the Rules Reference on the
+    user's own machine, fetched by `init` - so this repository carries no
+    rulebook prose. The seven entries here used to be close paraphrases,
+    which is still someone else's rulebook in a public repository.
+
+    An entry missing from the index yields `text: None` rather than a
+    fabricated sentence; `blocked` already refuses when the RR is absent.
+    """
+    config = config if config is not None else load_config()
+    out = []
+    for entry in config["tie_breaks"]:
+        row = conn.execute(
+            "SELECT body FROM rules_entries WHERE lower(term) = lower(?) "
+            "LIMIT 1", (entry["rr_entry"],)).fetchone()
+        out.append(dict(entry,
+                        text=_locate(row["body"] if row else None,
+                                     entry.get("match") or []),
+                        rr_page=page(conn, entry["rr_entry"])))
+    return out
+
+
+def _locate(body: str | None, match: list[str]) -> str | None:
+    """The one sentence in an entry that a tie-break points at.
+
+    `match` is the maintainer's own search terms, not a quotation - the
+    same role a grep pattern plays. Printing the whole entry instead would
+    put four paragraphs under each of seven headings, and print the
+    `Forced` entry twice over.
+
+    Returns None when nothing matches, so a reworded entry drops to the
+    citation rather than showing a sentence that is no longer the right
+    one. `entry_digests` reports the rewording separately.
+    """
+    if not body:
+        return None
+    for piece in re.split(r"(?<=[.])\s+|•\s*•?\s*|»\s*", body):
+        flat = " ".join(piece.split())
+        if flat and all(m.lower() in flat.lower() for m in match):
+            return flat
+    return None
+
+
 def digest(text: str) -> str:
     """A fingerprint of rules text, so a change can be detected without
     the repository carrying the text itself.
@@ -270,7 +316,7 @@ def classify_all(prefix: str) -> list[Trigger]:
     """
     config = load_config()
     raw = _norm(TAG_RE.sub("", prefix or ""))
-    compound = config["compounds"].get(raw)
+    compound = compound_for(raw, config)
     if compound:
         out = []
         for part in compound["parts"]:
@@ -285,6 +331,23 @@ def classify_all(prefix: str) -> list[Trigger]:
     return [t] if t is not None else []
 
 
+def compound_for(raw: str, config: dict | None = None) -> dict | None:
+    """The compound entry for a printed prefix, by name or by digest.
+
+    A trigger name - "When Revealed/Defeated" - is functional
+    identification and is keyed literally. A whole printed ability is
+    FFG's prose, so it is keyed by digest instead: 21147 Hela's Crown's
+    malformed bold tag swallows its entire ability text, and this
+    repository ships no card text.
+    """
+    config = config if config is not None else load_config()
+    compounds = config["compounds"]
+    hit = compounds.get(raw)
+    if hit is not None:
+        return hit
+    return compounds.get(f"digest:{digest(raw)}")
+
+
 def is_bolded_prose(prefix: str) -> bool:
     """A bold span too long to be a trigger.
 
@@ -296,7 +359,7 @@ def is_bolded_prose(prefix: str) -> bool:
     config = load_config()
     raw = _norm(TAG_RE.sub("", prefix or ""))
     return (len(raw) > config["max_prefix_chars"]
-            and raw not in config["compounds"])
+            and compound_for(raw, config) is None)
 
 
 def is_known_non_trigger(prefix: str) -> bool:
@@ -343,8 +406,7 @@ def explain(conn, trigger: str) -> dict:
         "aliased_from": trigger if _norm(trigger) in config["aliases"] else None,
         "resolves_before": before,
         "resolves_after": after,
-        "tie_breaks": [dict(tb, rr_page=page(conn, tb["rr_entry"]))
-                       for tb in config["tie_breaks"]],
+        "tie_breaks": tie_breaks(conn, config),
         "cards": _cards_with(conn, t.canonical) if conn is not None else [],
     }
 
@@ -582,10 +644,9 @@ def handle(args) -> int:
         return _refuse(conn, problems)
 
     rows = chart(conn)
-    tie_breaks = [dict(tb, rr_page=page(conn, tb["rr_entry"]))
-                  for tb in config["tie_breaks"]]
+    refinements = tie_breaks(conn, config)
     if args.json:
-        emit({"chart": rows, "tie_breaks": tie_breaks,
+        emit({"chart": rows, "tie_breaks": refinements,
               "source": dict(config["chart_source"],
                              rr_page=page(conn,
                                           config["chart_source"]["rr_entry"]))},
@@ -601,7 +662,9 @@ def handle(args) -> int:
         indent = "   " if r["sub"] else ""
         print(f"  {indent}{label:<4} {r['text']}")
     print("\nTie-breaks and refinements:")
-    for tb in tie_breaks:
-        print(f"  - {tb['rule'].strip()}")
+    for tb in refinements:
+        print(f"  - {tb['about']}")
+        if tb["text"]:
+            print(f"    {' '.join(tb['text'].split())}")
         print(f"    {cite(conn, tb['rr_entry'])}")
     return 0

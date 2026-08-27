@@ -31,9 +31,9 @@ out_of_deck:
     - identity: valk
       cards: ["25002"]             # Death-Glow
       note: >-
-        Brunnhilde's setup text names "Death Glow"; the card is named
-        "Death-Glow". Resolution cannot be by exact name match, which is
-        why the audit reports for review rather than resolving.
+        Brunnhilde's setup text names the card without its hyphen; the
+        card itself carries one. Resolution cannot be by exact name match,
+        which is why the audit reports for review rather than resolving.
         NOTE the identity key is `valk`, not `valkyrie` - a wrong key here
         matches nothing and fails silently.
 
@@ -62,8 +62,9 @@ out_of_deck:
     - identity: ironheart
       reason: identity_grouping
       note: >-
-        "Set your other identities aside" refers to her other identity
-        cards, which identity grouping already keeps out of the deck.
+        Her setup line about setting other identities aside refers to her
+        other identity cards, which identity grouping already keeps out of
+        the deck.
 
 # Hero-specific deckbuilding overrides (spec §10 does not cover these).
 #
