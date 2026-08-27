@@ -193,3 +193,67 @@ def deck_cards(conn, scenario: Scenario, *, added: int = 0) -> list[dict]:
         f"ORDER BY c.set_code, c.code", codes)]
     backs = back_faces(conn)
     return [r for r in rows if r["code"] not in backs]
+
+
+def _by_type(cards: list[dict]) -> dict[str, dict]:
+    from collections import defaultdict
+
+    out: dict[str, dict] = defaultdict(
+        lambda: {"copies": 0, "rows": 0, "cards": []})
+    for c in cards:
+        entry = out[c["type_code"]]
+        entry["copies"] += c["quantity"]
+        entry["rows"] += 1
+        entry["cards"].append({"code": c["code"], "name": c["name"],
+                               "quantity": c["quantity"]})
+    return {k: dict(v) for k, v in sorted(out.items())}
+
+
+def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
+    """What a scenario's encounter deck contains, with the cards behind it.
+
+    Two sizes, not one. `deck_size` counts everything the deck will hold
+    over a game; `opening_deck_size` excludes the cards that begin in play
+    and only cycle in later. Reporting a single number would be wrong for
+    one of the two questions a player actually asks, and there is no way
+    to tell from the number which one it answered.
+    """
+    from collections import Counter
+
+    cards = deck_cards(conn, scenario, added=added)
+    size = sum(c["quantity"] for c in cards)
+    cycling = [c for c in cards if c["role"] != "deck"]
+
+    boost_total = sum((c.get("boost") or 0) * c["quantity"] for c in cards)
+    histogram: Counter = Counter()
+    by_set: Counter = Counter()
+    for c in cards:
+        histogram[c.get("boost") or 0] += c["quantity"]
+        by_set[c["set_code"]] += c["quantity"]
+
+    return {
+        "scenario": scenario.scenario_set,
+        "modulars": scenario.modulars,
+        "modular_kind": scenario.modular_kind,
+        "difficulty": scenario.difficulty,
+        "players": scenario.players,
+        "deck_size": size,
+        "opening_deck_size": size - sum(c["quantity"] for c in cycling),
+        # Named, not just subtracted: three cards corpus-wide, and a
+        # reader who sees the two sizes differ deserves to know which.
+        "cycles_in": [{"code": c["code"], "name": c["name"],
+                       "quantity": c["quantity"]} for c in cycling],
+        "boost": {
+            # Quantity-weighted over the WHOLE deck: a card with no boost
+            # value has zero boost icons and stays in the denominator.
+            "mean": (boost_total / size) if size else 0.0,
+            "total": boost_total,
+            "over": size,
+            "histogram": dict(sorted(histogram.items())),
+            # Counted, never averaged (§4.4).
+            "star_copies": sum(c["quantity"] for c in cards
+                               if c.get("boost_star")),
+        },
+        "by_type": _by_type(cards),
+        "by_set": dict(by_set),
+    }

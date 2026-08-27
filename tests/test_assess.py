@@ -222,6 +222,84 @@ def test_a_modular_set_is_not_a_scenario(tmp_path):
         assess.resolve(c, "exp_kang")
 
 
+# --- aggregation (plan Task 6) ---------------------------------------
+
+def test_boost_mean_is_quantity_weighted(conn):
+    """Stampede x3 boost 1 and Charge x2 boost 2 give (3 + 4)/5, not the
+    row mean of 1.5. A mean over distinct rows is not the expected boost
+    of a card the player draws (§4.5)."""
+    got = assess.profile(conn, assess.resolve(conn, "rhino", modular=[]))
+    assert got["deck_size"] == 6
+    assert round(got["boost"]["mean"], 3) == round((3 * 1 + 2 * 2 + 1) / 6, 3)
+
+
+def test_a_card_with_no_boost_counts_as_zero_not_as_missing(conn):
+    """§4.3: absent means zero boost icons, measured flat across seven
+    years of releases. Excluding those cards from the denominator inflates
+    the mean."""
+    conn.execute(
+        "INSERT INTO cards (code, name, type_code, set_code, quantity, boost, "
+        "text, traits, is_reprint, canonical_code, raw) VALUES "
+        "('t9','Quiet','treachery','rhino',1,NULL,'','',0,'t9','{}')")
+    conn.execute("INSERT INTO encounter_role (code, role, returns_to_deck, "
+                 "decided_by) VALUES ('t9','deck',1,'test')")
+    conn.commit()
+    got = assess.profile(conn, assess.resolve(conn, "rhino", modular=[]))
+    assert got["deck_size"] == 7
+    assert round(got["boost"]["mean"], 3) == round((3 + 4 + 1) / 7, 3)
+
+
+def test_the_histogram_sums_to_the_deck_size(conn):
+    got = assess.profile(conn, assess.resolve(conn, "rhino", modular=[]))
+    assert sum(got["boost"]["histogram"].values()) == got["deck_size"]
+
+
+def test_boost_star_is_counted_never_averaged(conn):
+    """§4.4: the star is an additional icon with a card-specific effect,
+    not a numeric value. 134 cards carry both."""
+    conn.execute("UPDATE cards SET boost_star = 1 WHERE code = 'a1'")
+    conn.commit()
+    got = assess.profile(conn, assess.resolve(conn, "rhino", modular=[]))
+    assert got["boost"]["star_copies"] == 2       # Charge x2
+    assert round(got["boost"]["mean"], 3) == round((3 * 1 + 2 * 2 + 1) / 6, 3)
+
+
+def test_every_number_can_name_its_cards(conn):
+    """§8: so the model can cite rather than assert."""
+    got = assess.profile(conn, assess.resolve(conn, "rhino", modular=[]))
+    assert got["by_type"]["treachery"]["cards"]
+
+
+def test_the_denominator_is_reported_with_the_mean(conn):
+    """§8: reported with the deck size it is drawn over, so the reader can
+    see the denominator."""
+    got = assess.profile(conn, assess.resolve(conn, "rhino", modular=[]))
+    assert got["boost"]["over"] == got["deck_size"]
+
+
+def test_the_opening_deck_is_reported_apart_from_what_cycles_in(tmp_path):
+    """The [[Setting]] environments start in play and rejoin the deck when
+    another is revealed. They belong in the composition, but a player
+    shuffling their opening deck does not hold them. One number cannot say
+    both, so `profile` reports two."""
+    c = _mkdb(
+        tmp_path,
+        sets=[("v", "V", "villain"), ("standard", "Standard", "standard")],
+        cards=[("m1", "A Scheme", "main_scheme", "v", 1, None, "", "", None,
+                0),
+               ("t1", "Thing", "treachery", "v", 2, 1, "", "", None, 0),
+               ("e1", "The Savage Land", "environment", "v", 1, 3, "", "",
+                None, 0)],
+        roles=[("m1", "starts_in_play", 0), ("t1", "deck", 1),
+               ("e1", "starts_in_play", 1)],
+        modulars=[("v", "prescribed", None)])
+    got = assess.profile(c, assess.resolve(c, "v"))
+    assert got["deck_size"] == 3
+    assert got["opening_deck_size"] == 2
+    assert got["cycles_in"] == [{"code": "e1", "name": "The Savage Land",
+                                 "quantity": 1}]
+
+
 # --- real-corpus gates -----------------------------------------------
 
 @pytest.mark.integration
