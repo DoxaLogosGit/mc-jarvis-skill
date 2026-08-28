@@ -13,9 +13,10 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from . import paths
 
 SKILL_NAME = "mc-jarvis"
-SKILL_SOURCE = Path(__file__).parent / "_bundled" / "skill" / SKILL_NAME
+SKILL_SOURCE = paths.bundled("skill", SKILL_NAME)
 
 # Three workspace directories cover four harnesses: `.agents` is the
 # vendor-neutral path pi and opencode read; Claude Code and Codex each

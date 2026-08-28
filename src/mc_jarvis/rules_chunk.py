@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from . import paths
 
 # The Rules Reference prints its own version on page 1, next to the
 # summary of notable changes.
@@ -46,7 +47,7 @@ def verify_version(pages: list[str], expected: str | None) -> str | None:
     return found
 
 
-GLYPHS_PATH = Path(__file__).parent / "_bundled" / "glyphs.yaml"
+GLYPHS_PATH = paths.bundled("glyphs.yaml")
 PUA = re.compile(r"[\ue000-\uf8ff]")
 
 # "Term ......... 14", and "Term ..... 26, 27" for entries spanning

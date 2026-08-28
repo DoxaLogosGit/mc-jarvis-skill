@@ -8,8 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from . import paths
 
-CONFIG_PATH = Path(__file__).parent / "_bundled" / "legality.yaml"
+CONFIG_PATH = paths.bundled("legality.yaml")
 
 # Prose on an identity card implying a card starts outside the deck.
 SETUP_PATTERNS = [

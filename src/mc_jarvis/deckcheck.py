@@ -205,8 +205,9 @@ from pathlib import Path
 import yaml
 
 from . import deckrules, identity as identity_mod
+from . import paths
 
-CONFIG_PATH = Path(__file__).parent / "_bundled" / "legality.yaml"
+CONFIG_PATH = paths.bundled("legality.yaml")
 
 
 def load_config(path: Path | None = None) -> dict:

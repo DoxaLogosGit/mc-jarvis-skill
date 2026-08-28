@@ -16,8 +16,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from . import paths
 
-CONFIG_PATH = Path(__file__).parent / "_bundled" / "timing.yaml"
+CONFIG_PATH = paths.bundled("timing.yaml")
 _CONFIG: dict | None = None
 
 TAG_RE = re.compile(r"<[^>]+>")
