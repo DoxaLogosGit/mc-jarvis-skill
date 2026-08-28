@@ -807,6 +807,52 @@ therefore a per-command decision, not one switch: it is meaningless on
 `doctor`, `status`, `update`, `install-skill`, `timing`, and
 `rules search`. That list is part of the collection task's scope.
 
+### 10.2 Campaign-earned cards
+
+Raised 2026-08-27: campaign rewards go into a deck but are not available
+in ordinary deckbuilding, and the copy rules looked as though they might
+differ. Measured, most of that worry dissolves and one real limit remains.
+
+**There is a structured marker.** `faction_code = 'campaign'` covers
+**146 cards across 15 sets** — the Market, the Galaxy's Most Wanted ship
+pool, the Mutant Genesis and Age of Apocalypse campaign sets, the
+S.H.I.E.L.D. tech upgrades. No hand-maintained list is needed, which is
+the opposite of the Rogue's-Touched case in §10.
+
+Of those 146:
+
+| | Count | Already handled by |
+|---|---|---|
+| Encounter-side (side schemes, minions, obligations, treacheries) | 51 | the type rule |
+| Permanent or `hero_special` | 27 | `out_of_deck` |
+| **Genuinely enter a player deck** | **68** | nothing yet |
+
+**The copy rules are NOT different, which was the fear.** `deck_limit`
+carries the right value on every one — Shawarma 3, Pouches and Desperate
+Measures 4, Norn Stone 4, the other 65 at 1 — and **zero campaign cards
+violate `deck_limit <= quantity`**, the invariant the whole no-copy-
+arithmetic model rests on (§10). `check_copies` therefore needs no
+special case.
+
+**What is not determinable is whether the player has EARNED them.** That
+lives in the campaign book, not the card data, and marvelcdb does not
+record it either — a decklist carries slots, not campaign progress. So
+`deck check` **reports** campaign cards and does not judge them:
+
+- Passing silently would imply the tool verified something it cannot see.
+- Failing would reject a perfectly legal campaign deck.
+- A `--campaign` flag would make the player declare a mode to get a
+  verdict the tool still could not actually check.
+
+`--owned` does **not** hide them: they ship in a box the player owns, so
+pack ownership answers "do I physically have this card" correctly.
+Earned-ness is a separate axis and this project does not model it.
+
+**Frequency, measured:** **0 of 156** published decks sampled across six
+`by_date` days contain a single campaign card. So this does not
+contaminate the regression corpus's rejection rate, and it is rare in
+practice.
+
 ## 11. Init and update
 
 ### `mc-jarvis init`
