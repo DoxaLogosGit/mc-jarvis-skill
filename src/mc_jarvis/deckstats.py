@@ -70,7 +70,7 @@ def profile(conn, deck) -> dict:
         # still counted toward the minimum (§10.3).
         "deckbuilding_size": built,
         "cost_curve": dict(sorted(curve.items())),
-        "mean_cost": (cost_total / costed) if costed else 0.0,
+        "mean_cost": round(cost_total / costed, 2) if costed else 0.0,
         # Reported with the mean so the denominator is visible: the cards
         # with no cost are not in it.
         "over": costed,

@@ -75,9 +75,26 @@ def deck_id(ref: str) -> str | None:
 
 
 def _get(url: str):
+    """Fetch and decode, turning every transport failure into a DeckError.
+
+    marvelcdb answers an unknown deck id with a NON-JSON body rather than
+    a 404, so `json.loads` raises where an `OSError` handler would never
+    see it. Decoding here keeps that from reaching the user as a
+    traceback.
+    """
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read())
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = response.read()
+    except OSError as exc:
+        raise DeckError(f"cannot reach marvelcdb: {exc}") from exc
+    try:
+        return json.loads(body)
+    except ValueError:
+        raise DeckError(
+            "marvelcdb did not return a deck. It answers an unknown id with "
+            "a non-JSON page rather than an error, so this usually means the "
+            "deck does not exist or is not public.") from None
 
 
 def fetch_by_date(day: str) -> list[dict]:
@@ -166,3 +183,60 @@ def corpus(*, exclude_legacy: bool = True):
             if exclude_legacy and meta.get("format") == "legacy":
                 continue
             yield payload
+
+
+def _print_findings(deck, findings) -> None:
+    from . import deckcheck
+
+    rules = [f for f in findings if f.kind == "rule"]
+    notes = [f for f in findings if f.kind == "note"]
+    print(f"{deck.name} - {deck.hero_name}, "
+          f"{'/'.join(deck.aspects) or 'no aspect recorded'}")
+    for finding in rules:
+        print(f"  {'ok  ' if finding.ok else 'FAIL'} {finding.rule}: "
+              f"{finding.detail}")
+        if finding.rr_entry and not finding.ok:
+            print(f"       see: mc-jarvis rules show {finding.rr_entry!r}")
+    for finding in notes:
+        print(f"  note {finding.rule}: {finding.detail}")
+    print(f"\n  {'legal' if deckcheck.verdict(findings) else 'NOT legal'}"
+          f" by the rules this tool encodes")
+
+
+def handle(args) -> int:
+    from .cards import _open
+    from .cli import emit
+
+    conn = _open()
+    try:
+        deck = fetch(conn, args.deck)
+    except DeckError as exc:
+        print(f"mc-jarvis deck: {exc}")
+        return 1
+
+    if args.deck_cmd == "fetch":
+        emit({"id": deck.id, "name": deck.name, "hero": deck.hero_name,
+              "aspects": deck.aspects, "format": deck.deck_format,
+              "cards": sum(deck.slots.values()), "slots": deck.slots,
+              "unknown": deck.unknown}, as_json=args.json)
+        if not args.json and deck.unknown:
+            print(f"  {sum(deck.unknown.values())} card(s) are not in this "
+                  f"index: {', '.join(sorted(deck.unknown))}")
+        return 0
+
+    if args.deck_cmd == "stats":
+        from . import deckstats
+
+        emit(deckstats.profile(conn, deck), as_json=args.json)
+        return 0
+
+    from . import deckcheck
+
+    findings = deckcheck.check(conn, deck)
+    legal = deckcheck.verdict(findings)
+    if args.json:
+        emit({"deck": deck.name, "hero": deck.hero_name, "legal": legal,
+              "findings": [vars(f) for f in findings]}, as_json=True)
+    else:
+        _print_findings(deck, findings)
+    return 0 if legal else 1

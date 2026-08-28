@@ -184,3 +184,36 @@ def test_a_real_deck_fetches_by_id(real_index):
     deck = deckfetch.fetch(real_index, "64331")
     assert deck.hero_name
     assert sum(deck.slots.values()) >= 40
+
+
+def test_a_non_json_response_is_a_clear_error_not_a_traceback(monkeypatch):
+    """marvelcdb answers an unknown deck id with a NON-JSON body rather
+    than a 404, so `json.loads` raises where an `OSError` handler never
+    sees it. `mc-jarvis deck check 99999999` printed a traceback."""
+    monkeypatch.setattr(deckfetch, "_get", deckfetch._get)
+    import urllib.request
+
+    class _Fake:
+        def read(self):
+            return b"<html>not a deck</html>"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Fake())
+    with pytest.raises(deckfetch.DeckError, match="does not exist"):
+        deckfetch._get("https://marvelcdb.com/api/public/decklist/99999999")
+
+
+def test_an_unreachable_host_is_a_clear_error_too(monkeypatch):
+    import urllib.request
+
+    def _boom(*a, **k):
+        raise OSError("Name or service not known")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    with pytest.raises(deckfetch.DeckError, match="cannot reach marvelcdb"):
+        deckfetch._get("https://marvelcdb.com/api/public/decklist/1")

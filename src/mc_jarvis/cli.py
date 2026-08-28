@@ -90,6 +90,15 @@ def build_parser() -> argparse.ArgumentParser:
     rul.add_argument("text", nargs="?", default=None,
                      help="search the rulings instead of listing them")
 
+    deck_p = _leaf(sub, "deck", "import, validate and describe a deck")
+    deck_sub = deck_p.add_subparsers(dest="deck_cmd", required=True)
+    for verb, help_ in (("fetch", "normalise a deck"),
+                        ("check", "legality, rule by rule"),
+                        ("stats", "curves, mixes and densities")):
+        leaf = _leaf(deck_sub, verb, help_)
+        leaf.add_argument(
+            "deck", help="a marvelcdb id, a marvelcdb URL, or a JSON file")
+
     col = _leaf(sub, "collection", "packs you own")
     col.add_argument("collection_cmd", choices=["set", "show"])
     col.add_argument("packs", nargs="*", help="pack codes, for `set`")
@@ -187,6 +196,9 @@ def _dispatch(name: str, args) -> int:
     if name == "rulings":
         from . import rulings
         return rulings.handle(args)
+    if name == "deck":
+        from . import deckfetch
+        return deckfetch.handle(args)
     if name == "collection":
         from . import collection
         return collection.handle(args)
