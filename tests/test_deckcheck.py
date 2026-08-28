@@ -209,3 +209,162 @@ def test_a_note_never_changes_the_verdict(tmp_path):
         deckcheck.Finding(rule="deck_size", ok=True, detail=""),
         deckcheck.Finding(rule="campaign", ok=True, detail="", kind="note"),
     ])
+
+
+# --- aspects and uniqueness (Task 4) ---------------------------------
+
+ASPECT_CONFIG = {
+    "deck_rules": {
+        "minimum_size": 40, "rr_entry": "Deck",
+        "aspects": {"default_max": 1, "rr_entry": "Aspect",
+                    "always_allowed": ["basic", "hero", "campaign"]},
+    },
+    "deckbuilding_overrides": [
+        {"identity": "spider_woman", "aspects": 2, "equal_aspects": True}],
+}
+
+
+def _factions(conn, pairs):
+    conn.executemany("UPDATE cards SET faction_code = ? WHERE code = ?",
+                     [(f, c) for c, f in pairs])
+    conn.commit()
+
+
+def _identity(conn, key, code):
+    conn.execute("INSERT INTO identity_faces (identity_key, code) "
+                 "VALUES (?, ?)", (key, code))
+    conn.commit()
+
+
+def test_a_single_aspect_deck_passes(tmp_path):
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("j1", "J", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("j1", "justice")])
+    assert deckcheck.check_aspects(conn, _deck(slots={"j1": 3}),
+                                   ASPECT_CONFIG).ok
+
+
+def test_an_off_aspect_card_fails(tmp_path):
+    """The hero sits in its OWN set, as every hero does in the real data -
+    74 hero sets, one per identity. A fixture that puts the hero and an
+    ordinary card in one set makes every card look signature."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("a1", "A", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("a1", "aggression")])
+    finding = deckcheck.check_aspects(conn, _deck(slots={"a1": 3}),
+                                      ASPECT_CONFIG)
+    assert not finding.ok
+    assert "A" in finding.cards
+
+
+def test_basic_cards_are_always_legal(tmp_path):
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("b1", "B", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("b1", "basic")])
+    assert deckcheck.check_aspects(conn, _deck(slots={"b1": 3}),
+                                   ASPECT_CONFIG).ok
+
+
+def test_spider_womans_own_aspect_cards_are_not_off_aspect(tmp_path):
+    """SHE IS THE ONLY HERO THIS HAPPENS TO. Of 685 player cards across 74
+    hero sets, 681 are `faction: hero`; the other four are hers - Venom
+    Blast (aggression), Inconspicuous (justice), Pheromones (leadership),
+    Contaminant Immunity (protection), one per aspect by design.
+
+    A Justice/Leadership Spider-Woman auto-includes the aggression and
+    protection ones. Judging by faction alone fails her deck for holding
+    cards she cannot remove. Signature is decided by SET MEMBERSHIP, not
+    faction."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Spider-Woman", "hero", "sw", None, 1),
+                  ("04035", "Venom Blast", "event", "sw", 1, 1),
+                  ("04037", "Contaminant Immunity", "event", "sw", 1, 1),
+                  ("j1", "J", "ally", "core", 3, 3),
+                  ("l1", "L", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("04035", "aggression"),
+                     ("04037", "protection"), ("j1", "justice"),
+                     ("l1", "leadership")])
+    _identity(conn, "spider_woman", "h1")
+    deck = _deck(hero_code="h1", aspects=["justice", "leadership"],
+                 slots={"04035": 1, "04037": 1, "j1": 3, "l1": 3})
+    assert deckcheck.check_aspects(conn, deck, ASPECT_CONFIG).ok
+
+
+def test_two_aspects_fail_unless_the_identity_allows_it(tmp_path):
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1)])
+    _factions(conn, [("h1", "hero")])
+    finding = deckcheck.check_aspects(
+        conn, _deck(aspects=["justice", "leadership"]), ASPECT_CONFIG)
+    assert not finding.ok
+    assert "2 aspects" in finding.detail
+
+
+def test_an_equal_aspect_identity_needs_the_counts_to_match(tmp_path):
+    """Spider-Woman's card requires an EQUAL number from each chosen
+    aspect. An `aspects: 2` check alone passes a 3/1 split it forbids."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Spider-Woman", "hero", "sw", None, 1),
+                  ("j1", "J", "ally", "core", 3, 3),
+                  ("l1", "L", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("j1", "justice"), ("l1", "leadership")])
+    _identity(conn, "spider_woman", "h1")
+    deck = _deck(hero_code="h1", aspects=["justice", "leadership"],
+                 slots={"j1": 3, "l1": 1})
+    finding = deckcheck.check_aspects(conn, deck, ASPECT_CONFIG)
+    assert not finding.ok
+    assert "equal" in finding.detail
+
+
+def test_her_signature_cards_do_not_skew_the_equal_count(tmp_path):
+    """The second bug the same mistake produces: her justice and
+    leadership signature cards counted into the balance turn a genuine
+    3/3 into 4/4 - or mask a real imbalance, depending which aspects she
+    chose."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Spider-Woman", "hero", "sw", None, 1),
+                  ("04038", "Inconspicuous", "event", "sw", 1, 1),
+                  ("j1", "J", "ally", "core", 3, 3),
+                  ("l1", "L", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("04038", "justice"),
+                     ("j1", "justice"), ("l1", "leadership")])
+    _identity(conn, "spider_woman", "h1")
+    deck = _deck(hero_code="h1", aspects=["justice", "leadership"],
+                 slots={"04038": 1, "j1": 3, "l1": 3})
+    assert deckcheck.check_aspects(conn, deck, ASPECT_CONFIG).ok
+
+
+def test_a_deck_declaring_no_aspect_is_reported_not_assumed(tmp_path):
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1)])
+    _factions(conn, [("h1", "hero")])
+    assert not deckcheck.check_aspects(conn, _deck(aspects=[]),
+                                       ASPECT_CONFIG).ok
+
+
+def test_a_campaign_card_is_never_off_aspect(tmp_path):
+    """§10.2: earned rather than chosen, so aspect purity does not apply."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("21190", "Lady Sif", "ally", "mts", 1, 1)])
+    _factions(conn, [("h1", "hero"), ("21190", "campaign")])
+    assert deckcheck.check_aspects(conn, _deck(slots={"21190": 1}),
+                                   ASPECT_CONFIG).ok
+
+
+def test_unique_matching_runs_only_over_included_cards(tmp_path):
+    """The other half of the Sp//dr constraint: `check_unique` must read
+    `included`, never `deck.slots`."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "SP//dr Suit", "hero", "spdr", None, 1),
+                  ("s1", "SP//dr Suit", "support", "spdr", 1, 1)],
+                 out_of_deck=[("h1", "identity"), ("s1", "permanent")])
+    assert deckcheck.check_unique(conn, _deck(hero_code="h1",
+                                              slots={"s1": 1})).ok
+
+
+def test_check_runs_every_rule_and_carries_the_notes(tmp_path):
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("j1", "J", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("j1", "justice")])
+    findings = deckcheck.check(conn, _deck(slots={"j1": 3}), ASPECT_CONFIG)
+    assert {f.rule for f in findings} == {"deck_size", "deck_limit",
+                                          "aspects", "unique"}
+    assert not deckcheck.verdict(findings)      # 3 cards, minimum 40

@@ -89,6 +89,14 @@ def _build_card_titles(conn: sqlite3.Connection) -> None:
         "VALUES (?, ?, ?)", payload)
 
 
+def key_for_code(conn, code: str) -> str | None:
+    """The identity a card face belongs to, or None if it is not a face."""
+    row = conn.execute(
+        "SELECT identity_key FROM identity_faces WHERE code = ?",
+        (code,)).fetchone()
+    return row["identity_key"] if row else None
+
+
 def roles_for(conn, code: str) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {"title": set(), "subtitle": set(),
                                 "alter_ego": set()}

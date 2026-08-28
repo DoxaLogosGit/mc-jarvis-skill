@@ -160,3 +160,128 @@ def notes(conn, deck) -> list[Finding]:
         detail=f"{len(found)} campaign card(s) - {', '.join(found)}. Whether "
                f"you have earned these depends on campaign progress, which "
                f"this tool does not model and marvelcdb does not record.")]
+
+
+from pathlib import Path
+
+import yaml
+
+from . import deckrules, identity as identity_mod
+
+CONFIG_PATH = Path(__file__).parent / "_bundled" / "legality.yaml"
+
+
+def load_config(path: Path | None = None) -> dict:
+    return yaml.safe_load((path or CONFIG_PATH).read_text(encoding="utf-8"))
+
+
+def _signature_set(conn, hero_code: str) -> str | None:
+    """The set holding the hero's own cards.
+
+    Signature is decided by SET MEMBERSHIP, not faction. Spider-Woman is
+    the reason: of 685 player cards across 74 hero sets, 681 are
+    `faction: hero` and the other four are hers - one per aspect, by
+    design. Judging her by faction fails her deck for holding the two
+    off-aspect signature cards she cannot remove, and skews her
+    equal-aspect count with the two she can't remove either.
+    """
+    row = conn.execute("SELECT set_code FROM cards WHERE code = ?",
+                       (hero_code,)).fetchone()
+    return row["set_code"] if row else None
+
+
+def _aspect_cards(conn, deck) -> list[dict]:
+    """Included cards that are subject to aspect rules.
+
+    Signature cards are excluded by set membership before any faction is
+    read, which is what keeps Spider-Woman's four aspect-printed signature
+    cards out of both the purity check and the balance count.
+    """
+    cards = included(conn, deck)
+    if not cards:
+        return []
+    signature = _signature_set(conn, deck.hero_code)
+    marks = ",".join("?" * len(cards))
+    return [dict(r, quantity=cards[r["code"]]) for r in conn.execute(
+        f"SELECT code, name, faction_code, set_code FROM cards "
+        f"WHERE code IN ({marks})", list(cards))
+        if r["set_code"] != signature]
+
+
+def check_aspects(conn, deck, config) -> Finding:
+    """Aspect count, aspect purity, and the equal-split allowance."""
+    rules = config["deck_rules"]["aspects"]
+    entry = rules.get("rr_entry")
+    always = set(rules.get("always_allowed") or ())
+
+    if not deck.aspects:
+        return Finding(
+            rule="aspects", ok=False, rr_entry=entry,
+            detail="the deck declares no aspect, so purity cannot be "
+                   "checked - marvelcdb records it in `meta`, not from the "
+                   "cards")
+
+    key = identity_mod.key_for_code(conn, deck.hero_code)
+    override = deckrules.for_identity(conn, config, key) if key else None
+    allowed = (override or {}).get("aspects") or rules["default_max"]
+    if len(deck.aspects) > allowed:
+        return Finding(
+            rule="aspects", ok=False, rr_entry=entry,
+            detail=f"declares {len(deck.aspects)} aspects "
+                   f"({', '.join(deck.aspects)}) and {deck.hero_name} may "
+                   f"choose {allowed}")
+
+    chosen = set(deck.aspects)
+    rows = _aspect_cards(conn, deck)
+    off = [r["name"] for r in rows
+           if r["faction_code"] not in chosen | always]
+    if off:
+        return Finding(
+            rule="aspects", ok=False, rr_entry=entry, cards=sorted(set(off)),
+            detail=f"{len(off)} card(s) belong to no chosen aspect: "
+                   f"{', '.join(sorted(set(off))[:6])}")
+
+    # An identity that may take two aspects does not merely ALLOW them:
+    # Spider-Woman's card requires an equal number of cards from each, so
+    # an `aspects: 2` check on its own passes a split her card forbids.
+    if override and override.get("equal_aspects") and len(deck.aspects) > 1:
+        per = {a: 0 for a in deck.aspects}
+        for row in rows:
+            if row["faction_code"] in per:
+                per[row["faction_code"]] += row["quantity"]
+        if len(set(per.values())) > 1:
+            return Finding(
+                rule="aspects", ok=False, rr_entry=entry,
+                detail=f"{deck.hero_name} needs an equal number of cards "
+                       f"from each chosen aspect; this deck has "
+                       f"{', '.join(f'{a} {n}' for a, n in per.items())}")
+
+    return Finding(rule="aspects", ok=True, rr_entry=entry,
+                   detail=", ".join(deck.aspects))
+
+
+def check_unique(conn, deck) -> Finding:
+    """No two matching unique cards, over the INCLUDED cards only."""
+    codes = list(included(conn, deck)) + [deck.hero_code]
+    pairs = identity_mod.matching_pairs(conn, codes)
+    return Finding(
+        rule="unique", ok=not pairs,
+        detail=("; ".join(f"{a}/{b}" for a, b in pairs) if pairs
+                else "no unique clashes"),
+        cards=[c for pair in pairs for c in pair])
+
+
+def check(conn, deck, config: dict | None = None) -> list[Finding]:
+    """Every rule, in the order §10 requires.
+
+    Exclusion first - `included` is what every later check reads - then
+    size, copies, aspects and uniqueness. Notes come last and never
+    change the verdict.
+    """
+    config = config if config is not None else load_config()
+    key = identity_mod.key_for_code(conn, deck.hero_code)
+    override = deckrules.for_identity(conn, config, key) if key else None
+    return [check_size(conn, deck, config),
+            check_copies(conn, deck, override),
+            check_aspects(conn, deck, config),
+            check_unique(conn, deck)] + notes(conn, deck)
