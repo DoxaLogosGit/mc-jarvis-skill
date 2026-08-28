@@ -1,0 +1,211 @@
+"""Deck legality (spec §10, §10.1, §10.2)."""
+import pytest
+
+from mc_jarvis import deckcheck, deckfetch, index
+
+
+def _mkdb(tmp_path, cards, out_of_deck=()):
+    """cards: (code, name, type_code, pack, deck_limit, quantity)."""
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO cards (code, name, type_code, pack_code, deck_limit, "
+        "quantity, set_code, canonical_code, is_reprint, raw) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '{}')",
+        [(c[0], c[1], c[2], c[3], c[4], c[5], c[3], c[0]) for c in cards])
+    conn.executemany(
+        "INSERT INTO out_of_deck (code, mechanism, note) VALUES (?, ?, NULL)",
+        out_of_deck)
+    conn.commit()
+    return conn
+
+
+def _deck(**kw):
+    base = {"name": "D", "hero_code": "h1", "hero_name": "H",
+            "aspects": ["justice"], "slots": {}}
+    base.update(kw)
+    return deckfetch.Deck(**base)
+
+
+SIZE_CONFIG = {"deck_rules": {"minimum_size": 40, "rr_entry": "Deck"}}
+
+
+# --- exclusion -------------------------------------------------------
+
+def test_a_permanent_card_is_not_in_the_deck(tmp_path):
+    """A permanent upgrade left in the count inflates deck size and skews
+    every curve of a deck it was never part of."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "core", None, 1),
+                  ("c1", "Wolverine's Claws", "upgrade", "core", 1, 1),
+                  ("c2", "Aid", "ally", "core", 3, 3)],
+                 out_of_deck=[("c1", "permanent")])
+    deck = _deck(slots={"c1": 1, "c2": 3})
+    assert deckcheck.included(conn, deck) == {"c2": 3}
+    assert deckcheck.excluded(conn, deck) == {"c1": "permanent"}
+
+
+def test_a_card_the_data_does_not_mark_is_excluded_by_config(tmp_path):
+    """Rogue's Touched and Valkyrie's Death-Glow are structurally
+    indistinguishable from an ordinary signature upgrade - deck_limit 1,
+    quantity 1, permanent null, in the hero's own set. Only the config
+    entry catches them, and the setup audit is what keeps that entry
+    honest as new heroes ship."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Rogue", "hero", "rogue", None, 1),
+                  ("38002", "Touched", "upgrade", "rogue", 1, 1),
+                  ("c2", "Aid", "ally", "core", 3, 3)],
+                 out_of_deck=[("38002", "config")])
+    assert deckcheck.included(conn, _deck(slots={"38002": 1, "c2": 3})) == {
+        "c2": 3}
+
+
+def test_exclusion_happens_before_unique_matching(tmp_path):
+    """Sp//dr, named in §10. Her set has `SP//dr Suit` as a hero face AND
+    a permanent support of the same title, both in play at once. Unique
+    matching would reject the deck - except the permanent card was never
+    in it. Reversing the order makes her fail her own legality check."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "SP//dr Suit", "hero", "spdr", None, 1),
+                  ("s1", "SP//dr Suit", "support", "spdr", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("h1", "identity"), ("s1", "permanent")])
+    deck = _deck(hero_code="h1", slots={"s1": 1, "a1": 3})
+    assert deckcheck.included(conn, deck) == {"a1": 3}
+
+
+def test_a_double_sided_card_is_one_card_not_two(tmp_path):
+    """§10.1: 19 player-card code stems are genuine double-sided faces -
+    Psi-Knife, Odin, the four Basic upgrades. `back_link` marks them, the
+    same discriminator `assess.back_faces` already uses for encounter
+    cards. Counting both faces inflates the deck by one each."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "core", None, 1),
+                  ("41002a", "Psi-Knife", "upgrade", "psy", 1, 1),
+                  ("41002b", "Psi-Knife", "upgrade", "psy", 1, 1)])
+    conn.execute("UPDATE cards SET back_link = '41002b' WHERE code = '41002a'")
+    conn.commit()
+    assert deckcheck.included(
+        conn, _deck(slots={"41002a": 1, "41002b": 1})) == {"41002a": 1}
+
+
+def test_a_resource_variant_is_not_a_back_face(tmp_path):
+    """The other side of the same rule, and why `back_link` rather than a
+    code-suffix pattern: the Wakanda Forever! variants share a stem and
+    are four separate cards."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "core", None, 1),
+                  ("01043a", "Wakanda Forever!", "event", "core", 1, 1),
+                  ("01043b", "Wakanda Forever!", "event", "core", 1, 1)])
+    assert deckcheck.included(
+        conn, _deck(slots={"01043a": 1, "01043b": 1})) == {"01043a": 1,
+                                                           "01043b": 1}
+
+
+# --- size and copies -------------------------------------------------
+
+def test_deck_size_counts_included_cards_only(tmp_path):
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "core", None, 1),
+                  ("p1", "Perm", "upgrade", "core", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("p1", "permanent")])
+    finding = deckcheck.check_size(conn, _deck(slots={"p1": 1, "a1": 3}),
+                                   SIZE_CONFIG)
+    assert not finding.ok
+    assert "3" in finding.detail
+
+
+def test_a_null_deck_limit_falls_back_to_quantity(tmp_path):
+    """§10: `deck_limit` is null on 120 player cards. Null is not
+    "unlimited" - without the fallback the validator has no cap at all and
+    accepts arbitrary quantities of a signature card."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1),
+                            ("s1", "Signature", "ally", "core", None, 2)])
+    assert deckcheck.check_copies(conn, _deck(slots={"s1": 2})).ok
+    bad = deckcheck.check_copies(conn, _deck(slots={"s1": 3}))
+    assert not bad.ok
+    assert "Signature" in bad.detail
+
+
+def test_an_identity_override_can_lower_the_cap(tmp_path):
+    """Warlock's `max_copies_non_signature: 1` binds BELOW `deck_limit`
+    for every card outside his own set. Reading the column alone accepts
+    a deck his own card forbids."""
+    conn = _mkdb(tmp_path, [("h1", "Warlock", "hero", "warlock", None, 1),
+                            ("a1", "Ally", "ally", "core", 3, 3)])
+    override = {"max_copies_non_signature": 1, "set_code": "warlock"}
+    assert deckcheck.check_copies(conn, _deck(slots={"a1": 3})).ok
+    assert not deckcheck.check_copies(conn, _deck(slots={"a1": 3}),
+                                      override).ok
+
+
+def test_the_four_wakanda_forever_variants_are_four_slots(tmp_path):
+    """§10.1: §10 calls 01043a-d a multi-part card whose faces should
+    collapse. They are four RESOURCE VARIANTS - energy, mental, physical,
+    wild - each separately deck-legal, with limits 1, 1, 1 and 2. Five
+    copies, not one. Collapsing them undercounts a legal deck by four."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "core", None, 1)]
+                 + [(f"01043{s}", "Wakanda Forever!", "event", "core", lim,
+                     lim) for s, lim in
+                    (("a", 1), ("b", 1), ("c", 1), ("d", 2))])
+    deck = _deck(slots={"01043a": 1, "01043b": 1, "01043c": 1, "01043d": 2})
+    assert sum(deckcheck.included(conn, deck).values()) == 5
+    assert deckcheck.check_copies(conn, deck).ok
+
+
+def test_a_deck_with_unknown_slots_says_so(tmp_path):
+    """A deck whose size fails because three cards could not be resolved
+    must not report "37 cards, needs 40" as if the player built it wrong."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1)])
+    finding = deckcheck.check_size(conn, _deck(unknown={"99999": 3}),
+                                   SIZE_CONFIG)
+    assert "99999" in finding.detail
+
+
+# --- campaign cards (§10.2) ------------------------------------------
+
+def test_campaign_cards_are_noted_not_judged(tmp_path):
+    """§10.2. Whether the player EARNED these lives in the campaign book,
+    not the card data, and marvelcdb records slots rather than campaign
+    progress. Passing silently would imply the tool checked something it
+    cannot see; failing would reject a legal campaign deck."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1),
+                            ("21190", "Lady Sif", "ally", "mts", 1, 1),
+                            ("a1", "Ally", "ally", "core", 3, 3)])
+    conn.execute("UPDATE cards SET faction_code = 'campaign' "
+                 "WHERE code = '21190'")
+    conn.commit()
+    notes = deckcheck.notes(conn, _deck(slots={"21190": 1, "a1": 3}))
+    assert len(notes) == 1
+    assert notes[0].kind == "note"
+    assert "Lady Sif" in notes[0].detail
+    assert notes[0].ok
+
+
+def test_a_deck_with_no_campaign_cards_gets_no_note(tmp_path):
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1),
+                            ("a1", "Ally", "ally", "core", 3, 3)])
+    assert deckcheck.notes(conn, _deck(slots={"a1": 3})) == []
+
+
+def test_a_campaign_card_still_obeys_its_deck_limit(tmp_path):
+    """§10.2 measured that the copy rules are NOT different: `deck_limit`
+    is right on every campaign card and none violates
+    `deck_limit <= quantity`. Shawarma's limit of 3 binds normally."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1),
+                            ("21183", "Shawarma", "resource", "mts", 3, 4)])
+    conn.execute("UPDATE cards SET faction_code = 'campaign' "
+                 "WHERE code = '21183'")
+    conn.commit()
+    assert deckcheck.check_copies(conn, _deck(slots={"21183": 3})).ok
+    assert not deckcheck.check_copies(conn, _deck(slots={"21183": 4})).ok
+
+
+def test_a_note_never_changes_the_verdict(tmp_path):
+    """The whole point: `legal` is computed over rules, and a note is not
+    a rule. A campaign deck that is otherwise fine must not fail."""
+    assert deckcheck.verdict([
+        deckcheck.Finding(rule="deck_size", ok=True, detail=""),
+        deckcheck.Finding(rule="campaign", ok=True, detail="", kind="note"),
+    ])
