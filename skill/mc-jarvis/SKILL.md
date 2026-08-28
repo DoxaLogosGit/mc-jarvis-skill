@@ -64,6 +64,7 @@ default when you are quoting to the user.
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
 | the game round | `mc-jarvis timing --round` |
 | rulings the rulebook lacks | `mc-jarvis rulings [<text>]` |
+| packs you own | `mc-jarvis collection set <pack>...` / `mc-jarvis collection show` |
 | environment problems | `mc-jarvis doctor` |
 | index age, version, counts | `mc-jarvis status` |
 

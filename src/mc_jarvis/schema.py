@@ -125,6 +125,15 @@ CREATE TABLE IF NOT EXISTS card_traits (
 -- the RR's own `Keywords` entry enumerates 24 and omits `vulnerable`,
 -- while the standalone entries carry `vulnerable` and omit `Form` and
 -- `Victory`. A hard-coded list missed `vulnerable` for a year.
+-- Packs the player owns. Ownership is BINARY (spec §10): `deck_limit`
+-- never exceeds `quantity` across all 1,607 player cards, so owning a
+-- pack means owning enough copies to play any card in it to its limit.
+-- There is no copy arithmetic anywhere in this system, and the intuitive
+-- "count what I own against what I want" model is the wrong one.
+CREATE TABLE IF NOT EXISTS owned_packs (
+    pack_code TEXT PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS rules_keywords (
     keyword  TEXT PRIMARY KEY,
     -- `enumerated` | `entry` | `both`, so a keyword that appears in only
