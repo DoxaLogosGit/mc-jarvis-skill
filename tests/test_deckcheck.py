@@ -437,6 +437,12 @@ def test_a_set_aside_card_without_the_keyword_does_count(tmp_path):
 def test_published_decks_are_overwhelmingly_legal(real_index):
     """§10's only stated mitigation for the highest-risk file here.
 
+    A REGRESSION SIGNAL, not ground truth. marvelcdb is a community
+    deck-builder, not a rules enforcer: it does not block an illegal deck
+    from being published, and players can play whatever they like. So a
+    nonzero rate is expected, and the rulebook wins whenever the two
+    disagree (§10.2a). Never tune `legality.yaml` to lower this number.
+
     The first run rejected 14.1%, and every point of the drop to 4.5% was
     a real defect - see §10.3, which records all five and the
     card-by-card reading of what remains.
@@ -564,3 +570,22 @@ def test_a_tiny_deck_declaration_is_taken_at_face_value(tmp_path):
                                                   slots={"a1": 2}),
                                       ASPECT_CONFIG)
     assert not finding.ok
+
+
+def test_a_linked_card_is_not_in_the_deck_either(tmp_path):
+    """RR p.27, `Linked (Card Title)` - the same exemption `Permanent`
+    gets on p.32, in the same words: the card cannot be in a deck and does
+    not count toward the size limits at either end.
+
+    NO corpus deck lists one, so the published decks could never have
+    taught this rule. marvelcdb is a community deck-builder, not a rules
+    enforcer; the rulebook is the authority and the corpus is only a
+    regression signal."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "ownset", None, 1),
+                  ("49033", "Surge", "ally", "core", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("49033", "linked")])
+    deck = _deck(slots={"49033": 1, "a1": 3})
+    assert deckcheck.deckbuilding_cards(conn, deck) == {"a1": 3}
+    assert deckcheck.included(conn, deck) == {"a1": 3}

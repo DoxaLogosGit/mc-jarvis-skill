@@ -72,7 +72,13 @@ out_of_deck:
 # `config/timing.yaml` follows, and CI rejects a pasted sentence.
 deck_rules:
   minimum_size: 40
-  rr_entry: Deck
+  # The 40 is NOT in the Rules Reference. It is stated in the Learn to
+  # Play deckbuilding section, and the RR's `Deck` and `Player Deck`
+  # entries do not give a number at all. Citing an RR entry for it would
+  # point a reader at a passage that does not say what they were told.
+  rr_entry: "learn-to-play p.22: DECK"
+  # The RR does state the two exemptions, and `deckcheck` reads them:
+  # `Permanent` (p.32) and `Linked (Card Title)` (p.27).
 
   aspects:
     # One aspect unless the identity's own card says otherwise. Measured

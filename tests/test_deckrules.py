@@ -131,3 +131,18 @@ def test_the_two_multi_aspect_heroes_are_encoded(real_index):
     assert warlock["aspects"] == 4
     assert warlock["equal_aspects"] is True
     assert warlock["max_copies_non_signature"] == 1
+
+
+@pytest.mark.integration
+def test_every_linked_card_is_classified_out_of_deck(real_index):
+    """RR p.27. 14 player cards carry the keyword and none appears in any
+    published deck, so only the rulebook could have surfaced this."""
+    missing = [r["code"] for r in real_index.execute(
+        "SELECT c.code FROM cards c LEFT JOIN out_of_deck o ON o.code = c.code "
+        "WHERE c.text LIKE '%Linked (%' AND o.code IS NULL")]
+    assert missing == [], missing
+
+    n = real_index.execute(
+        "SELECT COUNT(*) FROM out_of_deck WHERE mechanism = 'linked'"
+    ).fetchone()[0]
+    assert n == 14, n

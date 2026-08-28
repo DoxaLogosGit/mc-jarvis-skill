@@ -853,6 +853,49 @@ Earned-ness is a separate axis and this project does not model it.
 contaminate the regression corpus's rejection rate, and it is rare in
 practice.
 
+### 10.2a What the corpus is, and is not
+
+**marvelcdb is a community deck-builder and storage service, not a rules
+enforcer.** It does not block an illegal deck from being saved or
+published, and players can and do play decks that break the rules. The
+site is maintained by the community, not by the publisher.
+
+**The rulebooks are the only authority.** The corpus is a *regression
+signal* over `legality.yaml` — it says "something changed" — and it is
+never ground truth. Three consequences, and §10's framing needs all three:
+
+1. **A nonzero rejection rate is expected**, because some published decks
+   really are illegal. §10 says "published decks are overwhelmingly legal,
+   so a meaningful rejection rate means the encoded rules are wrong"; that
+   inference only holds for a *large* or *clustered* rate. A diffuse few
+   percent is what a community site should produce.
+2. **Never tune `legality.yaml` to reduce the rate.** When the corpus and
+   the rulebook disagree, the rulebook wins and the corpus is wrong. Every
+   change made in §10.3 was traced to a card or a rules entry first; the
+   corpus only pointed at where to look.
+3. **The corpus cannot teach a rule nobody breaks.** `Linked (Card Title)`
+   (RR p.27) exempts a card from the deck entirely, exactly as `Permanent`
+   does — 14 player cards carry it, and **no corpus deck lists one**. A
+   corpus-led process would never have found it. Reading the rulebook did.
+
+**Where each rule in `deck_rules` actually comes from** matters for the
+same reason, and one of them is not where it looks:
+
+| Rule | Stated in |
+|---|---|
+| Permanent cards are exempt from the size limits | RR p.32, `Permanent` |
+| Linked cards are exempt, and cannot be in a deck | RR p.27, `Linked (Card Title)` |
+| **The 40-card minimum** | **Learn to Play, deckbuilding — NOT the Rules Reference.** The RR's `Deck` and `Player Deck` entries give no number. |
+| Aspect count and purity | the identity card, plus RR `Aspect` |
+| Per-identity allowances | the identity cards themselves, scanned by `deckrules` |
+
+`declaration_trusted_above` is the one value in that config derived from
+the corpus rather than from a rulebook — and it is not a game rule. It is
+a heuristic about **marvelcdb data quality**: the site stores the declared
+aspect in a field of its own, so a player can rebuild a deck and leave the
+declaration behind. Keeping it visibly separate from the rules-derived
+values is deliberate.
+
 ### 10.3 What the regression corpus found
 
 1,534 published decks fetched over 40 days; 1,501 checked after excluding

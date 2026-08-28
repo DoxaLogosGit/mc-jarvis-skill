@@ -108,8 +108,9 @@ def _limit(row, override: dict | None = None) -> int:
 
 
 # Mechanisms that keep a card out of the DECKBUILDING count. The Rules
-# Reference settles the first outright, under `Permanent` (RR p.32): the
-# keyword exempts a card from the deck-size limits at both ends. Run
+# Reference settles the first two outright - `Permanent` (p.32) and
+# `Linked (Card Title)` (p.27) - and both use the same words: the keyword
+# exempts a card from the deck-size limits at either end. Run
 # `mc-jarvis rules show Permanent` for the wording, which comes from the
 # reader's own rulebook. `hero_special` sets are separate decks entirely,
 # and identity faces and back faces were never cards in the deck.
@@ -118,7 +119,8 @@ def _limit(row, override: dict | None = None) -> int:
 # Death-Glow carry no permanent keyword, so that rule does not reach them:
 # they are ordinary deck cards that an ability sets aside during setup,
 # and they DO count toward the 40.
-NOT_DECKBUILDING = ("permanent", "hero_special", "identity", "back_face")
+NOT_DECKBUILDING = ("permanent", "linked", "hero_special", "identity",
+                    "back_face")
 
 
 def deckbuilding_cards(conn, deck) -> dict[str, int]:

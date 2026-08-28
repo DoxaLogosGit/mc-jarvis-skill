@@ -156,6 +156,15 @@ def classify(conn: sqlite3.Connection, config: dict, *,
 
     for r in conn.execute("SELECT code FROM cards WHERE permanent = 1"):
         rows.append((r["code"], "permanent", None))
+    # The Rules Reference gives `Linked (Card Title)` (p.27) the same
+    # treatment it gives `Permanent` (p.32): the card cannot be in a deck
+    # at all, and does not count toward the deck-size limits. 14 player
+    # cards carry it - the New Recruits allies, Captain America's Shield,
+    # the Specialized Training upgrades. No corpus deck lists one, so the
+    # published decks could never have taught this; the rulebook did.
+    for r in conn.execute(
+            "SELECT code FROM cards WHERE text LIKE '%Linked (%'"):
+        rows.append((r["code"], "linked", None))
     for r in conn.execute(
         "SELECT c.code FROM cards c JOIN sets s ON s.code = c.set_code "
         "WHERE s.card_set_type_code = ?",
