@@ -84,6 +84,21 @@ deck_rules:
     # chosen (§10.2); they are noted, never judged.
     always_allowed: [basic, hero, campaign]
 
+    # marvelcdb stores the declared aspect in `meta`, SEPARATELY from the
+    # cards, so a player can rebuild a deck into another aspect and leave
+    # the declaration behind. Judging purity against a stale declaration
+    # rejects a legal deck and names the wrong cards.
+    #
+    # Measured over 1,478 decks: 1,325 have every non-signature aspect
+    # card matching the declaration, and 15 have 10% or fewer. Between
+    # those sits a gap - one deck at 30%, two at 40%. The 50-90% band is
+    # mostly legal off-aspect allowances (Cyclops's X-MEN allies), which
+    # is why it must NOT be swept up. The cut goes in the empty band.
+    declaration_trusted_above: 0.2
+    # Below this many aspect cards there is nothing to judge a
+    # declaration against, so it is taken at face value.
+    declaration_min_cards: 5
+
 # Hero-specific deckbuilding overrides (spec §10 does not cover these).
 #
 # `deck_requirements` is null on every identity, so the ONLY evidence is

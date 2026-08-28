@@ -857,7 +857,7 @@ practice.
 
 1,534 published decks fetched over 40 days; 1,501 checked after excluding
 `format: legacy`. **The first run rejected 14.1%.** Every point of the
-drop to 5.5% was a real defect, and each is recorded here because §10
+drop to 4.5% was a real defect, and each is recorded here because §10
 calls `legality.yaml` the highest-risk component in the project and a
 rejection nobody read is worse than no corpus at all.
 
@@ -869,6 +869,7 @@ rejection nobody read is worse than no corpus at all.
 | Off-aspect allowances were never implemented, though all seven sat in `deckbuilding_overrides` already | part of 165 → 62 |
 | Warlock's card wants an equal number from **all four** aspects and marvelcdb records at most two, so his declared aspects cannot judge purity | " |
 | Deck size excluded set-aside cards that carry no `permanent` keyword | 17 → 6 |
+| Aspect purity was judged against a declaration marvelcdb stores **separately from the cards**, so a rebuilt deck keeps its old one | 62 → 47 |
 
 **And two judgment calls, both recorded rather than assumed:**
 
@@ -913,14 +914,29 @@ problems can be and are published.
 
 **§10 calls `meta.aspect` "the authoritative declared aspect". It is
 authoritative for what the player DECLARED, which is not the same as
-correct.** 15 decks declare an aspect that is not even their dominant
-faction — one Cable deck declares protection while holding 12 leadership
-cards and 2 protection. Treat a disagreement as a data-quality signal, not
-proof the deck is illegal.
+correct.** On marvelcdb the declaration is a field of its own, set apart
+from the deck contents, so a player can rebuild into another aspect — or
+never set it — and the declaration stays behind. 15 decks declare an
+aspect that is not even their dominant faction; one Cable deck declares
+protection while holding 12 leadership cards and 2 protection.
 
-**The gate is set at 7%**, above the measured 5.5% with room for corpus
+Judging purity against a stale declaration rejects a legal deck **and
+names the wrong cards as the problem**, which is worse than saying
+nothing. So a deck whose own cards overwhelmingly contradict its
+declaration gets a note and no purity verdict.
+
+The threshold sits in a measured empty band. Of 1,478 decks with a
+declaration, **1,325 match it completely and 15 match 10% or less**;
+between them lie one deck at 30% and two at 40%. The 50–90% band is
+mostly legal off-aspect allowances — Cyclops's X-MEN allies — and must
+**not** be swept up, which is why the cut is at 20% rather than
+somewhere convenient.
+
+**The gate is set at 6%**, above the measured 4.5% with room for corpus
 drift as new decks arrive, and tight enough that a regression rejecting a
-single hero's decks (~1.3%) still fires it.
+single hero's decks (~1.3%) still fires it. A second gate asserts at
+least 20 rejections, because a rate near zero means the rules stopped
+firing and reads identical to everything being fine.
 
 ## 11. Init and update
 

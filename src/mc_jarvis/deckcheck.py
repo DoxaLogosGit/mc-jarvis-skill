@@ -305,6 +305,42 @@ def _allowance_breach(conn, rows, off, allowance) -> str | None:
             f"uses {used}")
 
 
+ASPECT_FACTIONS = ("justice", "leadership", "aggression", "protection",
+                   "pool")
+
+
+def _declaration_looks_stale(rows, aspects, rules) -> str | None:
+    """Whether the deck's own cards contradict its declared aspect.
+
+    marvelcdb keeps the declaration in `meta`, separately from the cards,
+    so a player can rebuild into another aspect and leave it behind - or
+    never set it. Judging purity against a stale declaration rejects a
+    legal deck AND names the wrong cards, which is worse than saying
+    nothing.
+
+    Only fires when the disagreement is overwhelming. The threshold sits
+    in a measured empty band: 1,325 of 1,478 decks match their
+    declaration completely, 15 match 10% or less, and almost nothing sits
+    between. The 50-90% band is mostly legal off-aspect allowances and
+    must not be swept up with these.
+    """
+    cards = [r for r in rows if r["faction_code"] in ASPECT_FACTIONS]
+    total = sum(r["quantity"] for r in cards)
+    if total < rules.get("declaration_min_cards", 5):
+        return None
+    match = sum(r["quantity"] for r in cards
+                if r["faction_code"] in set(aspects))
+    share = match / total
+    if share > rules.get("declaration_trusted_above", 0.2):
+        return None
+    held = sorted({r["faction_code"] for r in cards})
+    return (f"the deck declares {', '.join(aspects)} but only "
+            f"{share:.0%} of its aspect cards match - it actually holds "
+            f"{', '.join(held)}. marvelcdb stores the declared aspect "
+            f"separately from the cards, so it is probably out of date; "
+            f"purity was not judged against it")
+
+
 def check_aspects(conn, deck, config) -> Finding:
     """Aspect count, aspect purity, and the equal-split allowance."""
     rules = config["deck_rules"]["aspects"]
@@ -331,12 +367,18 @@ def check_aspects(conn, deck, config) -> Finding:
                    f"({', '.join(deck.aspects)}) and {deck.hero_name} may "
                    f"choose {allowed}")
 
+    rows_all = _aspect_cards(conn, deck)
+    stale = _declaration_looks_stale(rows_all, deck.aspects, rules)
+    if stale is not None:
+        return Finding(rule="aspects", ok=True, kind="note", rr_entry=entry,
+                       detail=stale)
+
     chosen = set(deck.aspects)
     if (override or {}).get("all_aspects"):
         # Adam Warlock takes an equal number from all four, so every
         # aspect is legal and the declared pair says nothing.
         chosen |= {"justice", "leadership", "aggression", "protection"}
-    rows = _aspect_cards(conn, deck)
+    rows = rows_all
     off_rows = [r for r in rows if r["faction_code"] not in chosen | always]
 
     # An identity may permit specific off-aspect cards: Cyclops takes

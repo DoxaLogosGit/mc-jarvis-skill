@@ -217,7 +217,9 @@ ASPECT_CONFIG = {
     "deck_rules": {
         "minimum_size": 40, "rr_entry": "Deck",
         "aspects": {"default_max": 1, "rr_entry": "Aspect",
-                    "always_allowed": ["basic", "hero", "campaign"]},
+                    "always_allowed": ["basic", "hero", "campaign"],
+                    "declaration_trusted_above": 0.2,
+                    "declaration_min_cards": 5},
     },
     "deckbuilding_overrides": [
         {"identity": "spider_woman", "aspects": 2, "equal_aspects": True}],
@@ -435,11 +437,11 @@ def test_a_set_aside_card_without_the_keyword_does_count(tmp_path):
 def test_published_decks_are_overwhelmingly_legal(real_index):
     """§10's only stated mitigation for the highest-risk file here.
 
-    The first run rejected 14.1%, and every point of the drop to 5.5% was
-    a real defect - see §10.3, which records all four bugs and the
+    The first run rejected 14.1%, and every point of the drop to 4.5% was
+    a real defect - see §10.3, which records all five and the
     card-by-card reading of what remains.
 
-    DO NOT raise this threshold to make the test pass. The 7% is argued
+    DO NOT raise this threshold to make the test pass. The 6% is argued
     for, not observed: the residue was read category by category, and the
     strongest evidence is the distribution rather than the rate. Across
     1,478 decks with a declared aspect, 96.3% have ZERO off-aspect cards,
@@ -474,7 +476,7 @@ def test_published_decks_are_overwhelmingly_legal(real_index):
                 break
 
     rate = rejected / checked
-    assert rate <= 0.07, (
+    assert rate <= 0.06, (
         f"{rejected}/{checked} = {rate:.1%} of published decks rejected, "
         f"by rule: {reasons}. Read them before touching this number - "
         f"§10.3 records what the last reading found.")
@@ -506,3 +508,59 @@ def test_the_corpus_still_discriminates(real_index):
     assert rejected >= 20, (
         f"only {rejected} rejections - the rules may have stopped firing "
         f"rather than the corpus having become cleaner")
+
+
+def test_a_stale_aspect_declaration_is_noted_not_failed(tmp_path):
+    """marvelcdb keeps the declared aspect in `meta`, SEPARATELY from the
+    cards, so a player can rebuild a deck into another aspect and leave
+    the declaration behind - or never set it at all.
+
+    Judging purity against a stale declaration rejects a legal deck and
+    names the wrong cards as the problem, which is worse than saying
+    nothing. Measured: 15 of 1,478 decks match their declaration 10% or
+    less, one Cable deck declaring protection while holding 12 leadership
+    cards."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Cable", "hero", "cable", None, 1)]
+                 + [(f"l{i}", f"L{i}", "ally", "core", 3, 3)
+                    for i in range(6)])
+    _factions(conn, [("h1", "hero")]
+              + [(f"l{i}", "leadership") for i in range(6)])
+    deck = _deck(hero_code="h1", aspects=["protection"],
+                 slots={f"l{i}": 1 for i in range(6)})
+    finding = deckcheck.check_aspects(conn, deck, ASPECT_CONFIG)
+    assert finding.ok
+    assert finding.kind == "note"
+    assert "out of date" in finding.detail
+
+
+def test_a_deck_that_is_mostly_on_aspect_still_fails_for_a_slip(tmp_path):
+    """The other side of the cut, and the reason the threshold sits in a
+    measured empty band. A deck with one off-aspect card is a
+    deckbuilding slip and must still be reported - 96.3% of decks have
+    zero, 1.6% have exactly one."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "ownset", None, 1)]
+                 + [(f"j{i}", f"J{i}", "ally", "core", 3, 3)
+                    for i in range(6)]
+                 + [("a1", "Off", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("a1", "aggression")]
+              + [(f"j{i}", "justice") for i in range(6)])
+    deck = _deck(aspects=["justice"],
+                 slots={**{f"j{i}": 1 for i in range(6)}, "a1": 1})
+    finding = deckcheck.check_aspects(conn, deck, ASPECT_CONFIG)
+    assert not finding.ok
+    assert finding.cards == ["Off"]
+
+
+def test_a_tiny_deck_declaration_is_taken_at_face_value(tmp_path):
+    """Below a handful of aspect cards there is nothing to judge a
+    declaration against, and calling it stale on two cards would be
+    guessing."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("a1", "Off", "ally", "core", 3, 3)])
+    _factions(conn, [("h1", "hero"), ("a1", "aggression")])
+    finding = deckcheck.check_aspects(conn, _deck(aspects=["justice"],
+                                                  slots={"a1": 2}),
+                                      ASPECT_CONFIG)
+    assert not finding.ok
