@@ -870,13 +870,52 @@ never ground truth. Three consequences, and §10's framing needs all three:
    inference only holds for a *large* or *clustered* rate. A diffuse few
    percent is what a community site should produce.
 2. **Never tune `legality.yaml` to reduce the rate.** When the corpus and
-   the rulebook disagree, the rulebook wins and the corpus is wrong. Every
-   change made in §10.3 was traced to a card or a rules entry first; the
-   corpus only pointed at where to look.
+   the rules disagree, the rules win and the corpus is wrong. Every change
+   made in §10.3 was traced to a card or a rules entry first; the corpus
+   only pointed at where to look. But "the rules" is a *hierarchy*, not a
+   book — see below.
 3. **The corpus cannot teach a rule nobody breaks.** `Linked (Card Title)`
    (RR p.27) exempts a card from the deck entirely, exactly as `Permanent`
    does — 14 player cards carry it, and **no corpus deck lists one**. A
    corpus-led process would never have found it. Reading the rulebook did.
+
+#### The precedence chain: a card can beat a rulebook
+
+The game states its own order of authority, under `Golden Rules`
+(RR p.4). Highest first:
+
+| | Authority | |
+|---|---|---|
+| 1 | **Card text and scenario rules** | beats either book |
+| 2 | **Rules Reference** | beats Learn to Play |
+| 3 | **Learn to Play** | |
+
+So "the rulebook is the authority" is wrong at the top of the chain: when
+a card contradicts a rulebook, **the card wins**. Learn to Play's own KEY
+CONCEPTS section (p.9) states the same thing as its Golden Rule.
+
+This is not a footnote for this feature — **it is the reason
+`deckbuilding_overrides` exists.** Every entry in it is card text beating
+the Rules Reference:
+
+- Spider-Woman's card overrides the one-aspect rule (and adds its own
+  equal-split requirement).
+- Adam Warlock's overrides both the aspect count *and* `deck_limit`, and
+  his cap binds **downward** — a rule no general reading of the RR would
+  produce.
+- Cyclops, Cable, Wonder Man, Gamora and Maria Hill each override aspect
+  purity for a named slice of cards.
+
+Which is why those are **scanned from the identity cards** rather than
+hand-listed from the rulebooks: the cards are the higher authority, and
+`deckrules.audit` fails the build when a new release adds one nobody has
+encoded. A rules-derived list could never keep up, because the rules are
+not where that information lives.
+
+It also means the 40-card minimum sits at the **weakest** tier — Learn to
+Play — so a card or a scenario may legitimately override it, and a
+future `deckbuilding_overrides` entry doing so is expected rather than
+suspicious.
 
 **Where each rule in `deck_rules` actually comes from** matters for the
 same reason, and one of them is not where it looks:

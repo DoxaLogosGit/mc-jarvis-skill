@@ -66,7 +66,7 @@ out_of_deck:
         other identity cards, which identity grouping already keeps out of
         the deck.
 
-# Deckbuilding rules, from the Rules Reference. NUMBERS AND POINTERS ONLY:
+# Deckbuilding rules. NUMBERS AND POINTERS ONLY:
 # each value names the RR entry it came from, and the wording is read from
 # `rules_entries` on the user's own machine at print time. The same rule
 # `config/timing.yaml` follows, and CI rejects a pasted sentence.
@@ -106,6 +106,14 @@ deck_rules:
     declaration_min_cards: 5
 
 # Hero-specific deckbuilding overrides (spec §10 does not cover these).
+#
+# These are CARD TEXT, which outranks both rulebooks: `Golden Rules`
+# (RR p.4) puts a card above the Rules Reference, which is above Learn to
+# Play. So every entry here legitimately beats a rule stated above, and
+# that is why they are scanned from the identity cards rather than
+# hand-listed - the cards are where the higher authority lives, and
+# `deckrules.audit` fails the build when a release adds one nobody has
+# encoded yet.
 #
 # `deck_requirements` is null on every identity, so the ONLY evidence is
 # prose on the alter-ego card. The scan in `deckrules.scan` finds which

@@ -146,3 +146,37 @@ def test_every_linked_card_is_classified_out_of_deck(real_index):
         "SELECT COUNT(*) FROM out_of_deck WHERE mechanism = 'linked'"
     ).fetchone()[0]
     assert n == 14, n
+
+
+@pytest.mark.integration
+def test_card_text_outranks_the_rulebook_and_the_config_shows_it(real_index):
+    """`Golden Rules` (RR p.4) puts card text above the Rules Reference,
+    which is above Learn to Play. Every `deckbuilding_overrides` entry is
+    that top tier in action: Spider-Woman's card beats the one-aspect
+    rule, Warlock's beats both the aspect count and `deck_limit`.
+
+    So they are SCANNED from the identity cards rather than hand-listed
+    from a rulebook - the cards are where the higher authority lives. This
+    asserts the scan still finds each one, because a hand-maintained list
+    would silently fall behind a release.
+    """
+    from mc_jarvis import deckrules
+
+    found = set(deckrules.scan(real_index))
+    expected = {"spider_woman", "warlock", "cable", "cyclops", "wonder_man",
+                "gam", "maria_hill"}
+    assert expected <= found, expected - found
+
+
+@pytest.mark.integration
+def test_the_precedence_chain_is_stated_where_we_say_it_is(real_index):
+    """The claim that a card beats a rulebook is load-bearing for this
+    whole design, so it is checked against the reader's own copy rather
+    than trusted. If the entry moves or is reworded, this says so."""
+    row = real_index.execute(
+        "SELECT body, page FROM rules_entries "
+        "WHERE lower(term) = 'golden rules' LIMIT 1").fetchone()
+    assert row is not None, "no Golden Rules entry in the indexed rulebook"
+    body = " ".join(row["body"].split()).lower()
+    assert "precedence" in body
+    assert "learn to play" in body
