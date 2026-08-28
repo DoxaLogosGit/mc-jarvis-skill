@@ -853,6 +853,75 @@ Earned-ness is a separate axis and this project does not model it.
 contaminate the regression corpus's rejection rate, and it is rare in
 practice.
 
+### 10.3 What the regression corpus found
+
+1,534 published decks fetched over 40 days; 1,501 checked after excluding
+`format: legacy`. **The first run rejected 14.1%.** Every point of the
+drop to 5.5% was a real defect, and each is recorded here because §10
+calls `legality.yaml` the highest-risk component in the project and a
+rejection nobody read is worse than no corpus at all.
+
+**Four bugs the corpus caught:**
+
+| Bug | Rejections |
+|---|---|
+| `_limit` read `override.get("set_code")`, a key the config never had, so Adam Warlock's "max 1 copy of any non-Warlock card" applied to his own signature cards — `Cosmic Ward` is printed at limit 2 | 18 → 2 |
+| Off-aspect allowances were never implemented, though all seven sat in `deckbuilding_overrides` already | part of 165 → 62 |
+| Warlock's card wants an equal number from **all four** aspects and marvelcdb records at most two, so his declared aspects cannot judge purity | " |
+| Deck size excluded set-aside cards that carry no `permanent` keyword | 17 → 6 |
+
+**And two judgment calls, both recorded rather than assumed:**
+
+- A deck with **no recorded aspect** is a note, not a failure. marvelcdb
+  keeps the aspect in `meta`; some decks carry none. That is a gap in what
+  was stored, not evidence of an illegal deck.
+- `card_traits` records the `[[X-MEN]]` markup a card's text **references**
+  — "which cards care about X-Men". The printed trait line is
+  `cards.traits`. The allowances read the second. Reaching for the first
+  silently matched nothing, because `Blindfold` has no `card_traits` rows
+  at all.
+
+#### The residue, read card by card
+
+**5.5% — 82 of 1,501 — and every category was examined.**
+
+- **`unique` (12)** — all verifiably illegal: a Captain America deck
+  holding the Captain America ally, a Silk deck holding the Silk ally, two
+  different `Angel` allies, `Ant-Man` beside `Yellow Jacket` (one
+  character, matched on alter-ego title).
+- **`deck_size` (6)** — genuinely short, 31 to 37 cards.
+- **`deck_limit` (2)** — one Warlock deck breaking his own copy rule, one
+  deck with two `Superpower Training` at `deck_limit` 1.
+- **`aspects` (62)** — 47 decks with one or two off-aspect cards, 15 whose
+  declared aspect is not even among the deck's dominant factions.
+
+**The distribution is what settles it.** Across 1,478 decks with a
+declared aspect:
+
+| Off-aspect cards | Decks | |
+|---|---|---|
+| 0 | 1,424 | **96.3%** |
+| 1 | 23 | 1.6% |
+| 2 | 15 | 1.0% |
+| 3+ | 16 | 1.1% |
+
+A sharp mode at zero, then a thin scatter — the shape of human
+deckbuilding slips. A missing allowance would show as a **spike** at one
+hero or one count, and the tail is diffuse instead. marvelcdb computes a
+`problem` field server-side but does not expose it publicly, so decks with
+problems can be and are published.
+
+**§10 calls `meta.aspect` "the authoritative declared aspect". It is
+authoritative for what the player DECLARED, which is not the same as
+correct.** 15 decks declare an aspect that is not even their dominant
+faction — one Cable deck declares protection while holding 12 leadership
+cards and 2 protection. Treat a disagreement as a data-quality signal, not
+proof the deck is illegal.
+
+**The gate is set at 7%**, above the measured 5.5% with room for corpus
+drift as new decks arrive, and tight enough that a regression rejecting a
+single hero's decks (~1.3%) still fires it.
+
 ## 11. Init and update
 
 ### `mc-jarvis init`

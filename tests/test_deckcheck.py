@@ -427,3 +427,82 @@ def test_a_set_aside_card_without_the_keyword_does_count(tmp_path):
     assert deckcheck.deckbuilding_cards(conn, deck) == {"38002": 1, "a1": 3}
     # ... and it is still not something you can draw.
     assert deckcheck.included(conn, deck) == {"a1": 3}
+
+
+# --- the regression corpus (Task 5) ----------------------------------
+
+@pytest.mark.integration
+def test_published_decks_are_overwhelmingly_legal(real_index):
+    """§10's only stated mitigation for the highest-risk file here.
+
+    The first run rejected 14.1%, and every point of the drop to 5.5% was
+    a real defect - see §10.3, which records all four bugs and the
+    card-by-card reading of what remains.
+
+    DO NOT raise this threshold to make the test pass. The 7% is argued
+    for, not observed: the residue was read category by category, and the
+    strongest evidence is the distribution rather than the rate. Across
+    1,478 decks with a declared aspect, 96.3% have ZERO off-aspect cards,
+    1.6% have exactly one and 1.0% exactly two. A sharp mode at zero with
+    a diffuse tail is the shape of human slips; a missing allowance would
+    spike at one hero or one count.
+
+    `problem` is not exposed on the public endpoint, so this is a
+    statistical signal and not per-deck ground truth - which is precisely
+    why the number has to be argued for.
+    """
+    from mc_jarvis import deckfetch
+
+    decks = list(deckfetch.corpus())
+    if len(decks) < 200:
+        pytest.skip("no corpus; run `uv run python tools/deck_corpus.py`")
+
+    checked = rejected = 0
+    reasons: dict[str, int] = {}
+    for payload in decks:
+        try:
+            deck = deckfetch.normalise(real_index, payload, source="corpus")
+        except deckfetch.DeckError:
+            continue          # a hero marvelsdb does not carry yet
+        if deck.unknown:
+            continue          # card data behind marvelcdb, not a rules bug
+        checked += 1
+        for finding in deckcheck.check(real_index, deck):
+            if finding.kind == "rule" and not finding.ok:
+                reasons[finding.rule] = reasons.get(finding.rule, 0) + 1
+                rejected += 1
+                break
+
+    rate = rejected / checked
+    assert rate <= 0.07, (
+        f"{rejected}/{checked} = {rate:.1%} of published decks rejected, "
+        f"by rule: {reasons}. Read them before touching this number - "
+        f"§10.3 records what the last reading found.")
+
+
+@pytest.mark.integration
+def test_the_corpus_still_discriminates(real_index):
+    """A rate near zero would mean the rules stopped firing, which reads
+    identical to "everything is fine". The corpus must still reject the
+    decks that are genuinely illegal - a Captain America deck holding the
+    Captain America ally is in there, and so are six decks under 40
+    cards."""
+    from mc_jarvis import deckfetch
+
+    decks = list(deckfetch.corpus())
+    if len(decks) < 200:
+        pytest.skip("no corpus; run `uv run python tools/deck_corpus.py`")
+
+    rejected = 0
+    for payload in decks:
+        try:
+            deck = deckfetch.normalise(real_index, payload, source="corpus")
+        except deckfetch.DeckError:
+            continue
+        if deck.unknown:
+            continue
+        if not deckcheck.verdict(deckcheck.check(real_index, deck)):
+            rejected += 1
+    assert rejected >= 20, (
+        f"only {rejected} rejections - the rules may have stopped firing "
+        f"rather than the corpus having become cleaner")
