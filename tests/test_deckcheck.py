@@ -395,8 +395,8 @@ def test_check_runs_every_rule_and_carries_the_notes(tmp_path):
 
 
 def test_a_permanent_does_not_count_toward_the_deck_minimum(tmp_path):
-    """RR p.32, Permanent: "Permanent cards do not count towards a
-    player's minimum or maximum deck size."
+    """RR p.32, `Permanent`: the keyword exempts a card from the
+    deck-size limits at both ends.
 
     The corpus proves it independently. Every hero's smallest published
     deck is exactly 40 + its permanent signature cards: Rogue and

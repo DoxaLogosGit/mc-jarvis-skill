@@ -108,10 +108,11 @@ def _limit(row, override: dict | None = None) -> int:
 
 
 # Mechanisms that keep a card out of the DECKBUILDING count. The Rules
-# Reference is explicit for the first: "Permanent cards do not count
-# towards a player's minimum or maximum deck size" (Permanent, RR p.32).
-# `hero_special` sets are separate decks entirely, and identity faces and
-# back faces were never cards in the deck.
+# Reference settles the first outright, under `Permanent` (RR p.32): the
+# keyword exempts a card from the deck-size limits at both ends. Run
+# `mc-jarvis rules show Permanent` for the wording, which comes from the
+# reader's own rulebook. `hero_special` sets are separate decks entirely,
+# and identity faces and back faces were never cards in the deck.
 #
 # `config` is deliberately absent. Rogue's Touched and Valkyrie's
 # Death-Glow carry no permanent keyword, so that rule does not reach them:
