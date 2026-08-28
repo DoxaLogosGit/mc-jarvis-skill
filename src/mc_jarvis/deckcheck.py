@@ -97,14 +97,49 @@ def _limit(row, override: dict | None = None) -> int:
     cap = index_mod.resolve_deck_limit(dict(row)) or (row["quantity"] or 1)
     if override:
         lower = override.get("max_copies_non_signature")
-        if lower is not None and row["set_code"] != override.get("set_code"):
+        # `signature_set` is passed in, not read from config. Taking it
+        # from the override entry meant `None`, so the cap applied to the
+        # hero's OWN cards - which rejected every published Adam Warlock
+        # deck for holding 2 Cosmic Ward, a card printed at limit 2.
+        if lower is not None and row["set_code"] != override.get(
+                "_signature_set"):
             cap = min(cap, lower)
     return cap
 
 
+# Mechanisms that keep a card out of the DECKBUILDING count. The Rules
+# Reference is explicit for the first: "Permanent cards do not count
+# towards a player's minimum or maximum deck size" (Permanent, RR p.32).
+# `hero_special` sets are separate decks entirely, and identity faces and
+# back faces were never cards in the deck.
+#
+# `config` is deliberately absent. Rogue's Touched and Valkyrie's
+# Death-Glow carry no permanent keyword, so that rule does not reach them:
+# they are ordinary deck cards that an ability sets aside during setup,
+# and they DO count toward the 40.
+NOT_DECKBUILDING = ("permanent", "hero_special", "identity", "back_face")
+
+
+def deckbuilding_cards(conn, deck) -> dict[str, int]:
+    """What counts toward the deck-size minimum.
+
+    Distinct from `included`, and the corpus proves the distinction is
+    real. Every hero's smallest published deck is exactly
+    `40 + <permanent signature cards>`: Rogue and Valkyrie floor at 40,
+    Wolverine, X-23 and Vision at 41, Psylocke at 42 with two permanents,
+    Spectrum at 43 with three.
+
+    `included` answers "what will I draw"; this answers "what did I
+    build". A permanent is in neither. Touched is in this one only.
+    """
+    out = excluded(conn, deck)
+    return {code: n for code, n in deck.slots.items()
+            if out.get(code) not in NOT_DECKBUILDING}
+
+
 def check_size(conn, deck, config) -> Finding:
     rules = config["deck_rules"]
-    size = sum(included(conn, deck).values())
+    size = sum(deckbuilding_cards(conn, deck).values())
     minimum = rules["minimum_size"]
     detail = f"{size} cards, minimum {minimum}"
     if deck.unknown:
@@ -203,9 +238,70 @@ def _aspect_cards(conn, deck) -> list[dict]:
     signature = _signature_set(conn, deck.hero_code)
     marks = ",".join("?" * len(cards))
     return [dict(r, quantity=cards[r["code"]]) for r in conn.execute(
-        f"SELECT code, name, faction_code, set_code FROM cards "
-        f"WHERE code IN ({marks})", list(cards))
+        f"SELECT code, name, faction_code, set_code, type_code, traits, "
+        f"resource_physical, resource_mental, resource_energy, "
+        f"resource_wild FROM cards WHERE code IN ({marks})", list(cards))
         if r["set_code"] != signature]
+
+
+def _override(conn, deck, config) -> dict | None:
+    """The identity's deckbuilding override, with its own set attached.
+
+    `_signature_set` is added here rather than stored in config: the set
+    is a fact about the card data, and duplicating it in YAML is one more
+    thing to fall out of date.
+    """
+    key = identity_mod.key_for_code(conn, deck.hero_code)
+    entry = deckrules.for_identity(conn, config, key) if key else None
+    if entry is None:
+        return None
+    return dict(entry, _signature_set=_signature_set(conn, deck.hero_code))
+
+
+def _allowed_off_aspect(conn, row, allowance) -> bool:
+    """Whether one card falls under an identity's off-aspect allowance.
+
+    Read from `cards.traits` - the PRINTED trait line - and not from
+    `card_traits`, which records the `[[X-MEN]]` markup a card's text
+    REFERENCES. The two are different questions, and the second one
+    answers "which cards care about X-Men", not "which cards are X-Men".
+    """
+    if row["type_code"] != allowance.get("type_code"):
+        return False
+    traits = (row["traits"] or "").lower()
+    wanted = allowance.get("trait")
+    if wanted and wanted.lower() not in traits:
+        return False
+    any_of = allowance.get("traits_any")
+    if any_of and not any(t.lower() in traits for t in any_of):
+        return False
+    resource = allowance.get("resource")
+    if resource and not (row[f"resource_{resource}"] or 0):
+        return False
+    return True
+
+
+def _allowance_breach(conn, rows, off, allowance) -> str | None:
+    """Whether the allowance's own cap is exceeded.
+
+    `limit_unit: distinct_titles` is Maria Hill's: three S.H.I.E.L.D.
+    supports at their full copy count, so the cap is on titles rather
+    than on cards - three titles times `deck_limit` each, not three cards.
+    """
+    limit = allowance.get("limit")
+    if limit is None:
+        return None
+    covered = [r for r in rows if r["code"] in off]
+    if allowance.get("limit_unit") == "distinct_titles":
+        used = len({r["name"] for r in covered})
+        unit = "distinct title(s)"
+    else:
+        used = sum(r["quantity"] for r in covered)
+        unit = "card(s)"
+    if used <= limit:
+        return None
+    return (f"the off-aspect allowance permits {limit} {unit} and this deck "
+            f"uses {used}")
 
 
 def check_aspects(conn, deck, config) -> Finding:
@@ -215,14 +311,17 @@ def check_aspects(conn, deck, config) -> Finding:
     always = set(rules.get("always_allowed") or ())
 
     if not deck.aspects:
+        # A NOTE, not a failure. marvelcdb records the aspect in `meta`
+        # and some decks carry none; that is a gap in what was recorded,
+        # not evidence the deck is illegal. Failing here would reject a
+        # legal deck for its author's omission.
         return Finding(
-            rule="aspects", ok=False, rr_entry=entry,
-            detail="the deck declares no aspect, so purity cannot be "
-                   "checked - marvelcdb records it in `meta`, not from the "
-                   "cards")
+            rule="aspects", ok=True, kind="note", rr_entry=entry,
+            detail="no aspect is recorded for this deck, so purity was not "
+                   "checked - marvelcdb keeps it in `meta` rather than "
+                   "deriving it from the cards")
 
-    key = identity_mod.key_for_code(conn, deck.hero_code)
-    override = deckrules.for_identity(conn, config, key) if key else None
+    override = _override(conn, deck, config)
     allowed = (override or {}).get("aspects") or rules["default_max"]
     if len(deck.aspects) > allowed:
         return Finding(
@@ -232,14 +331,34 @@ def check_aspects(conn, deck, config) -> Finding:
                    f"choose {allowed}")
 
     chosen = set(deck.aspects)
+    if (override or {}).get("all_aspects"):
+        # Adam Warlock takes an equal number from all four, so every
+        # aspect is legal and the declared pair says nothing.
+        chosen |= {"justice", "leadership", "aggression", "protection"}
     rows = _aspect_cards(conn, deck)
-    off = [r["name"] for r in rows
-           if r["faction_code"] not in chosen | always]
+    off_rows = [r for r in rows if r["faction_code"] not in chosen | always]
+
+    # An identity may permit specific off-aspect cards: Cyclops takes
+    # [[X-MEN]] allies from any aspect, Cable player side schemes, Wonder
+    # Man energy events, Gamora up to six attack/thwart events, Maria Hill
+    # three S.H.I.E.L.D. support titles. All seven live in
+    # `deckbuilding_overrides`, scanned from the identity cards.
+    allowance = (override or {}).get("off_aspect_allowance")
+    if allowance:
+        permitted = {r["code"] for r in off_rows
+                     if _allowed_off_aspect(conn, r, allowance)}
+        breach = _allowance_breach(conn, rows, permitted, allowance)
+        if breach:
+            return Finding(rule="aspects", ok=False, rr_entry=entry,
+                           detail=breach)
+        off_rows = [r for r in off_rows if r["code"] not in permitted]
+
+    off = sorted({r["name"] for r in off_rows})
     if off:
         return Finding(
-            rule="aspects", ok=False, rr_entry=entry, cards=sorted(set(off)),
+            rule="aspects", ok=False, rr_entry=entry, cards=off,
             detail=f"{len(off)} card(s) belong to no chosen aspect: "
-                   f"{', '.join(sorted(set(off))[:6])}")
+                   f"{', '.join(off[:6])}")
 
     # An identity that may take two aspects does not merely ALLOW them:
     # Spider-Woman's card requires an equal number of cards from each, so
@@ -279,8 +398,7 @@ def check(conn, deck, config: dict | None = None) -> list[Finding]:
     change the verdict.
     """
     config = config if config is not None else load_config()
-    key = identity_mod.key_for_code(conn, deck.hero_code)
-    override = deckrules.for_identity(conn, config, key) if key else None
+    override = _override(conn, deck, config)
     return [check_size(conn, deck, config),
             check_copies(conn, deck, override),
             check_aspects(conn, deck, config),

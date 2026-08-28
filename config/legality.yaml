@@ -113,6 +113,11 @@ deckbuilding_overrides:
 
   - identity: warlock
     aspects: 4
+    # His card requires an equal number from ALL FOUR aspects, so every
+    # aspect is legal in his deck. marvelcdb records at most `aspect` and
+    # `aspect2`, so a Warlock deck's declared aspects are structurally
+    # incomplete and purity cannot be judged against them.
+    all_aspects: true
     equal_aspects: true
     max_copies_non_signature: 1
     text_digest: "8db209ec5579d5e04f06a2cd02f1594b"

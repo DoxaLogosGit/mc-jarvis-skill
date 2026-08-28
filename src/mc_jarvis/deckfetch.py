@@ -144,3 +144,25 @@ def fetch(conn, ref: str) -> Deck:
             f"file that exists.")
     return normalise(conn, json.loads(path.read_text(encoding="utf-8")),
                      source=str(path))
+
+
+def corpus_path():
+    from . import paths
+
+    return paths.data_dir() / "decks"
+
+
+def corpus(*, exclude_legacy: bool = True):
+    """Published decks previously fetched by `tools/deck_corpus.py`.
+
+    `format: legacy` decks were built under a different rule set. Left in,
+    they inflate the rejection rate with format mismatches that read as
+    bugs in `legality.yaml` - contaminating the exact signal the corpus
+    exists to provide. Measured: 5 of 124 sampled decks are `legacy`.
+    """
+    for path in sorted(corpus_path().glob("*.json")):
+        for payload in json.loads(path.read_text(encoding="utf-8")):
+            meta = parse_meta(payload.get("meta"))
+            if exclude_legacy and meta.get("format") == "legacy":
+                continue
+            yield payload

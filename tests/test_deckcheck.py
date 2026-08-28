@@ -333,11 +333,35 @@ def test_her_signature_cards_do_not_skew_the_equal_count(tmp_path):
     assert deckcheck.check_aspects(conn, deck, ASPECT_CONFIG).ok
 
 
-def test_a_deck_declaring_no_aspect_is_reported_not_assumed(tmp_path):
-    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "core", None, 1)])
+def test_a_deck_declaring_no_aspect_is_noted_not_failed(tmp_path):
+    """marvelcdb keeps the aspect in `meta` and some decks carry none.
+    That is a gap in what was recorded, not evidence the deck is illegal -
+    failing here rejects a legal deck for its author's omission. Same
+    reasoning as campaign cards (§10.2): report what cannot be checked."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1)])
     _factions(conn, [("h1", "hero")])
-    assert not deckcheck.check_aspects(conn, _deck(aspects=[]),
-                                       ASPECT_CONFIG).ok
+    finding = deckcheck.check_aspects(conn, _deck(aspects=[]), ASPECT_CONFIG)
+    assert finding.ok
+    assert finding.kind == "note"
+
+
+def test_warlock_may_use_every_aspect(tmp_path):
+    """His card requires an equal number from ALL FOUR aspects, and
+    marvelcdb records at most two, so a Warlock deck's declared aspects
+    are structurally incomplete. Judging purity against them rejected
+    every published Warlock deck."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Adam Warlock", "hero", "warlock", None, 1),
+                  ("a1", "A", "ally", "core", 1, 1),
+                  ("p1", "P", "ally", "core", 1, 1)])
+    _factions(conn, [("h1", "hero"), ("a1", "aggression"),
+                     ("p1", "protection")])
+    _identity(conn, "warlock", "h1")
+    config = dict(ASPECT_CONFIG, deckbuilding_overrides=[
+        {"identity": "warlock", "aspects": 4, "all_aspects": True}])
+    deck = _deck(hero_code="h1", aspects=["justice", "leadership"],
+                 slots={"a1": 1, "p1": 1})
+    assert deckcheck.check_aspects(conn, deck, config).ok
 
 
 def test_a_campaign_card_is_never_off_aspect(tmp_path):
@@ -368,3 +392,38 @@ def test_check_runs_every_rule_and_carries_the_notes(tmp_path):
     assert {f.rule for f in findings} == {"deck_size", "deck_limit",
                                           "aspects", "unique"}
     assert not deckcheck.verdict(findings)      # 3 cards, minimum 40
+
+
+def test_a_permanent_does_not_count_toward_the_deck_minimum(tmp_path):
+    """RR p.32, Permanent: "Permanent cards do not count towards a
+    player's minimum or maximum deck size."
+
+    The corpus proves it independently. Every hero's smallest published
+    deck is exactly 40 + its permanent signature cards: Rogue and
+    Valkyrie floor at 40, Wolverine and Vision at 41, Psylocke at 42 with
+    two permanents, Spectrum at 43 with three.
+    """
+    conn = _mkdb(tmp_path,
+                 [("h1", "Wolverine", "hero", "wolv", None, 1),
+                  ("c1", "Wolverine's Claws", "upgrade", "wolv", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("c1", "permanent")])
+    build = deckcheck.deckbuilding_cards(conn, _deck(slots={"c1": 1,
+                                                            "a1": 3}))
+    assert build == {"a1": 3}
+
+
+def test_a_set_aside_card_without_the_keyword_does_count(tmp_path):
+    """Touched and Death-Glow carry NO permanent keyword, so RR p.32 does
+    not reach them: they are ordinary deck cards that an ability sets
+    aside during setup. Excluding them told every Rogue and Valkyrie
+    player their legal 40-card deck was one short."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Rogue", "hero", "rogue", None, 1),
+                  ("38002", "Touched", "upgrade", "rogue", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("38002", "config")])
+    deck = _deck(slots={"38002": 1, "a1": 3})
+    assert deckcheck.deckbuilding_cards(conn, deck) == {"38002": 1, "a1": 3}
+    # ... and it is still not something you can draw.
+    assert deckcheck.included(conn, deck) == {"a1": 3}
