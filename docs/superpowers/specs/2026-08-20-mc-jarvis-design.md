@@ -745,6 +745,68 @@ mismatches that would be misread as bugs in `legality.yaml` — contaminating th
 signal the corpus exists to provide. Exclude non-current-format decks, or branch the
 validator on `format` and score the two populations separately.
 
+### 10.1 Working-pass corrections, 2026-08-27
+
+Measured against the built index before the deck pipeline was planned.
+**Where this subsection and §10 above disagree, this one is right — it has
+numbers.**
+
+**Reprints are a player-side reality, and §10's collection filter is too
+simple.** 351 cards corpus-wide carry `duplicate_of`, and `is_reprint`
+agrees with it exactly — no card is one without the other. **337 of them
+are player cards**: `Dum Dum Dugan` is in both Sinister Motives and Agents
+of S.H.I.E.L.D., `Nick Fury` in the Core Set and Black Widow, and so on.
+
+Two consequences:
+
+1. `deck fetch` must canonicalise every slot through `canonical_code`. A
+   marvelcdb deck may name whichever printing its builder owned.
+2. §10 says the collection filter is `WHERE pack_code IN (owned)`. That
+   is **wrong for any reprinted card**: owning Agents of S.H.I.E.L.D. lets
+   you play Dum Dum Dugan whether or not you own Sinister Motives. The
+   filter is over the canonical group — own *any* printing, have the card:
+
+   ```sql
+   WHERE canonical_code IN (
+       SELECT canonical_code FROM cards WHERE pack_code IN (owned))
+   ```
+
+   §10's underlying point survives intact: ownership is still binary, and
+   there is still no copy arithmetic anywhere. It is the grouping that was
+   wrong, not the principle.
+
+**`01043a`–`01043d` are not one multi-part card.** §10 cites them as
+multi-part slots where "deck-size math counts the deck-legal face only."
+They are four *resource variants* of Wakanda Forever! — energy, mental,
+physical, and wild — each its own row, each separately deck-legal, with
+`deck_limit` 1, 1, 1 and 2. **Five copies, not one.** Collapsing them
+would undercount a legal Black Panther deck by four cards.
+
+**The discriminator is `back_link`, and it separates the corpus cleanly.**
+Of the 24 player-card code stems with `a`/`b`/`c`/`d` siblings:
+
+| Kind | Count | Test | Example |
+|---|---|---|---|
+| Double-sided faces | 19 | `back_link` is set | Psi-Knife, Odin, the four Basic upgrades |
+| Resource variants | 5 | distinct resource icons, no `back_link` | Wakanda Forever!, Firecracker |
+
+No group is ambiguous, so the rule needs no config residue. It is also
+the same rule `assess.back_faces()` already applies to encounter cards, so
+`deck check` and `deck stats` reuse it rather than growing a parallel one.
+
+**Slots naming a card the index does not carry must be reported, not
+dropped.** Coverage is bounded by marvelcdb, exactly as it is for
+scenarios (see the Bullseye case in `2026-08-25-card-data-sources.md`).
+A slot that resolves to nothing must say so the way `assess.resolve` does;
+silently skipping it yields a 37-card deck that fails a deck-size check
+for a reason the player cannot see.
+
+**`--owned` is currently on all 14 leaf commands** — `cli._leaf` adds it
+unconditionally and dispatch rejects it globally. Un-stubbing it is
+therefore a per-command decision, not one switch: it is meaningless on
+`doctor`, `status`, `update`, `install-skill`, `timing`, and
+`rules search`. That list is part of the collection task's scope.
+
 ## 11. Init and update
 
 ### `mc-jarvis init`
