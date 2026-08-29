@@ -39,5 +39,22 @@ def test_no_args_prints_help_and_fails():
     assert cli.main([]) == 2
 
 
-def test_owned_refuses_rather_than_silently_ignoring():
-    assert cli.main(["card", "search", "web", "--owned"]) == 3
+def test_owned_is_accepted_only_where_it_can_act():
+    """`--owned` used to be on all 14 leaf commands and rejected at
+    dispatch, which offered a filter on `doctor` and `timing` that could
+    never happen (spec §10.1). argparse now refuses it there, at parse
+    time, instead of the command accepting it and doing nothing.
+    """
+    import pytest
+
+    from mc_jarvis import collection
+
+    parser = cli.build_parser()
+    parser.parse_args(["card", "search", "web", "--owned"])
+    for argv in (["timing", "--owned"], ["rules", "search", "x", "--owned"],
+                 ["status", "--owned"]):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+
+    assert "card search" in collection.OWNED_COMMANDS
+    assert "timing" not in collection.OWNED_COMMANDS

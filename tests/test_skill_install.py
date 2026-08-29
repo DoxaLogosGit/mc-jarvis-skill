@@ -220,10 +220,42 @@ def test_the_skill_names_at_least_one_two_level_command():
 
 
 def test_the_skill_does_not_promise_flags_that_are_not_built():
-    """--owned parses everywhere and is rejected at dispatch: the
-    collection lands in a later phase."""
+    """Every `--flag` the skill mentions must exist in the parser.
+
+    This used to ban `--owned` outright, because the collection was not
+    built and the flag was rejected at dispatch. It is built now, so the
+    ban would have to be deleted - and deleting a guard leaves nothing
+    behind. Checking the flags against the parser is the property the ban
+    was standing in for, and it covers every future flag too.
+    """
+    import re
+
+    from mc_jarvis import cli
+
+    def _flags(parser):
+        found = set()
+        for action in parser._actions:
+            found |= set(action.option_strings)
+            # Subparser actions carry a dict of parsers; an ordinary
+            # argument's `choices` is a plain list of strings.
+            choices = getattr(action, "choices", None)
+            if isinstance(choices, dict):
+                for sub in choices.values():
+                    if hasattr(sub, "_actions"):
+                        found |= _flags(sub)
+        return found
+
+    real = _flags(cli.build_parser())
+    # Only flags attached to an `mc-jarvis` invocation. The browser
+    # recipes document Playwright's own flags, which this parser has no
+    # business knowing about.
     for text in _skill_docs():
-        assert "--owned" not in text
+        for line in text.splitlines():
+            if "mc-jarvis" not in line:
+                continue
+            for flag in set(re.findall(r"(?<![\w-])--[a-z][a-z-]+", line)):
+                assert flag in real, (
+                    f"{flag} is promised but not in the parser: {line.strip()}")
 
 
 def test_the_skill_states_no_timing_rung_as_a_fact():

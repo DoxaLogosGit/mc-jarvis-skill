@@ -18,8 +18,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 import yaml
+from . import paths
 
-CONFIG_PATH = Path(__file__).parent / "_bundled" / "encounter_setup.yaml"
+CONFIG_PATH = paths.bundled("encounter_setup.yaml")
 
 DECK = "deck"
 STARTS_IN_PLAY = "starts_in_play"

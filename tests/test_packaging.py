@@ -99,3 +99,37 @@ def test_the_skill_is_in_the_wheel(built):
     from."""
     assert any("_bundled/skill/" in n and n.endswith("SKILL.md")
                for n in _wheel_names(built))
+
+
+def test_bundled_configs_resolve_without_the_symlinks(tmp_path, monkeypatch):
+    """A fresh clone has an EMPTY `_bundled/`: the symlinks are gitignored
+    and only exist on a machine that made them. Every config loader read
+    `_bundled` directly, so a clean checkout raised
+    `FileNotFoundError: _bundled/timing.yaml` - 79 CI failures, and the
+    same for anyone following the README's `uv sync && uv run pytest`.
+
+    `paths.bundled` prefers the installed layout and falls back to the
+    repository's own `config/`, so both work.
+    """
+    from mc_jarvis import paths
+
+    monkeypatch.setattr(paths, "_BUNDLED", tmp_path / "absent")
+    for name in ("timing.yaml", "legality.yaml", "glyphs.yaml",
+                 "keywords.yaml", "encounter_setup.yaml"):
+        resolved = paths.bundled(name)
+        assert resolved.exists(), name
+        assert resolved.parent.name == "config", resolved
+
+    skill = paths.bundled("skill", "mc-jarvis")
+    assert (skill / "SKILL.md").exists(), skill
+
+
+def test_every_repo_config_is_reachable_through_bundled():
+    """A config added to `config/` without a `force-include` line works in
+    a checkout and fails for anyone who installed the tool. This catches
+    the checkout half; `test_the_wheel_carries_every_bundled_config`
+    catches the wheel half."""
+    from mc_jarvis import paths
+
+    for config in (ROOT / "config").glob("*.yaml"):
+        assert paths.bundled(config.name).exists(), config.name

@@ -807,6 +807,345 @@ therefore a per-command decision, not one switch: it is meaningless on
 `doctor`, `status`, `update`, `install-skill`, `timing`, and
 `rules search`. That list is part of the collection task's scope.
 
+### 10.2 Campaign-earned cards
+
+Raised 2026-08-27: campaign rewards go into a deck but are not available
+in ordinary deckbuilding, and the copy rules looked as though they might
+differ. Measured, most of that worry dissolves and one real limit remains.
+
+**There is a structured marker.** `faction_code = 'campaign'` covers
+**146 cards across 15 sets** — the Market, the Galaxy's Most Wanted ship
+pool, the Mutant Genesis and Age of Apocalypse campaign sets, the
+S.H.I.E.L.D. tech upgrades. No hand-maintained list is needed, which is
+the opposite of the Rogue's-Touched case in §10.
+
+Of those 146:
+
+| | Count | Already handled by |
+|---|---|---|
+| Encounter-side (side schemes, minions, obligations, treacheries) | 51 | the type rule |
+| Permanent or `hero_special` | 27 | `out_of_deck` |
+| **Genuinely enter a player deck** | **68** | nothing yet |
+
+**The copy rules ARE different, and an earlier pass here got it
+backwards.** It said `deck_limit` "carries the right value on every one"
+because the column is internally consistent — `deck_limit <= quantity`
+holds for every campaign card, so the §10 invariant is intact. But
+consistency is not correctness: on a campaign card the column counts
+**what the box holds**, which is typically one copy per player at four
+players. Pouches and Norn Stone print 4 for that reason, and each player
+receives one.
+
+**How many a player is awarded is in the campaign book**, which `init`
+does not fetch — it takes only Learn to Play and the Rules Reference —
+and which this project therefore does not hold. So the true per-player
+cap is unknown and usually *lower* than the column, and `check_copies` is
+too permissive on these cards.
+
+What it can still prove is the upper bound: a deck holding more copies
+than exist cannot be legal, and that check stands. Below that, the
+campaign note now says the limit was not verified, rather than letting a
+pass imply it was. Same reasoning as earned-ness: report what cannot be
+checked.
+
+No corpus evidence is available either way — **0 of 1,501 published decks
+contain a campaign card at all.**
+
+**What is not determinable is whether the player has EARNED them.** That
+lives in the campaign book, not the card data, and marvelcdb does not
+record it either — a decklist carries slots, not campaign progress. So
+`deck check` **reports** campaign cards and does not judge them:
+
+- Passing silently would imply the tool verified something it cannot see.
+- Failing would reject a perfectly legal campaign deck.
+- A `--campaign` flag would make the player declare a mode to get a
+  verdict the tool still could not actually check.
+
+`--owned` does **not** hide them: they ship in a box the player owns, so
+pack ownership answers "do I physically have this card" correctly.
+Earned-ness is a separate axis and this project does not model it.
+
+**Frequency, measured:** **0 of 156** published decks sampled across six
+`by_date` days contain a single campaign card. So this does not
+contaminate the regression corpus's rejection rate, and it is rare in
+practice.
+
+### 10.2a What the corpus is, and is not
+
+**marvelcdb is a community deck-builder and storage service, not a rules
+enforcer.** It does not block an illegal deck from being saved or
+published, and players can and do play decks that break the rules. The
+site is maintained by the community, not by the publisher.
+
+**The rulebooks are the only authority.** The corpus is a *regression
+signal* over `legality.yaml` — it says "something changed" — and it is
+never ground truth. Three consequences, and §10's framing needs all three:
+
+1. **A nonzero rejection rate is expected**, because some published decks
+   really are illegal. §10 says "published decks are overwhelmingly legal,
+   so a meaningful rejection rate means the encoded rules are wrong"; that
+   inference only holds for a *large* or *clustered* rate. A diffuse few
+   percent is what a community site should produce.
+2. **Never tune `legality.yaml` to reduce the rate.** When the corpus and
+   the rules disagree, the rules win and the corpus is wrong. Every change
+   made in §10.3 was traced to a card or a rules entry first; the corpus
+   only pointed at where to look. But "the rules" is a *hierarchy*, not a
+   book — see below.
+3. **The corpus cannot teach a rule nobody breaks.** `Linked (Card Title)`
+   (RR p.27) exempts a card from the deck entirely, exactly as `Permanent`
+   does — 14 player cards carry it, and **no corpus deck lists one**. A
+   corpus-led process would never have found it. Reading the rulebook did.
+
+#### The precedence chain: a card can beat a rulebook
+
+The game states its own order of authority, under `Golden Rules`
+(RR p.4). Highest first:
+
+| | Authority | |
+|---|---|---|
+| 1 | **Card text and scenario rules** | beats either book |
+| 2 | **Rules Reference** | beats Learn to Play |
+| 3 | **Learn to Play** | |
+
+So "the rulebook is the authority" is wrong at the top of the chain: when
+a card contradicts a rulebook, **the card wins**. Learn to Play's own KEY
+CONCEPTS section (p.9) states the same thing as its Golden Rule.
+
+This is not a footnote for this feature — **it is the reason
+`deckbuilding_overrides` exists.** Every entry in it is card text beating
+the Rules Reference:
+
+- Spider-Woman's card overrides the one-aspect rule (and adds its own
+  equal-split requirement).
+- Adam Warlock's overrides both the aspect count *and* `deck_limit`, and
+  his cap binds **downward** — a rule no general reading of the RR would
+  produce.
+- Cyclops, Cable, Wonder Man, Gamora and Maria Hill each override aspect
+  purity for a named slice of cards.
+
+Which is why those are **scanned from the identity cards** rather than
+hand-listed from the rulebooks: the cards are the higher authority, and
+`deckrules.audit` fails the build when a new release adds one nobody has
+encoded. A rules-derived list could never keep up, because the rules are
+not where that information lives.
+
+It also means the 40-card minimum sits at the **weakest** tier — Learn to
+Play — so a card or a scenario may legitimately override it, and a
+future `deckbuilding_overrides` entry doing so is expected rather than
+suspicious.
+
+**Where each rule in `deck_rules` actually comes from** matters for the
+same reason, and one of them is not where it looks:
+
+| Rule | Stated in |
+|---|---|
+| Permanent cards are exempt from the size limits | RR p.32, `Permanent` |
+| Linked cards are exempt, and cannot be in a deck | RR p.27, `Linked (Card Title)` |
+| **Every deckbuilding rule, both size bounds included** | **Rules Reference, Appendix I: Deck Customization (p.49).** See §10.4 — two earlier claims here were wrong. |
+| Aspect count and purity | the identity card, plus RR `Aspect` |
+| Per-identity allowances | the identity cards themselves, scanned by `deckrules` |
+
+`declaration_trusted_above` is the one value in that config derived from
+the corpus rather than from a rulebook — and it is not a game rule. It is
+a heuristic about **marvelcdb data quality**: the site stores the declared
+aspect in a field of its own, so a player can rebuild a deck and leave the
+declaration behind. Keeping it visibly separate from the rules-derived
+values is deliberate.
+
+### 10.4 Appendix I is where the deckbuilding rules live
+
+Corrected 2026-08-28, after the user pushed back on a claim in this spec.
+
+**The claim was wrong.** §10.2a said the 40-card minimum "is not in the
+Rules Reference at all" and cited Learn to Play. Every deckbuilding rule
+is in the Rules Reference, in **Appendix I: Deck Customization, p.49** —
+and the appendix is *more* precise than Learn to Play, because it names
+the permanent exemption that the Learn to Play sentence omits.
+
+**Why it was missed, and it is a tooling gap rather than a reading
+slip.** `rules_chunk` builds entries from the RR's glossary index, and
+the appendices are not glossary terms. The RR's own `Deck Customization`
+entry is a 35-character pointer — `See: Appendix I: Deck Customization` —
+so the glossary *tells* you where to go and the index does not go there.
+Searching `rules_entries` for a deck size therefore returns nothing, and
+the absence looks like evidence.
+
+**Consequence beyond this feature:** `mc-jarvis rules show` and
+`rules search` cannot reach **any** appendix. That is three bodies of
+real rules text — Appendix I (deck customization), Appendix II (the
+16-step setup sequence), Appendix III (card anatomy) — invisible to every
+rules command. Worth its own work; recorded here because it was found
+here.
+
+#### Every rule in Appendix I, against what is implemented
+
+| Appendix I: Player Decks | Status |
+|---|---|
+| Choose exactly one identity card | implicit in `resolve` |
+| **Minimum 40, maximum 50** — identity card and permanents not counted | ✅ `check_size`, both bounds |
+| **Must include each identity-specific card, at its exact printed quantity** | ✅ `check_signature` — added by this pass |
+| A matching signature card may be swapped for a `Team-Up` card naming both identities | ❌ multiplayer; needs the other player's identity, which a single deck does not carry |
+| Exactly one aspect, remainder from that aspect and/or basic | ✅ `check_aspects` |
+| **No more than three copies by title** of a non-unique card | ✅ via `deck_limit` — and see below, the rule binds only the customisable deck |
+| No two matching unique cards; the identity counts | ✅ `check_unique` |
+| Any deckbuilding requirement on the identity card | ✅ `deckbuilding_overrides` |
+
+**The three-copy rule binds only the part of the deck the player
+customises.** Appendix I states it directly after "the remainder of their
+deck is then customized with cards that belong to that aspect and/or
+basic cards" — so it governs aspect and basic cards. Signature cards
+arrive with the identity at whatever quantity they print, and campaign
+cards likewise; a mandatory identity set is not something the player
+chose three of.
+
+The corpus divides on exactly that line. Every non-unique player card
+printing a limit above 3 is signature, campaign or encounter — Hex Bolt 4
+(Scarlet Witch), Frostbite 6 (Iceman), Always Be Running 4 (Quicksilver),
+Desperate Measures, Norn Stone, Pouches, Morlock, Rescued Captive — and
+**no aspect or basic card exceeds 3.**
+
+So reading `deck_limit` per card satisfies both halves at once, which is
+why `check_copies` is already correct. Two gates hold the equivalence: an
+aspect or basic card above 3 would mean the data or the rule has changed,
+and a signature card above 3 must keep existing, so the first gate cannot
+be satisfied by the data merely having no high limits at all.
+
+**On "by title".** The rule counts copies by title and the implementation
+counts by canonical code. 29 non-unique player titles map to more than
+one canonical code, but they are resource variants — Wakanda Forever!,
+Firecracker, Photographic Reflexes — where each variant prints its own
+`deck_limit`. Since a card outranks a rulebook, the printed limit
+governs and the two readings agree. Recorded because it is a real
+difference that happens not to bite.
+
+**On the signature rule's measurement.** A first pass reported **3.9%**
+of published decks missing an identity card. It was wrong: it counted
+permanent signature cards — Psylocke's Psi-blades — as missing, when they
+are set aside and marvelcdb correctly omits them. Excluding everything
+the rules keep out of a deck, **0 of 1,501 decks are short**. The check
+is kept precisely because it should never fire.
+
+### 10.2b Scope: two rulebooks, and the campaign books are out
+
+Decided 2026-08-28.
+
+**mc-jarvis answers from the Rules Reference and the designer rulings.
+The campaign books are deliberately not in scope, now or later.**
+
+The reason is not that they are hard to fetch. It is that **each campaign
+carries its own tweaks to what may go in a deck** — per-campaign award
+counts, earned cards, deck modifications between scenarios — and that set
+grows with every release. A tool that reads them is committed to tracking
+a moving target across every campaign FFG has published and will publish,
+and being *quietly out of date* about deckbuilding is worse than being
+openly silent about it.
+
+Two rulebooks is a target that holds still. The Rules Reference is
+versioned, its currency is already checked at `init`, and the rulings
+that outrank it are already tracked.
+
+**What this makes permanent rather than pending:**
+
+- Whether a player earned a campaign card is **unanswerable**, not
+  unanswered. The note in `deck check` is the final behaviour.
+- A campaign card's per-player copy limit is likewise unanswerable, for
+  the same reason (§10.2).
+- Any campaign-specific deckbuilding tweak is out of scope by
+  construction, so a deck built under one may fail a check that is
+  correct for the base rules. The note is what tells the player that.
+
+**What this makes higher priority.** The Rules Reference is already
+fetched and already on disk, and `rules show` cannot reach a third of it:
+the appendices are not glossary terms, so Appendix I (deck
+customization), Appendix II (setup) and Appendix III (card anatomy) are
+invisible to every rules command (§10.4). That is a gap in a source
+already held, which is worth closing before any source that is not.
+
+### 10.3 What the regression corpus found
+
+1,534 published decks fetched over 40 days; 1,501 checked after excluding
+`format: legacy`. **The first run rejected 14.1%.** Every point of the
+drop to 4.5% was a real defect, and each is recorded here because §10
+calls `legality.yaml` the highest-risk component in the project and a
+rejection nobody read is worse than no corpus at all.
+
+**Four bugs the corpus caught:**
+
+| Bug | Rejections |
+|---|---|
+| `_limit` read `override.get("set_code")`, a key the config never had, so Adam Warlock's "max 1 copy of any non-Warlock card" applied to his own signature cards — `Cosmic Ward` is printed at limit 2 | 18 → 2 |
+| Off-aspect allowances were never implemented, though all seven sat in `deckbuilding_overrides` already | part of 165 → 62 |
+| Warlock's card wants an equal number from **all four** aspects and marvelcdb records at most two, so his declared aspects cannot judge purity | " |
+| Deck size excluded set-aside cards that carry no `permanent` keyword | 17 → 6 |
+| Aspect purity was judged against a declaration marvelcdb stores **separately from the cards**, so a rebuilt deck keeps its old one | 62 → 47 |
+
+**And two judgment calls, both recorded rather than assumed:**
+
+- A deck with **no recorded aspect** is a note, not a failure. marvelcdb
+  keeps the aspect in `meta`; some decks carry none. That is a gap in what
+  was stored, not evidence of an illegal deck.
+- `card_traits` records the `[[X-MEN]]` markup a card's text **references**
+  — "which cards care about X-Men". The printed trait line is
+  `cards.traits`. The allowances read the second. Reaching for the first
+  silently matched nothing, because `Blindfold` has no `card_traits` rows
+  at all.
+
+#### The residue, read card by card
+
+**5.5% — 82 of 1,501 — and every category was examined.**
+
+- **`unique` (12)** — all verifiably illegal: a Captain America deck
+  holding the Captain America ally, a Silk deck holding the Silk ally, two
+  different `Angel` allies, `Ant-Man` beside `Yellow Jacket` (one
+  character, matched on alter-ego title).
+- **`deck_size` (6)** — genuinely short, 31 to 37 cards.
+- **`deck_limit` (2)** — one Warlock deck breaking his own copy rule, one
+  deck with two `Superpower Training` at `deck_limit` 1.
+- **`aspects` (62)** — 47 decks with one or two off-aspect cards, 15 whose
+  declared aspect is not even among the deck's dominant factions.
+
+**The distribution is what settles it.** Across 1,478 decks with a
+declared aspect:
+
+| Off-aspect cards | Decks | |
+|---|---|---|
+| 0 | 1,424 | **96.3%** |
+| 1 | 23 | 1.6% |
+| 2 | 15 | 1.0% |
+| 3+ | 16 | 1.1% |
+
+A sharp mode at zero, then a thin scatter — the shape of human
+deckbuilding slips. A missing allowance would show as a **spike** at one
+hero or one count, and the tail is diffuse instead. marvelcdb computes a
+`problem` field server-side but does not expose it publicly, so decks with
+problems can be and are published.
+
+**§10 calls `meta.aspect` "the authoritative declared aspect". It is
+authoritative for what the player DECLARED, which is not the same as
+correct.** On marvelcdb the declaration is a field of its own, set apart
+from the deck contents, so a player can rebuild into another aspect — or
+never set it — and the declaration stays behind. 15 decks declare an
+aspect that is not even their dominant faction; one Cable deck declares
+protection while holding 12 leadership cards and 2 protection.
+
+Judging purity against a stale declaration rejects a legal deck **and
+names the wrong cards as the problem**, which is worse than saying
+nothing. So a deck whose own cards overwhelmingly contradict its
+declaration gets a note and no purity verdict.
+
+The threshold sits in a measured empty band. Of 1,478 decks with a
+declaration, **1,325 match it completely and 15 match 10% or less**;
+between them lie one deck at 30% and two at 40%. The 50–90% band is
+mostly legal off-aspect allowances — Cyclops's X-MEN allies — and must
+**not** be swept up, which is why the cut is at 20% rather than
+somewhere convenient.
+
+**The gate is set at 6%**, above the measured 4.5% with room for corpus
+drift as new decks arrive, and tight enough that a regression rejecting a
+single hero's decks (~1.3%) still fires it. A second gate asserts at
+least 20 rejections, because a rate near zero means the rules stopped
+firing and reads identical to everything being fine.
+
 ## 11. Init and update
 
 ### `mc-jarvis init`

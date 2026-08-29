@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 import sqlite3
 from dataclasses import dataclass
+from . import paths
 
 ARROW = "→"
 
@@ -207,7 +208,7 @@ def derive_keywords(conn) -> list[tuple[str, str, str | None]]:
     return out
 
 
-KEYWORD_CONFIG_PATH = Path(__file__).parent / "_bundled" / "keywords.yaml"
+KEYWORD_CONFIG_PATH = paths.bundled("keywords.yaml")
 
 
 def load_keyword_config(path=None) -> dict:

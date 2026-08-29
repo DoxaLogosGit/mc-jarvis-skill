@@ -13,11 +13,20 @@ def _difficulties():
     return list(DIFFICULTIES)
 
 
-def _leaf(sub, name: str, help_: str, **kw) -> argparse.ArgumentParser:
+def _leaf(sub, name: str, help_: str, *, owned: bool = False,
+          **kw) -> argparse.ArgumentParser:
+    """A leaf command. `--json` everywhere; `--owned` only where it acts.
+
+    `--owned` used to be added unconditionally and rejected at dispatch,
+    which offered a filter on `doctor` and `timing` that could never
+    happen (§10.1). It is now opt-in, and `collection.OWNED_COMMANDS`
+    records which commands take it.
+    """
     p = sub.add_parser(name, help=help_, **kw)
     p.add_argument("--json", action="store_true", help="emit JSON")
-    p.add_argument("--owned", action="store_true",
-                   help="restrict to packs in your collection")
+    if owned:
+        p.add_argument("--owned", action="store_true",
+                       help="restrict to packs in your collection")
     return p
 
 
@@ -47,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     # `card show Vision` parse `show` as the query (spec §5.1).
     card = sub.add_parser("card", help="card lookup")
     card_sub = card.add_subparsers(dest="card_cmd")
-    search = _leaf(card_sub, "search", "search cards")
+    search = _leaf(card_sub, "search", "search cards", owned=True)
     search.add_argument("query", nargs="?", default=None)
     search.add_argument("--aspect")
     search.add_argument("--type")
@@ -55,21 +64,23 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--trait")
     search.add_argument("--text")
     search.add_argument("--limit", type=int, default=20)
-    show = _leaf(card_sub, "show", "one card in full")
+    show = _leaf(card_sub, "show", "one card in full", owned=True)
     show.add_argument("name")
     show.add_argument("--explain", action="store_true",
                       help="expand keywords with rules text and page cites")
 
     ident = _leaf(sub, "identity", "all faces and forms of an identity",
+                  owned=True,
                   aliases=["hero"])
     ident.add_argument("name")
 
-    enc = _leaf(sub, "encounter", "villain stats and set contents")
+    enc = _leaf(sub, "encounter", "villain stats and set contents",
+                owned=True)
     enc.add_argument("name")
 
     rules = sub.add_parser("rules", help="rules lookup")
     rules_sub = rules.add_subparsers(dest="rules_cmd")
-    rshow = _leaf(rules_sub, "show", "a Rules Reference entry")
+    rshow = _leaf(rules_sub, "show", "a Rules Reference entry", owned=True)
     rshow.add_argument("term")
     rsearch = _leaf(rules_sub, "search", "full-text search the rules")
     rsearch.add_argument("text")
@@ -78,6 +89,21 @@ def build_parser() -> argparse.ArgumentParser:
                 "designer rulings the rulebook does not yet cover")
     rul.add_argument("text", nargs="?", default=None,
                      help="search the rulings instead of listing them")
+
+    deck_p = _leaf(sub, "deck", "import, validate and describe a deck")
+    deck_sub = deck_p.add_subparsers(dest="deck_cmd", required=True)
+    for verb, help_ in (("fetch", "normalise a deck"),
+                        ("check", "legality, rule by rule"),
+                        ("stats", "curves, mixes and densities")):
+        leaf = _leaf(deck_sub, verb, help_)
+        leaf.add_argument(
+            "deck", help="a marvelcdb id, a marvelcdb URL, or a JSON file")
+
+    col = _leaf(sub, "collection", "packs you own")
+    col.add_argument("collection_cmd", choices=["set", "show"])
+    col.add_argument("packs", nargs="*", help="pack codes, for `set`")
+    col.add_argument("--available", action="store_true",
+                     help="list every pack code this index knows")
 
     asr = _leaf(sub, "assess", "what a scenario throws at you")
     asr.add_argument("villain", help="a scenario, or a villain that names one")
@@ -170,6 +196,12 @@ def _dispatch(name: str, args) -> int:
     if name == "rulings":
         from . import rulings
         return rulings.handle(args)
+    if name == "deck":
+        from . import deckfetch
+        return deckfetch.handle(args)
+    if name == "collection":
+        from . import collection
+        return collection.handle(args)
     if name == "assess":
         from . import assess
         return assess.handle(args)
@@ -193,8 +225,4 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     # A flag that silently does nothing is the "did you filter?" bug class
     # spec §13 warns about. The collection lands in the next plan.
-    if getattr(args, "owned", False):
-        print("mc-jarvis: --owned needs a collection, which is not built "
-              "yet in this version", file=sys.stderr)
-        return 3
     return _dispatch(args.command, args)

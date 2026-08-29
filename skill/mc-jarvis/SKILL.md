@@ -64,6 +64,10 @@ default when you are quoting to the user.
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
 | the game round | `mc-jarvis timing --round` |
 | rulings the rulebook lacks | `mc-jarvis rulings [<text>]` |
+| import a deck | `mc-jarvis deck fetch <id-or-url-or-file>` |
+| is this deck legal | `mc-jarvis deck check <deck>` |
+| what shape is this deck | `mc-jarvis deck stats <deck>` |
+| packs you own | `mc-jarvis collection set <pack>...` / `mc-jarvis collection show` |
 | environment problems | `mc-jarvis doctor` |
 | index age, version, counts | `mc-jarvis status` |
 
@@ -220,3 +224,37 @@ Five things to carry into any answer:
 
 `assess` reports facts. Turning "6 Tough minions, 2 answers in the deck"
 into "cut a Tackle" is your job, not the command's.
+
+## Decks
+
+`deck check` reports rule by rule and names the Rules Reference entry
+behind each failure. Run `mc-jarvis rules show <entry>` for the wording —
+it comes from the player's own rulebook, not from this tool.
+
+Six things to carry into any answer:
+
+- **A card can beat a rulebook.** `Golden Rules` (RR p.4) puts card text
+  and scenario rules above the Rules Reference, which is above Learn to
+  Play. That is why Spider-Woman may take two aspects and Adam Warlock
+  all four: their own cards say so. If a player quotes a card at you that
+  contradicts a rule, the card is probably right.
+- **A failing size check may not be the player's fault.** If the deck
+  names cards this index does not carry, `deck check` says so and calls
+  the count a floor. Say that rather than telling them to add cards.
+- **Two sizes, and both are correct.** `deck stats` reports what you
+  *built* and what you will *draw*. Permanent and linked cards are in
+  neither; Rogue's Touched counts toward the 40 and is never drawn. A
+  player asking "why does it say 40 when I count 39" is asking about
+  this.
+- **A stale aspect is common and is not illegal.** marvelcdb stores the
+  declared aspect in a field of its own, so rebuilding a deck leaves the
+  old declaration behind. When the cards contradict it, `deck check`
+  says so and does not judge purity.
+- **marvelcdb does not enforce the rules.** It is a community
+  deck-builder and storage site; illegal decks can be saved, published,
+  and played. A deck being on marvelcdb is not evidence it is legal.
+- **`--owned` filters over printings, not packs.** Owning any printing of
+  a card is owning the card, so a reprint in a pack they own counts.
+
+`deck check` reports; it does not coach. Turning "6 Tough minions, 2
+answers" into "cut a Tackle" is your job, not the command's.
