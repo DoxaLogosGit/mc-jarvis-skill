@@ -763,3 +763,25 @@ def test_a_signature_card_may_exceed_three_copies(real_index):
         "AND faction_code = 'hero' AND (is_unique IS NULL OR is_unique = 0)")]
     assert "Hex Bolt" in high, high
     assert "Frostbite" in high, high
+
+
+def test_the_campaign_note_says_copy_limits_are_unverifiable(tmp_path):
+    """`deck_limit` on a campaign card counts what the BOX holds - one
+    per player at four players - not what one player may run. Pouches and
+    Norn Stone print 4 for that reason, and the per-player award lives in
+    the campaign book, which `init` does not fetch.
+
+    So `check_copies` reads a number that does not mean what the check
+    assumes, and is too permissive. It still catches a deck holding more
+    than the box contains; below that the note has to say the rest is
+    unknown rather than let a pass imply it was checked."""
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("40196", "Pouches", "resource", "camp", 4, 4)])
+    conn.execute("UPDATE cards SET faction_code = 'campaign' "
+                 "WHERE code = '40196'")
+    conn.commit()
+    note = deckcheck.notes(conn, _deck(slots={"40196": 4}))[0]
+    assert note.kind == "note"
+    assert "campaign book" in note.detail
+    # More than the box holds is still catchable and still wrong.
+    assert not deckcheck.check_copies(conn, _deck(slots={"40196": 5})).ok

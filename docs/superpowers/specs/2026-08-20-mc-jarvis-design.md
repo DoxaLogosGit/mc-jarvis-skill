@@ -827,12 +827,29 @@ Of those 146:
 | Permanent or `hero_special` | 27 | `out_of_deck` |
 | **Genuinely enter a player deck** | **68** | nothing yet |
 
-**The copy rules are NOT different, which was the fear.** `deck_limit`
-carries the right value on every one — Shawarma 3, Pouches and Desperate
-Measures 4, Norn Stone 4, the other 65 at 1 — and **zero campaign cards
-violate `deck_limit <= quantity`**, the invariant the whole no-copy-
-arithmetic model rests on (§10). `check_copies` therefore needs no
-special case.
+**The copy rules ARE different, and an earlier pass here got it
+backwards.** It said `deck_limit` "carries the right value on every one"
+because the column is internally consistent — `deck_limit <= quantity`
+holds for every campaign card, so the §10 invariant is intact. But
+consistency is not correctness: on a campaign card the column counts
+**what the box holds**, which is typically one copy per player at four
+players. Pouches and Norn Stone print 4 for that reason, and each player
+receives one.
+
+**How many a player is awarded is in the campaign book**, which `init`
+does not fetch — it takes only Learn to Play and the Rules Reference —
+and which this project therefore does not hold. So the true per-player
+cap is unknown and usually *lower* than the column, and `check_copies` is
+too permissive on these cards.
+
+What it can still prove is the upper bound: a deck holding more copies
+than exist cannot be legal, and that check stands. Below that, the
+campaign note now says the limit was not verified, rather than letting a
+pass imply it was. Same reasoning as earned-ness: report what cannot be
+checked.
+
+No corpus evidence is available either way — **0 of 1,501 published decks
+contain a campaign card at all.**
 
 **What is not determinable is whether the player has EARNED them.** That
 lives in the campaign book, not the card data, and marvelcdb does not

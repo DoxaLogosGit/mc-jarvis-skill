@@ -285,6 +285,20 @@ def notes(conn, deck) -> list[Finding]:
                    f"progress, which this tool does not model and marvelcdb "
                    f"does not record."))
 
+    if found:
+        # `deck_limit` on a campaign card counts the copies the BOX holds
+        # - typically one per player at four players - not the copies one
+        # player may run. Pouches and Norn Stone print 4 because four
+        # players each receive one. The per-player award is stated in the
+        # campaign book, which `init` does not fetch and this project does
+        # not hold, so the real cap is unknown and is usually LOWER than
+        # the column. `check_copies` still catches a deck holding more
+        # than the box contains; below that it cannot judge.
+        out[-1].detail += (
+            " Their copy limits are not verifiable either: `deck_limit` "
+            "counts what the box holds, and how many each player is "
+            "awarded is in the campaign book.")
+
     later = arriving(conn, deck)
     if later:
         names = [c["name"] for c in later]
