@@ -589,3 +589,66 @@ def test_a_linked_card_is_not_in_the_deck_either(tmp_path):
     deck = _deck(slots={"49033": 1, "a1": 3})
     assert deckcheck.deckbuilding_cards(conn, deck) == {"a1": 3}
     assert deckcheck.included(conn, deck) == {"a1": 3}
+
+
+# --- linked cards arrive during play (RR p.27) -----------------------
+
+def _linked_db(tmp_path):
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "ownset", None, 1),
+                  ("43021", "Specialized Training", "player_side_scheme",
+                   "core", 1, 1),
+                  ("43034", "Combat Specialist", "upgrade", "core", 1, 1),
+                  ("43035", "Defense Specialist", "upgrade", "core", 1, 1),
+                  ("53023", "Captain America", "upgrade", "core", 1, 1),
+                  ("53034", "Captain America's Shield", "upgrade", "core",
+                   1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("43034", "linked"), ("43035", "linked"),
+                              ("53034", "linked")])
+    conn.executemany("UPDATE cards SET text = ? WHERE code = ?", [
+        ("Linked (Specialized Training). Your hero gets +1 ATK.", "43034"),
+        ("Linked (Specialized Training). Your hero gets +1 DEF.", "43035"),
+        ("Linked (Captain America upgrade). Restricted.", "53034"),
+        ("<b>When Defeated</b>: choose 1 set-aside upgrade.", "43021"),
+        ("<b>Hero Action</b>: find Captain America's Shield.", "53023")])
+    conn.commit()
+    return conn
+
+
+def test_a_linked_card_arrives_when_its_enabler_is_in_the_deck(tmp_path):
+    """RR p.27 keeps linked cards out of the deck, and the corpus agrees -
+    0 of 1,501 published decks list one. But 215 list an ENABLER, so one
+    deck in seven acquires linked cards during play and `deck stats` said
+    nothing about them.
+
+    Reporting only "not in the deck" describes a game the player does not
+    have: a Specialized Training deck really does end up with a
+    Specialist upgrade in play, and in the deck once it is discarded."""
+    conn = _linked_db(tmp_path)
+    arriving = deckcheck.arriving(conn, _deck(slots={"43021": 1, "a1": 3}))
+    assert {a["name"] for a in arriving} == {"Combat Specialist",
+                                             "Defense Specialist"}
+    assert all(a["enabler"] == "Specialized Training" for a in arriving)
+
+
+def test_an_enabler_that_is_an_upgrade_works_the_same_way(tmp_path):
+    """`Linked (Captain America upgrade)` names a card plus its type, not
+    a bare title. The Captain America upgrade finds the Shield and adds it
+    to your hand."""
+    conn = _linked_db(tmp_path)
+    arriving = deckcheck.arriving(conn, _deck(slots={"53023": 1, "a1": 3}))
+    assert [a["name"] for a in arriving] == ["Captain America's Shield"]
+
+
+def test_no_enabler_means_nothing_arrives(tmp_path):
+    conn = _linked_db(tmp_path)
+    assert deckcheck.arriving(conn, _deck(slots={"a1": 3})) == []
+
+
+def test_a_linked_card_still_does_not_count_toward_the_minimum(tmp_path):
+    """RR p.27 is explicit and unchanged by any of the above: linked cards
+    are exempt from the deck-size limits at both ends."""
+    conn = _linked_db(tmp_path)
+    deck = _deck(slots={"43021": 1, "43034": 1, "a1": 3})
+    assert deckcheck.deckbuilding_cards(conn, deck) == {"43021": 1, "a1": 3}

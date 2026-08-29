@@ -13,6 +13,7 @@ the order makes her fail her own legality check.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 PLAYER_TYPES = ("ally", "event", "upgrade", "support", "resource")
@@ -175,6 +176,77 @@ def check_copies(conn, deck, override: dict | None = None) -> Finding:
         cards=names)
 
 
+# `Linked (Specialized Training)`, `Linked (Captain America upgrade)`,
+# `Linked (Absorbing Man minion)` - a card title, optionally followed by
+# the type word that disambiguates it.
+LINKED_RE = re.compile(r"Linked\s*\(([^)]+)\)", re.I)
+_LINK_TYPES = ("upgrade", "minion", "ally", "event", "support", "resource",
+               "side scheme", "attachment", "treachery")
+
+
+def _enabler_name(clause: str) -> str:
+    """The card title inside a `Linked (...)` clause.
+
+    The trailing type word is a disambiguator, not part of the name:
+    `Captain America upgrade` is the Captain America UPGRADE, told apart
+    from the leader and the ally of the same name.
+    """
+    name = clause.strip()
+    for kind in _LINK_TYPES:
+        if name.lower().endswith(" " + kind):
+            return name[: -(len(kind) + 1)].strip()
+    return name
+
+
+def linked_groups(conn) -> dict[str, list[dict]]:
+    """Enabler card name -> the linked cards it brings into play.
+
+    Derived from the linked cards' own text rather than configured: each
+    one names its enabler, which is the only place the relationship is
+    written down.
+    """
+    groups: dict[str, list[dict]] = {}
+    for row in conn.execute(
+            "SELECT code, name, type_code, text FROM cards "
+            "WHERE text LIKE '%Linked (%'"):
+        match = LINKED_RE.search(row["text"] or "")
+        if not match:
+            continue
+        enabler = _enabler_name(match.group(1))
+        groups.setdefault(enabler, []).append(
+            {"code": row["code"], "name": row["name"],
+             "type_code": row["type_code"], "enabler": enabler})
+    return groups
+
+
+def arriving(conn, deck) -> list[dict]:
+    """Linked cards this deck will acquire during play.
+
+    RR p.27 keeps linked cards out of the deck, and the corpus agrees: 0
+    of 1,501 published decks list one. But 215 list an ENABLER, so one
+    deck in seven gains cards this way, and saying only "not in the deck"
+    describes a game the player does not have - a Specialized Training
+    deck really does end up with a Specialist upgrade in play, and in the
+    deck once it is discarded.
+
+    Only enablers the PLAYER's deck holds count. The Trickster Magic
+    allies are linked to encounter minions, so whether they arrive is a
+    property of the scenario rather than of this deck.
+    """
+    cards = included(conn, deck)
+    if not cards:
+        return []
+    groups = linked_groups(conn)
+    marks = ",".join("?" * len(cards))
+    held = {r["name"] for r in conn.execute(
+        f"SELECT name FROM cards WHERE code IN ({marks})", list(cards))}
+    out = []
+    for enabler, members in sorted(groups.items()):
+        if enabler in held:
+            out.extend(sorted(members, key=lambda m: m["name"]))
+    return out
+
+
 def notes(conn, deck) -> list[Finding]:
     """What the tool can see but cannot judge (§10.2).
 
@@ -191,13 +263,26 @@ def notes(conn, deck) -> list[Finding]:
     found = [r["name"] for r in conn.execute(
         f"SELECT name FROM cards WHERE code IN ({marks}) "
         f"AND faction_code = 'campaign' ORDER BY name", list(cards))]
-    if not found:
-        return []
-    return [Finding(
-        rule="campaign", ok=True, kind="note", cards=found,
-        detail=f"{len(found)} campaign card(s) - {', '.join(found)}. Whether "
-               f"you have earned these depends on campaign progress, which "
-               f"this tool does not model and marvelcdb does not record.")]
+    out = []
+    if found:
+        out.append(Finding(
+            rule="campaign", ok=True, kind="note", cards=found,
+            detail=f"{len(found)} campaign card(s) - {', '.join(found)}. "
+                   f"Whether you have earned these depends on campaign "
+                   f"progress, which this tool does not model and marvelcdb "
+                   f"does not record."))
+
+    later = arriving(conn, deck)
+    if later:
+        names = [c["name"] for c in later]
+        out.append(Finding(
+            rule="linked", ok=True, kind="note", cards=names,
+            detail=f"{len(names)} linked card(s) join this deck during "
+                   f"play - {', '.join(names)}. They are set aside at "
+                   f"setup, arrive when their enabler resolves, and cycle "
+                   f"through the deck from then on, so they are in no "
+                   f"count below."))
+    return out
 
 
 from pathlib import Path

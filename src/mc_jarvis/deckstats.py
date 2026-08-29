@@ -14,13 +14,14 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
-from .deckcheck import deckbuilding_cards, included
+from .deckcheck import arriving, deckbuilding_cards, included
 
 RESOURCES = ("physical", "mental", "energy", "wild")
 
 _EMPTY = {
     "size": 0, "deckbuilding_size": 0, "cost_curve": {}, "mean_cost": 0.0,
     "over": 0, "no_cost": 0, "resources": {}, "by_type": {}, "by_aspect": {},
+    "arrives_later": [],
 }
 
 
@@ -78,4 +79,12 @@ def profile(conn, deck) -> dict:
         "resources": {k: v for k, v in resources.items() if v},
         "by_type": {k: dict(v) for k, v in sorted(by_type.items())},
         "by_aspect": dict(by_aspect.most_common()),
+        # Linked cards are set aside at setup and join the deck when
+        # their enabler resolves (RR p.27), so they are in none of the
+        # numbers above - but a deck holding Specialized Training really
+        # does end up with a Specialist upgrade. Named rather than
+        # counted, because when they arrive is a property of the game
+        # rather than of the deck.
+        "arrives_later": [{"code": c["code"], "name": c["name"],
+                           "via": c["enabler"]} for c in arriving(conn, deck)],
     }

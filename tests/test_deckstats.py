@@ -15,8 +15,10 @@ def _mkdb(tmp_path, cards, out_of_deck=()):
     conn.executemany(
         "INSERT INTO cards (code, name, type_code, cost, resource_physical, "
         "resource_mental, resource_energy, resource_wild, deck_limit, "
-        "quantity, pack_code, set_code, canonical_code, is_reprint, raw) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 3, ?, 'core', 'core', ?, 0, '{}')",
+        "quantity, pack_code, set_code, canonical_code, is_reprint, raw, "
+        "text) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 3, ?, 'core', 'core', ?, 0, '{}', "
+        "'')",
         [(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[0])
          for c in cards])
     conn.executemany(
@@ -145,3 +147,26 @@ def test_every_corpus_deck_reconciles(real_index):
         assert got["deckbuilding_size"] >= got["size"]
         checked += 1
     assert checked > 300, checked
+
+
+def test_linked_cards_are_named_but_not_counted(tmp_path):
+    """They are set aside at setup, so they are in no curve - but a deck
+    holding their enabler really does acquire them, and reporting nothing
+    describes a game the player does not have."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", None, 0, 0, 0, 0, 1),
+                  ("43021", "Specialized Training", "player_side_scheme",
+                   None, 0, 0, 0, 0, 1),
+                  ("43034", "Combat Specialist", "upgrade", 2,
+                   1, 0, 0, 0, 1),
+                  ("a1", "Ally", "ally", 2, 1, 0, 0, 0, 3)],
+                 out_of_deck=[("43034", "linked")])
+    conn.execute("UPDATE cards SET text = 'Linked (Specialized Training).' "
+                 "WHERE code = '43034'")
+    conn.commit()
+    got = deckstats.profile(conn, _deck(slots={"43021": 1, "a1": 3}))
+    assert got["size"] == 4
+    assert got["cost_curve"] == {2: 3}          # the upgrade is not in it
+    assert got["arrives_later"] == [
+        {"code": "43034", "name": "Combat Specialist",
+         "via": "Specialized Training"}]
