@@ -1094,6 +1094,39 @@ customization), Appendix II (setup) and Appendix III (card anatomy) are
 invisible to every rules command (§10.4). That is a gap in a source
 already held, which is worth closing before any source that is not.
 
+### 10.2c Learn to Play is not worth investing in
+
+Decided 2026-08-29, and it closes a work item rather than opening one.
+
+**mc-jarvis is for players who already know how to play.** Learn to Play
+teaches the game to newcomers, it is not revised as the game changes, and
+`Golden Rules` (RR p.4) puts it below the Rules Reference wherever the
+two touch. So it is the weakest source in the stack and the one least
+likely to change.
+
+Measured before deciding, because "leave it alone" should rest on the
+same evidence as "fix it":
+
+- **It never wins a search.** Probing `deck size`, `aspect`, `villain
+  phase`, `threat`, `setup` and `ally`, the Rules Reference ranks first
+  every time. Its 24 page-chunked entries sit under 424 RR entries and do
+  not crowd them out.
+- **No code depends on its content.** The only reference outside the
+  fetch manifest was `deck_rules.rr_entry`, which cited Learn to Play for
+  the deck size before Appendix I was reachable (§10.4). That is now
+  fixed.
+- **The one place the Rules Reference defers to it is already covered by
+  a better source.** Appendix I sends the reader to Learn to Play p.23 for
+  the core set scenarios' recommended encounter sets — and
+  `encounterdeck.parse_contents` reads that mapping from each main
+  scheme's own `Contents` block, for all 56 scenarios rather than the core
+  set's. Card text outranks both books anyway.
+
+So it stays indexed, because it costs nothing and occasionally carries
+context, and **it gets no further work**: no entry parsing, no structural
+extraction, no coverage gate. Effort on rules data goes to the Rules
+Reference and the rulings, which are the two sources that move.
+
 ### 10.3 What the regression corpus found
 
 1,534 published decks fetched over 40 days; 1,501 checked after excluding
