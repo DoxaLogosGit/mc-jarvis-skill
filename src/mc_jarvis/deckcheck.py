@@ -546,4 +546,45 @@ def check(conn, deck, config: dict | None = None) -> list[Finding]:
     return [check_size(conn, deck, config),
             check_copies(conn, deck, override),
             check_aspects(conn, deck, config),
-            check_unique(conn, deck)] + notes(conn, deck)
+            check_unique(conn, deck),
+            check_signature(conn, deck, config)] + notes(conn, deck)
+
+
+def check_signature(conn, deck, config) -> Finding:
+    """Every identity-specific card, at its printed quantity.
+
+    Appendix I (RR p.49) requires the whole identity set in the deck. The
+    expectation excludes anything the rules keep OUT of a deck -
+    permanent, linked, `hero_special` - because those are set aside and
+    marvelcdb correctly does not list them. Counting them as missing was
+    a first-pass error that reported 3.9% of published decks as short,
+    all of them heroes with permanent signature cards.
+
+    Held at all 1,501 corpus decks, which is why it is worth having: if
+    it ever fires, something upstream has changed.
+    """
+    if not config["deck_rules"].get("require_signature_cards"):
+        return Finding(rule="signature", ok=True, detail="not checked")
+
+    row = conn.execute("SELECT set_code FROM cards WHERE code = ?",
+                       (deck.hero_code,)).fetchone()
+    if row is None or not row["set_code"]:
+        return Finding(rule="signature", ok=True,
+                       detail="no identity set to check")
+
+    missing = []
+    for card in conn.execute(
+            "SELECT c.canonical_code, c.name, c.quantity FROM cards c "
+            "LEFT JOIN out_of_deck o ON o.code = c.code "
+            "WHERE c.set_code = ? AND c.is_reprint = 0 AND o.code IS NULL "
+            "AND c.type_code IN ('ally', 'event', 'upgrade', 'support', "
+            "                    'resource', 'player_side_scheme')",
+            (row["set_code"],)):
+        held = deck.slots.get(card["canonical_code"], 0)
+        if held < card["quantity"]:
+            missing.append(f"{card['name']} ({held} of {card['quantity']})")
+    return Finding(
+        rule="signature", ok=not missing, cards=missing,
+        rr_entry=config["deck_rules"].get("rr_entry"),
+        detail=("; ".join(missing) if missing
+                else "every identity card present"))

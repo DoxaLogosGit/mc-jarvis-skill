@@ -392,7 +392,7 @@ def test_check_runs_every_rule_and_carries_the_notes(tmp_path):
     _factions(conn, [("h1", "hero"), ("j1", "justice")])
     findings = deckcheck.check(conn, _deck(slots={"j1": 3}), ASPECT_CONFIG)
     assert {f.rule for f in findings} == {"deck_size", "deck_limit",
-                                          "aspects", "unique"}
+                                          "aspects", "unique", "signature"}
     assert not deckcheck.verdict(findings)      # 3 cards, minimum 40
 
 
@@ -684,3 +684,35 @@ def test_a_permanent_does_not_push_a_deck_over_the_maximum(tmp_path):
                              "rr_entry": "learn-to-play p.22: DECK"}}
     deck = _deck(slots={"a1": 50, "p1": 1, "p2": 1})
     assert deckcheck.check_size(conn, deck, config).ok
+
+
+def test_a_deck_missing_an_identity_card_fails(tmp_path):
+    """Appendix I (RR p.49) requires the whole identity set, at its
+    printed quantity."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Hero", "hero", "ownset", None, 1),
+                  ("s1", "Signature", "ally", "ownset", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)])
+    config = {"deck_rules": {"require_signature_cards": True,
+                             "rr_entry": "Deck Customization"}}
+    assert not deckcheck.check_signature(conn, _deck(slots={"a1": 3}),
+                                         config).ok
+    assert deckcheck.check_signature(
+        conn, _deck(slots={"s1": 1, "a1": 3}), config).ok
+
+
+def test_a_permanent_signature_card_is_not_expected_in_the_deck(tmp_path):
+    """The first measurement of this rule reported 3.9% of published
+    decks as short. It was counting Psylocke's permanent Psi-blades as
+    missing - they are set aside, so marvelcdb correctly does not list
+    them. Corrected, 0 of 1,501 decks are short."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Psylocke", "hero", "psy", None, 1),
+                  ("p1", "Psi-Knife", "upgrade", "psy", 1, 1),
+                  ("a1", "Ally", "ally", "core", 3, 3)],
+                 out_of_deck=[("p1", "permanent")])
+    config = {"deck_rules": {"require_signature_cards": True,
+                             "rr_entry": "Deck Customization"}}
+    assert deckcheck.check_signature(conn, _deck(hero_code="h1",
+                                                 slots={"a1": 3}),
+                                     config).ok

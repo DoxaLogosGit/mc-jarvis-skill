@@ -924,7 +924,7 @@ same reason, and one of them is not where it looks:
 |---|---|
 | Permanent cards are exempt from the size limits | RR p.32, `Permanent` |
 | Linked cards are exempt, and cannot be in a deck | RR p.27, `Linked (Card Title)` |
-| **The 40-card minimum AND the 50-card maximum** | **Learn to Play, deckbuilding — NOT the Rules Reference.** Both bounds are in one sentence; the RR's `Deck` and `Player Deck` entries give no number at all. The first pass took the 40 from that sentence and missed the 50 beside it. The corpus shows both are real: of 1,501 decks, **707 sit at exactly 40 and 74 at exactly 50** — a mode at each bound — and only 4 exceed the maximum. |
+| **Every deckbuilding rule, both size bounds included** | **Rules Reference, Appendix I: Deck Customization (p.49).** See §10.4 — two earlier claims here were wrong. |
 | Aspect count and purity | the identity card, plus RR `Aspect` |
 | Per-identity allowances | the identity cards themselves, scanned by `deckrules` |
 
@@ -934,6 +934,59 @@ a heuristic about **marvelcdb data quality**: the site stores the declared
 aspect in a field of its own, so a player can rebuild a deck and leave the
 declaration behind. Keeping it visibly separate from the rules-derived
 values is deliberate.
+
+### 10.4 Appendix I is where the deckbuilding rules live
+
+Corrected 2026-08-28, after the user pushed back on a claim in this spec.
+
+**The claim was wrong.** §10.2a said the 40-card minimum "is not in the
+Rules Reference at all" and cited Learn to Play. Every deckbuilding rule
+is in the Rules Reference, in **Appendix I: Deck Customization, p.49** —
+and the appendix is *more* precise than Learn to Play, because it names
+the permanent exemption that the Learn to Play sentence omits.
+
+**Why it was missed, and it is a tooling gap rather than a reading
+slip.** `rules_chunk` builds entries from the RR's glossary index, and
+the appendices are not glossary terms. The RR's own `Deck Customization`
+entry is a 35-character pointer — `See: Appendix I: Deck Customization` —
+so the glossary *tells* you where to go and the index does not go there.
+Searching `rules_entries` for a deck size therefore returns nothing, and
+the absence looks like evidence.
+
+**Consequence beyond this feature:** `mc-jarvis rules show` and
+`rules search` cannot reach **any** appendix. That is three bodies of
+real rules text — Appendix I (deck customization), Appendix II (the
+16-step setup sequence), Appendix III (card anatomy) — invisible to every
+rules command. Worth its own work; recorded here because it was found
+here.
+
+#### Every rule in Appendix I, against what is implemented
+
+| Appendix I: Player Decks | Status |
+|---|---|
+| Choose exactly one identity card | implicit in `resolve` |
+| **Minimum 40, maximum 50** — identity card and permanents not counted | ✅ `check_size`, both bounds |
+| **Must include each identity-specific card, at its exact printed quantity** | ✅ `check_signature` — added by this pass |
+| A matching signature card may be swapped for a `Team-Up` card naming both identities | ❌ multiplayer; needs the other player's identity, which a single deck does not carry |
+| Exactly one aspect, remainder from that aspect and/or basic | ✅ `check_aspects` |
+| **No more than three copies by title** of a non-unique card | ⚠️ enforced per-card through `deck_limit`, which is the stronger authority — 9 non-unique player cards print a limit above 3 (Hex Bolt 4, Frostbite 6, Pouches 4), and a card beats a rulebook under `Golden Rules` |
+| No two matching unique cards; the identity counts | ✅ `check_unique` |
+| Any deckbuilding requirement on the identity card | ✅ `deckbuilding_overrides` |
+
+**On "by title".** The rule counts copies by title and the implementation
+counts by canonical code. 29 non-unique player titles map to more than
+one canonical code, but they are resource variants — Wakanda Forever!,
+Firecracker, Photographic Reflexes — where each variant prints its own
+`deck_limit`. Since a card outranks a rulebook, the printed limit
+governs and the two readings agree. Recorded because it is a real
+difference that happens not to bite.
+
+**On the signature rule's measurement.** A first pass reported **3.9%**
+of published decks missing an identity card. It was wrong: it counted
+permanent signature cards — Psylocke's Psi-blades — as missing, when they
+are set aside and marvelcdb correctly omits them. Excluding everything
+the rules keep out of a deck, **0 of 1,501 decks are short**. The check
+is kept precisely because it should never fire.
 
 ### 10.3 What the regression corpus found
 

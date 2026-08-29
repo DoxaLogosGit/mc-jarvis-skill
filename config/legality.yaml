@@ -71,20 +71,41 @@ out_of_deck:
 # `rules_entries` on the user's own machine at print time. The same rule
 # `config/timing.yaml` follows, and CI rejects a pasted sentence.
 deck_rules:
-  # BOTH bounds come from one sentence in the Learn to Play deckbuilding
-  # section, which also says the identity card is not part of the deck.
-  # Neither number is in the Rules Reference: its `Deck` and `Player
-  # Deck` entries give no size at all, so citing an RR entry would point
-  # a reader at a passage that does not say what they were told.
+  # From APPENDIX I: DECK CUSTOMIZATION, Rules Reference p.49 - which is
+  # where every deckbuilding rule lives, not the glossary.
   #
-  # The corpus shows both are real and respected. Of 1,501 published
-  # decks, 707 sit at exactly 40 and 74 at exactly 50 - a mode at each
-  # bound - and only 4 exceed 50.
+  # An earlier pass claimed the Rules Reference gives no deck size at
+  # all and cited Learn to Play instead. That was wrong, and wrong for a
+  # findable reason: `rules show` cannot reach the appendices, because
+  # `rules_chunk` builds entries from the glossary index and the
+  # appendices are not glossary terms. The RR's own `Deck Customization`
+  # entry is a bare pointer - "See: Appendix I" - and the pointer led
+  # somewhere the index does not go.
+  #
+  # The appendix is also MORE precise than Learn to Play: it names the
+  # permanent exemption, which the Learn to Play sentence does not.
+  #
+  # The corpus shows both bounds are respected. Of 1,501 published decks,
+  # 707 sit at exactly 40 and 74 at exactly 50 - a mode at each bound -
+  # and only 4 exceed the maximum.
   minimum_size: 40
   maximum_size: 50
-  rr_entry: "learn-to-play p.22: DECK"
-  # The RR does state the two exemptions, and `deckcheck` reads them:
-  # `Permanent` (p.32) and `Linked (Card Title)` (p.27).
+  rr_entry: "Deck Customization"
+  # Appendix I exempts the identity card and permanents by name; the RR
+  # glossary adds linked cards under `Linked (Card Title)` (p.27).
+  # `deckcheck.deckbuilding_cards` reads all three.
+
+  # Appendix I also requires the whole identity set to be in the deck, at
+  # each card's printed quantity - run
+  # `mc-jarvis rules show 'Deck Customization'` once the appendices are
+  # indexed.
+  #
+  # Held at every one of 1,501 published decks once cards the rules keep
+  # out of the deck - permanent, linked, hero_special - are excluded from
+  # the expectation. A first measurement said 3.9% were short because it
+  # counted Psylocke's permanent Psi-blades as missing; they are set
+  # aside, so marvelcdb correctly does not list them.
+  require_signature_cards: true
 
   aspects:
     # One aspect unless the identity's own card says otherwise. Measured
