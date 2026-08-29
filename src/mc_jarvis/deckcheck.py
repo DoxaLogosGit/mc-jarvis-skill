@@ -142,17 +142,30 @@ def deckbuilding_cards(conn, deck) -> dict[str, int]:
 
 
 def check_size(conn, deck, config) -> Finding:
+    """Deck size, against BOTH bounds.
+
+    The maximum is as real as the minimum and comes from the same
+    sentence: the corpus has a mode at each end, 707 decks at exactly 40
+    and 74 at exactly 50.
+    """
     rules = config["deck_rules"]
     size = sum(deckbuilding_cards(conn, deck).values())
     minimum = rules["minimum_size"]
+    maximum = rules.get("maximum_size")
+
     detail = f"{size} cards, minimum {minimum}"
+    if maximum:
+        detail += f", maximum {maximum}"
+    ok = size >= minimum and (maximum is None or size <= maximum)
+
     if deck.unknown:
         # Never report a short deck without saying that some of it did not
-        # resolve; the player did not build the shortfall.
+        # resolve; the player did not build the shortfall. An OVER-size
+        # deck is unaffected - unresolved cards can only raise the count.
         missing = ", ".join(sorted(deck.unknown))
         detail += (f" - but {sum(deck.unknown.values())} card(s) are not in "
                    f"this index at all ({missing}), so the count is a floor")
-    return Finding(rule="deck_size", ok=size >= minimum, detail=detail,
+    return Finding(rule="deck_size", ok=ok, detail=detail,
                    rr_entry=rules.get("rr_entry"))
 
 

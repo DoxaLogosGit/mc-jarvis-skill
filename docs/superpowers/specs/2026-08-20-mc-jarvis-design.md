@@ -924,7 +924,7 @@ same reason, and one of them is not where it looks:
 |---|---|
 | Permanent cards are exempt from the size limits | RR p.32, `Permanent` |
 | Linked cards are exempt, and cannot be in a deck | RR p.27, `Linked (Card Title)` |
-| **The 40-card minimum** | **Learn to Play, deckbuilding — NOT the Rules Reference.** The RR's `Deck` and `Player Deck` entries give no number. |
+| **The 40-card minimum AND the 50-card maximum** | **Learn to Play, deckbuilding — NOT the Rules Reference.** Both bounds are in one sentence; the RR's `Deck` and `Player Deck` entries give no number at all. The first pass took the 40 from that sentence and missed the 50 beside it. The corpus shows both are real: of 1,501 decks, **707 sit at exactly 40 and 74 at exactly 50** — a mode at each bound — and only 4 exceed the maximum. |
 | Aspect count and purity | the identity card, plus RR `Aspect` |
 | Per-identity allowances | the identity cards themselves, scanned by `deckrules` |
 

@@ -652,3 +652,35 @@ def test_a_linked_card_still_does_not_count_toward_the_minimum(tmp_path):
     conn = _linked_db(tmp_path)
     deck = _deck(slots={"43021": 1, "43034": 1, "a1": 3})
     assert deckcheck.deckbuilding_cards(conn, deck) == {"43021": 1, "a1": 3}
+
+
+def test_a_deck_over_the_maximum_fails(tmp_path):
+    """Learn to Play p.22 gives BOTH bounds in one sentence - "a minimum
+    of 40 cards and a maximum of 50". Only the 40 was implemented.
+
+    The corpus shows the 50 is as real: 707 decks sit at exactly 40 and
+    74 at exactly 50, a mode at each end, and only 4 of 1,501 exceed it.
+    """
+    conn = _mkdb(tmp_path, [("h1", "Hero", "hero", "ownset", None, 1),
+                            ("a1", "Ally", "ally", "core", 60, 60)])
+    config = {"deck_rules": {"minimum_size": 40, "maximum_size": 50,
+                             "rr_entry": "learn-to-play p.22: DECK"}}
+    assert not deckcheck.check_size(conn, _deck(slots={"a1": 51}),
+                                    config).ok
+    assert deckcheck.check_size(conn, _deck(slots={"a1": 50}), config).ok
+    assert deckcheck.check_size(conn, _deck(slots={"a1": 40}), config).ok
+
+
+def test_a_permanent_does_not_push_a_deck_over_the_maximum(tmp_path):
+    """The same rule exempts permanents at BOTH ends (RR p.32), so a
+    50-card Psylocke deck plus her two permanent Psi-blades is legal."""
+    conn = _mkdb(tmp_path,
+                 [("h1", "Psylocke", "hero", "psy", None, 1),
+                  ("a1", "Ally", "ally", "core", 60, 60),
+                  ("p1", "Psi-Knife", "upgrade", "psy", 1, 1),
+                  ("p2", "Psi-Katana", "upgrade", "psy", 1, 1)],
+                 out_of_deck=[("p1", "permanent"), ("p2", "permanent")])
+    config = {"deck_rules": {"minimum_size": 40, "maximum_size": 50,
+                             "rr_entry": "learn-to-play p.22: DECK"}}
+    deck = _deck(slots={"a1": 50, "p1": 1, "p2": 1})
+    assert deckcheck.check_size(conn, deck, config).ok
