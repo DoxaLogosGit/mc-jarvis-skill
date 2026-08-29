@@ -1025,6 +1025,42 @@ are set aside and marvelcdb correctly omits them. Excluding everything
 the rules keep out of a deck, **0 of 1,501 decks are short**. The check
 is kept precisely because it should never fire.
 
+### 10.2b Scope: two rulebooks, and the campaign books are out
+
+Decided 2026-08-28.
+
+**mc-jarvis answers from the Rules Reference and the designer rulings.
+The campaign books are deliberately not in scope, now or later.**
+
+The reason is not that they are hard to fetch. It is that **each campaign
+carries its own tweaks to what may go in a deck** — per-campaign award
+counts, earned cards, deck modifications between scenarios — and that set
+grows with every release. A tool that reads them is committed to tracking
+a moving target across every campaign FFG has published and will publish,
+and being *quietly out of date* about deckbuilding is worse than being
+openly silent about it.
+
+Two rulebooks is a target that holds still. The Rules Reference is
+versioned, its currency is already checked at `init`, and the rulings
+that outrank it are already tracked.
+
+**What this makes permanent rather than pending:**
+
+- Whether a player earned a campaign card is **unanswerable**, not
+  unanswered. The note in `deck check` is the final behaviour.
+- A campaign card's per-player copy limit is likewise unanswerable, for
+  the same reason (§10.2).
+- Any campaign-specific deckbuilding tweak is out of scope by
+  construction, so a deck built under one may fail a check that is
+  correct for the base rules. The note is what tells the player that.
+
+**What this makes higher priority.** The Rules Reference is already
+fetched and already on disk, and `rules show` cannot reach a third of it:
+the appendices are not glossary terms, so Appendix I (deck
+customization), Appendix II (setup) and Appendix III (card anatomy) are
+invisible to every rules command (§10.4). That is a gap in a source
+already held, which is worth closing before any source that is not.
+
 ### 10.3 What the regression corpus found
 
 1,534 published decks fetched over 40 days; 1,501 checked after excluding
