@@ -136,6 +136,13 @@ def _rebuild_rules(conn: sqlite3.Connection,
         if len(idx.entries) > INDEX_MIN_ENTRIES:
             doc = rules_chunk.chunk_entries(pages, idx, source_doc=path.stem)
             resolved += rules_chunk.extraction_report(pages, idx)["resolved"]
+            # The glossary ends where `chunk_entries` stops; everything
+            # after it is appendices, and they were unreachable (spec
+            # §10.4). The deckbuilding rules, the setup sequence, the FAQ
+            # and the errata all live there.
+            doc += rules_chunk.chunk_appendices(
+                pages[rules_chunk.GLOSSARY_END:],
+                first=rules_chunk.GLOSSARY_END, source_doc=path.stem)
         else:
             doc = rules_chunk.chunk_pages(pages, source_doc=path.stem)
         for entry in doc:

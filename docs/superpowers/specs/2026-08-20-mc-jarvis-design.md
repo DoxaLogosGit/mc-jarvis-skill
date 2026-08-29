@@ -970,12 +970,45 @@ so the glossary *tells* you where to go and the index does not go there.
 Searching `rules_entries` for a deck size therefore returns nothing, and
 the absence looks like evidence.
 
-**Consequence beyond this feature:** `mc-jarvis rules show` and
-`rules search` cannot reach **any** appendix. That is three bodies of
-real rules text — Appendix I (deck customization), Appendix II (the
-16-step setup sequence), Appendix III (card anatomy) — invisible to every
-rules command. Worth its own work; recorded here because it was found
-here.
+**Consequence beyond this feature, since fixed (2026-08-29):**
+`rules show` and `rules search` could not reach **any** appendix — 22
+pages, and six appendices rather than the three first counted:
+
+| | | |
+|---|---|---|
+| I | Deck Customization | the deckbuilding rules |
+| II | Setup | the 16-step sequence |
+| III | Card Anatomy | diagram labels |
+| IV | **FAQ** | **102 Q&A pairs** |
+| V | **Errata** | 57 card corrections |
+| VI | Game Environments (Beta) | |
+
+`rules_entries` went **287 → 448**. The FAQ alone is 102 official
+clarifications, against the 8 designer rulings tracked separately — and
+they belong here rather than in `rulings` because they clarify what this
+edition already says, while a ruling answers what it did not anticipate
+and is folded into the next edition (§10.2b).
+
+Three things the fix had to get right, each found by running it against
+the real document rather than the fixtures:
+
+- **Widening the header scan is not the fix.** Pages 51–55 are card art,
+  and their fragments match the header pattern — `ALLY`, `ATK`,
+  `JUSTICE`, `MATT MURDOCK`. The cutoff was protecting against real
+  noise, so each appendix is handled by what it contains.
+- **Titles are rendered twice AND wrapped**, each line doubled
+  independently: `APPENDIX I: DECK APPENDIX I: DECK` / `CUSTOMIZATION
+  CUSTOMIZATION`. Reading the first line alone gave `Appendix I: Deck`.
+  A continuation is one phrase printed twice, which is what tells it
+  apart from the section header directly beneath it.
+- **Every FAQ answer first cited p.56**, the appendix's first page,
+  though the FAQ spans nine. One citation for nine pages is a citation
+  for none, and this project's whole rules discipline is that a page can
+  be checked.
+
+**Errata is provenance, not a correction to apply.** Checked against
+Warning, Sanctuary, Aragorn and Armor Up: marvelsdb already applies the
+errata to card text, so `card show` was never printing stale wording.
 
 #### Every rule in Appendix I, against what is implemented
 

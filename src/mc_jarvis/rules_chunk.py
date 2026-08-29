@@ -146,8 +146,15 @@ def parse_index(pages: list[str], *, scan_pages: int = 3) -> IndexResult:
     return result
 
 
+# Where the alphabetical glossary stops and the appendices begin. Named
+# rather than repeated as a literal, because two different passes need to
+# agree on it: `_headers` must stop here, and `chunk_appendices` must
+# start here, or a section is dropped or double-counted.
+GLOSSARY_END = 49
+
+
 def _headers(pages: list[str], first: int = 3,
-             last: int = 49) -> list[tuple[int, int, str]]:
+             last: int = GLOSSARY_END) -> list[tuple[int, int, str]]:
     """Entry headers in document order.
 
     A long header wraps onto a second line, and that continuation looks
@@ -292,6 +299,179 @@ def chunk_entries(pages: list[str], index: IndexResult, *,
                              source_doc=source_doc, entry_addressable=True,
                              see_also=[target]))
     return entries
+
+
+# --- the appendices ---------------------------------------------------
+#
+# `_headers` scans pages 3-49 because page 49 is where the alphabetical
+# glossary ends. Everything after it - 22 pages - was unreachable: the
+# deckbuilding rules, the setup sequence, 69 FAQ answers and 48 errata.
+# The glossary even points at them (`Deck Customization` is the bare
+# pointer "See: Appendix I") and the index did not follow.
+#
+# Widening the scan is not the fix. Pages 51-55 are card art, and their
+# fragments match the header pattern - ALLY, ATK, JUSTICE, MATT MURDOCK -
+# so the cutoff was protecting against real noise. Each appendix is
+# handled by what it actually contains instead.
+
+# The PDF renders each appendix title twice, interleaved:
+# `APPENDIX I: DECK APPENDIX I: DECK CUSTOMIZATION CUSTOMIZATION`.
+APPENDIX_RE = re.compile(r"^APPENDIX\s+([IVX]+)\s*:\s*(.+)$")
+# `Q: ... A: ...`, one pair per entry so a search hits the question asked.
+FAQ_RE = re.compile(r"Q:\s*(.+?)\s*A:\s*(.+?)(?=\s*Q:|$)", re.S)
+# `LOKI (#28) Should read: "..."`
+ERRATA_RE = re.compile(
+    r"([A-Z][A-Za-z'\u2019\- ]+?)\s*\(#(\d+)\)\s*Should read:\s*"
+    r"[\u201c\"]?(.+?)(?=[A-Z][A-Za-z'\u2019\- ]+?\s*\(#\d+\)|$)", re.S)
+
+
+# Acronyms `str.title()` would mangle into `Faq`.
+ACRONYMS = {"FAQ"}
+
+
+def _is_doubled(line: str) -> bool:
+    """Whether a line is one phrase printed twice.
+
+    That is how the PDF renders the second half of a wrapped appendix
+    title - `CUSTOMIZATION CUSTOMIZATION`, `CARD ANATOMY CARD ANATOMY` -
+    and it is what tells a title continuation apart from the section
+    header directly beneath it. `PLAYER DECKS` is two words and is not
+    doubled; `CARD ANATOMY CARD ANATOMY` is four and is.
+    """
+    words = line.split()
+    if len(words) < 2 or len(words) % 2:
+        return False
+    half = len(words) // 2
+    return words[:half] == words[half:]
+
+
+def appendix_title(line: str, *, following: list[str] = ()) -> str | None:
+    """The appendix's name, read once from a doubled, wrapped heading.
+
+    The title is rendered twice AND wrapped, each line doubled on its
+    own: `APPENDIX I: DECK APPENDIX I: DECK` then `CUSTOMIZATION
+    CUSTOMIZATION`. Reading only the first line yields `Appendix I: Deck`,
+    which is a name for nothing.
+    """
+    flat = " ".join(line.split())
+    match = APPENDIX_RE.match(flat)
+    if not match:
+        return None
+    numeral = match.group(1)
+    for nxt in following:
+        if not _is_doubled(" ".join(nxt.split())):
+            break
+        flat += " " + " ".join(nxt.split())
+
+    words = flat.replace(f"APPENDIX {numeral}:", " ").split()
+    seen: list[str] = []
+    for word in words:
+        if word.upper() not in {w.upper() for w in seen}:
+            seen.append(word)
+    named = " ".join(w if w.upper() in ACRONYMS else w.title() for w in seen)
+    return f"Appendix {numeral}: {named}".strip().rstrip(":")
+
+
+# A card heading inside the FAQ - `JENNIFER WALTERS (#19B)` - starts the
+# next question's context and is not part of the previous answer.
+CARD_HEADING_RE = re.compile(
+    r"\s*[A-Z][A-Z0-9'\u2019.\- ]{2,40}\(#\w+\)\s*$")
+# A product or section heading with no card number - `CORE SET`,
+# `WASP HERO PACK`, `MUTANT GENESIS EXPANSION`. Two or more all-caps words
+# in a row at the very end; a single trailing capital (`+1 ATK`) is left
+# alone, because one word is a term and two are a heading.
+SECTION_HEADING_RE = re.compile(
+    r"\s+(?:[A-Z][A-Z0-9'\u2019#.\-]*\s+){1,5}[A-Z][A-Z0-9'\u2019#.\-]*\s*$")
+
+
+def _trim_answer(text: str) -> str:
+    """An answer, without the heading that introduces the NEXT question.
+
+    The FAQ is laid out as card headings followed by their questions, so
+    an answer runs straight into the next card's name. Left in, the
+    citation reads as though the answer discussed that card.
+    """
+    out = CARD_HEADING_RE.sub("", text.strip()).strip()
+    return SECTION_HEADING_RE.sub("", out).strip()
+
+
+def _faq_entries(body: str, page: int, source_doc: str) -> list[Entry]:
+    out = []
+    for question, answer in FAQ_RE.findall(" ".join(body.split())):
+        question, answer = question.strip(), _trim_answer(answer)
+        if not question or not answer:
+            continue
+        out.append(Entry(
+            term=f"FAQ: {question[:90]}",
+            body=f"Q: {question}\nA: {answer}",
+            page=page, source_doc=source_doc,
+            # Not addressable: the term is an exact question nobody will
+            # type. The value is in full-text search.
+            entry_addressable=False, searchable=True))
+    return out
+
+
+def _errata_entries(body: str, page: int, source_doc: str) -> list[Entry]:
+    out = []
+    for name, number, text in ERRATA_RE.findall(" ".join(body.split())):
+        out.append(Entry(
+            term=f"Errata: {name.strip().title()} (#{number})",
+            body=text.strip().strip("\u201d\"").strip(),
+            page=page, source_doc=source_doc,
+            entry_addressable=False, searchable=True))
+    return out
+
+
+def chunk_appendices(pages: list[str], *, first: int,
+                     source_doc: str) -> list[Entry]:
+    """Everything after the glossary, by what each appendix contains.
+
+    Prose appendices become one addressable entry each. The FAQ becomes
+    one entry per question, because a player searches for the question
+    they have. Errata becomes one entry per card. Card anatomy is kept
+    whole and NOT split on its headers, which are card-art fragments.
+    """
+    out: list[Entry] = []
+    current: str | None = None
+    # (page_number, text) so a Q&A cites the page it is printed on rather
+    # than the page the appendix began. The FAQ spans nine pages, and one
+    # citation for all of them is a citation for none of them.
+    buffer: list[tuple[int, str]] = []
+    start = first
+
+    def flush() -> None:
+        if not current or not buffer:
+            return
+        for page_no, text in buffer:
+            if "FAQ" in current.upper():
+                out.extend(_faq_entries(text, page_no, source_doc))
+            elif "ERRATA" in current.upper():
+                out.extend(_errata_entries(text, page_no, source_doc))
+        body = "\n".join(t for _, t in buffer).strip()
+        if body:
+            out.append(Entry(term=current, body=body, page=start,
+                             source_doc=source_doc,
+                             entry_addressable=True, searchable=True))
+
+    for offset, page in enumerate(pages):
+        lines = page.split("\n")
+        title, consumed = None, 0
+        for i, line in enumerate(lines):
+            title = appendix_title(line, following=lines[i + 1:i + 3])
+            if title:
+                # Drop the heading lines themselves: the doubled, wrapped
+                # rendering is unreadable inside a body.
+                consumed = i + 1
+                while (consumed < len(lines)
+                       and _is_doubled(" ".join(lines[consumed].split()))):
+                    consumed += 1
+                break
+        if title:
+            flush()
+            current, buffer, start = title, [], first + offset
+        buffer.append((first + offset, "\n".join(lines[consumed:])))
+    flush()
+    return out
 
 
 def chunk_pages(pages: list[str], *, source_doc: str) -> list[Entry]:

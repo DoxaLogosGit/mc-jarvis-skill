@@ -272,3 +272,158 @@ def test_no_real_entry_is_stored_blank(rules_pdf, tmp_path):
     assert conn.execute(
         "SELECT COUNT(*) FROM rules_entries WHERE body = ''"
     ).fetchone()[0] == 0
+
+
+# --- the appendices (spec §9) ----------------------------------------
+
+APPENDIX_PAGES = [
+    "APPENDIX I: DECK APPENDIX I: DECK CUSTOMIZATION CUSTOMIZATION\n"
+    "PLAYER DECKS\n"
+    "A player's deck consists of a minimum of 40 cards and a maximum of "
+    "50 cards.\n"
+    "51 Rules Reference",
+    "APPENDIX II: APPENDIX II: SETUP SETUP\n"
+    "To set up a game, perform the following steps in order:\n"
+    "1. Select Identities. Each player selects one identity.\n",
+    "APPENDIX IV: FAQ APPENDIX IV: FAQ\nGENERAL QUESTIONS\n"
+    "Q: If my hero has a tough status card, what happens? "
+    "A: The tough card is discarded.\n"
+    "Q: Does Webbed Up prevent Spider-Sense from triggering? "
+    "A: No, it does not.\n",
+    "APPENDIX V: APPENDIX V:\nERRATA ERRATA\n"
+    "LOKI (#28) Should read: “Forced Interrupt: When Loki would be "
+    "defeated, discard the top card.”\n",
+]
+
+
+def test_an_appendix_becomes_an_addressable_entry():
+    """`_headers` stopped at page 49 and Appendix I begins at 49, so every
+    deckbuilding rule was unreachable - which is how this project came to
+    claim the Rules Reference gives no deck size at all."""
+    entries = rules_chunk.chunk_appendices(APPENDIX_PAGES, first=0,
+                                           source_doc="rr")
+    by_term = {e.term: e for e in entries}
+    assert "Appendix I: Deck Customization" in by_term
+    entry = by_term["Appendix I: Deck Customization"]
+    assert "minimum of 40 cards" in entry.body
+    assert entry.entry_addressable and entry.searchable
+
+
+def test_a_doubled_appendix_heading_is_read_once():
+    """The PDF renders each appendix title twice, interleaved:
+    `APPENDIX I: DECK APPENDIX I: DECK CUSTOMIZATION CUSTOMIZATION`.
+    Taken literally it produces a term no one would ever type."""
+    assert rules_chunk.appendix_title(
+        "APPENDIX I: DECK APPENDIX I: DECK CUSTOMIZATION CUSTOMIZATION"
+    ) == "Appendix I: Deck Customization"
+    assert rules_chunk.appendix_title(
+        "APPENDIX II: APPENDIX II: SETUP SETUP") == "Appendix II: Setup"
+
+
+def test_each_faq_question_is_its_own_entry():
+    """69 Q&A pairs ship inside the Rules Reference. They are
+    clarifications of what this edition already says - part of the rules,
+    not designer rulings that postdate them - so they belong in
+    `rules_entries` and are versioned with the document."""
+    entries = rules_chunk.chunk_appendices(APPENDIX_PAGES, first=0,
+                                           source_doc="rr")
+    faq = [e for e in entries if e.term.startswith("FAQ:")]
+    assert len(faq) == 2
+    assert any("Webbed Up" in e.term for e in faq)
+    hit = next(e for e in faq if "Webbed Up" in e.term)
+    assert "No, it does not" in hit.body
+    assert hit.searchable
+
+
+def test_an_errata_entry_names_its_card():
+    """Errata lives under its own `APPENDIX V: ERRATA` heading in the real
+    document, so the parser reads it by structure rather than scanning
+    every page for the phrase - a FAQ answer quoting "Should read" would
+    otherwise become an errata entry."""
+    entries = rules_chunk.chunk_appendices(APPENDIX_PAGES, first=0,
+                                           source_doc="rr")
+    errata = [e for e in entries if e.term.startswith("Errata:")]
+    assert [e.term for e in errata] == ["Errata: Loki (#28)"]
+    assert "Forced Interrupt" in errata[0].body
+
+
+def test_card_anatomy_is_not_chunked_by_header():
+    """Pages 51-55 are card art. Their fragments match the header pattern
+    - ALLY, ATK, JUSTICE, MATT MURDOCK - which is why the scan stopped
+    before them. They must not become entries."""
+    art = ["APPENDIX III: APPENDIX III: CARD ANATOMY CARD ANATOMY\n"
+           "1. Title. The name of this card.\n",
+           "IDENTITY (HERO)\nATK\nDEF\nMATT MURDOCK\nJUSTICE\n"]
+    entries = rules_chunk.chunk_appendices(art, first=0, source_doc="rr")
+    terms = [e.term for e in entries]
+    assert "Appendix III: Card Anatomy" in terms
+    for noise in ("ATK", "DEF", "MATT MURDOCK", "JUSTICE"):
+        assert noise not in terms
+
+
+def test_a_wrapped_appendix_title_is_read_whole():
+    """The title is rendered twice AND wrapped, each line doubled on its
+    own. Reading only the first line gives `Appendix I: Deck`, a name for
+    nothing - which is what the first implementation produced against the
+    real document."""
+    assert rules_chunk.appendix_title(
+        "APPENDIX I: DECK APPENDIX I: DECK",
+        following=["CUSTOMIZATION CUSTOMIZATION", "PLAYER DECKS"],
+    ) == "Appendix I: Deck Customization"
+
+
+def test_a_section_header_is_not_mistaken_for_a_title_continuation():
+    """`PLAYER DECKS` sits directly under the title and is also all-caps.
+    What separates them is that a continuation is one phrase printed
+    twice and a section header is not."""
+    assert rules_chunk._is_doubled("CARD ANATOMY CARD ANATOMY")
+    assert not rules_chunk._is_doubled("PLAYER DECKS")
+    assert not rules_chunk._is_doubled("GENERAL QUESTIONS")
+
+
+def test_an_acronym_survives_title_casing():
+    assert rules_chunk.appendix_title(
+        "APPENDIX IV: FAQ APPENDIX IV: FAQ") == "Appendix IV: FAQ"
+
+
+def test_each_faq_answer_cites_the_page_it_is_printed_on():
+    """The FAQ spans nine pages. Citing the appendix's first page for all
+    of them is a citation for none of them, and this project's whole
+    rules discipline is that a page can be checked."""
+    pages = ["APPENDIX IV: FAQ APPENDIX IV: FAQ\nQ: First? A: Yes.\n",
+             "Q: Second? A: Also yes.\n"]
+    entries = rules_chunk.chunk_appendices(pages, first=56, source_doc="rr")
+    faq = {e.term: e.page for e in entries if e.term.startswith("FAQ:")}
+    assert faq["FAQ: First?"] == 56
+    assert faq["FAQ: Second?"] == 57
+
+
+def test_the_doubled_heading_is_not_left_in_the_body():
+    pages = ["APPENDIX I: DECK APPENDIX I: DECK\nCUSTOMIZATION CUSTOMIZATION\n"
+             "PLAYER DECKS\nA deck is 40 cards.\n"]
+    entry = rules_chunk.chunk_appendices(pages, first=49,
+                                         source_doc="rr")[0]
+    assert "APPENDIX I: DECK APPENDIX" not in entry.body
+    assert entry.body.startswith("PLAYER DECKS")
+
+
+def test_an_answer_does_not_absorb_the_next_cards_heading():
+    """The FAQ lists a card heading, then its questions. An answer runs
+    straight into the next card's name, which reads as though the answer
+    discussed it."""
+    assert rules_chunk._trim_answer(
+        "Yes, it is a replacement effect. JENNIFER WALTERS (#19B)"
+    ) == "Yes, it is a replacement effect."
+
+
+def test_a_product_heading_is_trimmed_but_a_single_term_is_not():
+    """The FAQ is laid out product by product, so an answer runs into the
+    next section's name: `... CORE SET`, `... WASP HERO PACK`. Two or
+    more all-caps words in a row at the end is a heading; one is a game
+    term the answer needs - `+1 ATK` must survive."""
+    assert rules_chunk._trim_answer(
+        "No. Only excess damage taken by the ally counts. CORE SET"
+    ) == "No. Only excess damage taken by the ally counts."
+    assert rules_chunk._trim_answer(
+        "Machine Man gets +1 THW and +1 ATK"
+    ) == "Machine Man gets +1 THW and +1 ATK"

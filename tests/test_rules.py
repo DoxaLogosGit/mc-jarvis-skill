@@ -240,3 +240,72 @@ def test_every_page_chunked_row_in_the_real_index_is_searchable(real_index):
             "WHERE rules_fts MATCH 'the OR a OR of' "
             "  AND e.source_doc = ?", (r["source_doc"],)).fetchone()[0]
         assert found > 0, f"{r['source_doc']}: {r['n']} rows, 0 searchable"
+
+
+@pytest.mark.integration
+def test_the_appendices_are_reachable(real_index):
+    """`_headers` stopped at page 49 and the appendices start there, so 22
+    pages of the Rules Reference were invisible to every rules command -
+    which is how this project came to claim the RR states no deck size.
+
+    All six, by name, from a document already on disk.
+    """
+    terms = {r["term"] for r in real_index.execute(
+        "SELECT term FROM rules_entries WHERE term LIKE 'Appendix%'")}
+    assert terms == {
+        "Appendix I: Deck Customization", "Appendix II: Setup",
+        "Appendix III: Card Anatomy", "Appendix IV: FAQ",
+        "Appendix V: Errata", "Appendix VI: Game Environments (Beta)"}
+
+
+@pytest.mark.integration
+def test_the_deck_size_rule_is_now_findable(real_index):
+    """The specific claim that was wrong: the Rules Reference does state
+    both bounds, in Appendix I."""
+    row = real_index.execute(
+        "SELECT body, page FROM rules_entries "
+        "WHERE term = 'Appendix I: Deck Customization'").fetchone()
+    flat = " ".join(row["body"].split())
+    assert "minimum of 40 cards" in flat
+    assert "maximum of 50 cards" in flat
+    assert row["page"] == 49
+
+
+@pytest.mark.integration
+def test_the_faq_is_indexed_question_by_question(real_index):
+    """102 Q&A pairs, against the 8 designer rulings tracked separately.
+    They are clarifications of what this edition already says - part of
+    the rules, versioned with the document - which is why they live here
+    and not in `rulings`.
+    """
+    rows = real_index.execute(
+        "SELECT COUNT(*) n, COUNT(DISTINCT page) pages FROM rules_entries "
+        "WHERE term LIKE 'FAQ:%'").fetchone()
+    assert rows["n"] > 90, rows["n"]
+    # Spread across the FAQ's real pages, not all filed under its first.
+    assert rows["pages"] >= 8, rows["pages"]
+
+
+@pytest.mark.integration
+def test_a_faq_answer_is_searchable_and_cites_a_real_page(real_index):
+    hit = real_index.execute(
+        "SELECT term, page FROM rules_entries "
+        "WHERE term LIKE 'FAQ:%Webbed Up%' LIMIT 1").fetchone()
+    assert hit is not None
+    assert 56 <= hit["page"] <= 64, dict(hit)
+
+
+@pytest.mark.integration
+def test_errata_is_indexed_per_card(real_index):
+    """48 official card corrections. marvelsdb already applies them to
+    card text - checked against Warning, Sanctuary, Aragorn and Armor Up
+    - so these are provenance rather than a correction the tool must
+    make itself."""
+    n = real_index.execute(
+        "SELECT COUNT(*) FROM rules_entries WHERE term LIKE 'Errata:%'"
+    ).fetchone()[0]
+    assert n > 40, n
+    loki = real_index.execute(
+        "SELECT body FROM rules_entries WHERE term LIKE 'Errata: Loki%'"
+    ).fetchone()
+    assert loki and "Forced Interrupt" in loki["body"]
