@@ -716,3 +716,50 @@ def test_a_permanent_signature_card_is_not_expected_in_the_deck(tmp_path):
     assert deckcheck.check_signature(conn, _deck(hero_code="h1",
                                                  slots={"a1": 3}),
                                      config).ok
+
+
+@pytest.mark.integration
+def test_the_three_copy_rule_binds_only_the_customisable_deck(real_index):
+    """Appendix I's "no more than three copies by title" governs the part
+    of the deck the player CUSTOMISES - aspect and basic cards. Signature
+    cards come with the identity at whatever quantity they print, and
+    campaign cards likewise.
+
+    The corpus divides cleanly on it. Every non-unique player card
+    printing a limit above 3 is signature, campaign or encounter:
+
+        Always Be Running   4   hero      (Quicksilver)
+        Hex Bolt            4   hero      (Scarlet Witch)
+        Frostbite           6   hero      (Iceman)
+        Desperate Measures  4   campaign
+        Norn Stone          4   campaign
+        Pouches             4   campaign
+        Morlock             4   encounter
+        Rescued Captive     4   encounter
+
+    and NO aspect or basic card exceeds 3. So reading `deck_limit` per
+    card - which `check_copies` does - satisfies both halves at once.
+
+    This is the gate on that: if an aspect or basic card ever prints a
+    limit above 3, either the data is wrong or the rule has changed, and
+    the per-card reading stops being equivalent to the printed rule.
+    """
+    over = [dict(r) for r in real_index.execute(
+        "SELECT code, name, faction_code, deck_limit FROM cards "
+        "WHERE type_code IN ('ally', 'event', 'upgrade', 'support', "
+        "                    'resource', 'player_side_scheme') "
+        "AND faction_code IN ('justice', 'leadership', 'aggression', "
+        "                     'protection', 'basic', 'pool') "
+        "AND deck_limit > 3 AND (is_unique IS NULL OR is_unique = 0)")]
+    assert over == [], over
+
+
+@pytest.mark.integration
+def test_a_signature_card_may_exceed_three_copies(real_index):
+    """The other half, asserted so the rule above cannot be "satisfied"
+    by the data simply having no high limits at all."""
+    high = [r["name"] for r in real_index.execute(
+        "SELECT name FROM cards WHERE deck_limit > 3 "
+        "AND faction_code = 'hero' AND (is_unique IS NULL OR is_unique = 0)")]
+    assert "Hex Bolt" in high, high
+    assert "Frostbite" in high, high

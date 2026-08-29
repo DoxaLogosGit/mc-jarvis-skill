@@ -969,9 +969,29 @@ here.
 | **Must include each identity-specific card, at its exact printed quantity** | ✅ `check_signature` — added by this pass |
 | A matching signature card may be swapped for a `Team-Up` card naming both identities | ❌ multiplayer; needs the other player's identity, which a single deck does not carry |
 | Exactly one aspect, remainder from that aspect and/or basic | ✅ `check_aspects` |
-| **No more than three copies by title** of a non-unique card | ⚠️ enforced per-card through `deck_limit`, which is the stronger authority — 9 non-unique player cards print a limit above 3 (Hex Bolt 4, Frostbite 6, Pouches 4), and a card beats a rulebook under `Golden Rules` |
+| **No more than three copies by title** of a non-unique card | ✅ via `deck_limit` — and see below, the rule binds only the customisable deck |
 | No two matching unique cards; the identity counts | ✅ `check_unique` |
 | Any deckbuilding requirement on the identity card | ✅ `deckbuilding_overrides` |
+
+**The three-copy rule binds only the part of the deck the player
+customises.** Appendix I states it directly after "the remainder of their
+deck is then customized with cards that belong to that aspect and/or
+basic cards" — so it governs aspect and basic cards. Signature cards
+arrive with the identity at whatever quantity they print, and campaign
+cards likewise; a mandatory identity set is not something the player
+chose three of.
+
+The corpus divides on exactly that line. Every non-unique player card
+printing a limit above 3 is signature, campaign or encounter — Hex Bolt 4
+(Scarlet Witch), Frostbite 6 (Iceman), Always Be Running 4 (Quicksilver),
+Desperate Measures, Norn Stone, Pouches, Morlock, Rescued Captive — and
+**no aspect or basic card exceeds 3.**
+
+So reading `deck_limit` per card satisfies both halves at once, which is
+why `check_copies` is already correct. Two gates hold the equivalence: an
+aspect or basic card above 3 would mean the data or the rule has changed,
+and a signature card above 3 must keep existing, so the first gate cannot
+be satisfied by the data merely having no high limits at all.
 
 **On "by title".** The rule counts copies by title and the implementation
 counts by canonical code. 29 non-unique player titles map to more than
