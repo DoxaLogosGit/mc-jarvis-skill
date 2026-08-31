@@ -1455,3 +1455,82 @@ is assumed.
   least 2023.
 - FFG product page returns 403 to `curl` with browser headers; returns all 91 PDF links
   under both Claude-in-Chrome and Playwright.
+
+### 10.5 The card pool is the deck, not the game
+
+Spec §9 proposes four cross-references for `assess --deck`, each "a count set
+beside a count". Measuring them before designing found that **three of the four
+numerators were being counted against a pool no player ever holds**, and one has
+no source at all.
+
+The error was scoping. A query like "player cards mentioning tough" returns 85,
+but that 85 is the union of **26 disjoint pools** — 39 open-pool cards gated
+behind an aspect declaration, plus 41 hero-locked cards spread across 25
+signature sets. No deck can contain more than a small slice of it.
+
+**Tough is the worked example.** The naive count is wrong by more than an order
+of magnitude, and wrong in both directions at once:
+
+| Bucket | n |
+| --- | --- |
+| Player cards whose text mentions "tough" | 85 |
+| …hero-locked to one of 25 signature sets | 41 |
+| …open pool (aspect- or basic-gated) | 39 |
+| …that answer **enemy** Tough and are open pool | **1** |
+
+The single open-pool answer in the game is **The Bellerophon** (aggression),
+which discards tough from those enemies first. `Lightning Strike` is Thor-locked
+*and* trait-gated — it ignores tough only with the [[Aerial]] trait.
+`Creative Solution` is `campaign/the_market`, out of scope under §10.2b.
+
+The deeper correction, which no amount of regex tuning would have reached:
+**for Colossus and Luke Cage, tough is a currency, not a defence and not an
+answer.** `Bulletproof Protector`, `Made of Rage`, `Steel Fist` and
+`Knuckle Sandwich` *spend* the hero's own tough as a cost; `Iron Will`,
+`Power Man`, `Organic Steel` and `Fogwell's Gym` *trigger* on it being spent.
+An earlier draft of this analysis sorted these into "gives tough" and "removes
+tough" and both buckets were wrong. A heuristic counting tough cards would rank
+Colossus the game's best answer to Tough; he has none.
+
+#### The four cross-references, after scoping
+
+| §9 item | Verdict |
+| --- | --- |
+| Threat removal vs. acceleration | **Survives as a ceiling, not a rate** (see below) |
+| Tough answers vs. Tough minions | **Degenerate** — a boolean beside a count |
+| Ranged / area vs. swarm size | **No source.** `ranged` is printed on zero cards; all 48 instances are grants |
+| Allies vs. Guard and minion attack | **Survives.** Both sides are real fields |
+
+Two denominators needed correcting even where the item survives:
+
+- **Guard is 61 minions, not 66.** Five of the naive matches print
+  `Teamwork ([[Imperial Guard]])` — a *trait*, not the keyword. This is the same
+  markup confusion as `[[X-MEN]]` in `card_traits`.
+- **"Threat removal available per turn" is not computable.** A true per-turn rate
+  requires modelling readying, exhaustion, resource cost and draw — a simulation.
+  What is computable is a **ceiling**: total ally THW with every ally in play and
+  ready, set beside `scheme_acceleration` (a real indexed field, 116 schemes).
+  The output must name it as a ceiling. A figure labelled "per turn" that is
+  actually a ceiling is precisely the confidently-wrong number this pass exists
+  to prevent.
+
+#### The rule this establishes
+
+**`assess --deck` reasons over the deck's own cards, never over the card pool.**
+The deck supplies 40–50 concrete cards; their text is read directly, and the
+union-of-disjoint-pools error is not expressible.
+
+"The deck" is wider than `slots`, and the boundary is one the code already
+names. `deckcheck.NOT_DECKBUILDING` and `deckcheck.excluded()` enumerate the
+categories that never enter the draw pile — `permanent`, `linked`,
+`hero_special`, `identity`, `back_face` — and **that is exactly where hero
+identity mechanics live**: the `Colossus` hero face grants his extra tough slot;
+both `Luke Cage` faces carry Unbreakable Skin. Reading only `slots` would
+systematically miss the hero's own tools, which is the same class of error as
+scoping to the global pool. Obligations are a third category again: `Homesick`
+is shuffled into the encounter deck, so it is neither draw pile nor in play at
+setup.
+
+Answering "you could have included card X" would require the pool — and that is
+a recommendation, which §3 places above the CLI line in `SKILL.md`, not in
+`assess`.
