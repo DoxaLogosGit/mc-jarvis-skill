@@ -1534,3 +1534,72 @@ setup.
 Answering "you could have included card X" would require the pool — and that is
 a recommendation, which §3 places above the CLI line in `SKILL.md`, not in
 `assess`.
+
+### 10.6 Ally output is bounded by consequential damage, and we do not index it
+
+§10.5 concluded that threat removal survives as a *ceiling* — total ally THW
+with every ally in play and ready. That framing is still wrong, because an ally
+pays for every use out of its own hit points.
+
+**RR p.13, `Consequential Damage`** is an addressable entry (it survived the
+appendix indexing pass, along with two FAQ entries at p.57 and p.61). The rule
+is not a flat 1: an ally takes damage equal to **the number of consequential
+damage icons beneath its ATK field** after attacking, and **beneath its THW
+field** after thwarting. The two are printed separately and can differ.
+
+**We index neither.** marvelsdb carries them as `attack_cost` and `thwart_cost`;
+the `cards` table has `attack`, `thwart`, `defense`, `recover` and `health` but
+neither cost field. `assess --deck` is their first consumer, so this needs a
+schema bump.
+
+Assuming a flat 1 would be wrong for a meaningful slice of the pool:
+
+| `thwart_cost` | allies | |
+| --- | --- | --- |
+| 1 | 283 | the common case |
+| 2 | 38 | double price per thwart |
+| 3 | 1 | Dum Dum Dugan (5 HP, so two thwarts total) |
+| 0 | 1 | **Spider-Ham** — takes none, on either stat |
+| null | 14 | see the data gap below |
+
+**56 allies have different attack and thwart costs**, so a single per-ally
+"consequential damage" number cannot be stored; both fields are required.
+
+#### Why this changes the metric, not just the arithmetic
+
+Sum-of-THW across the 322 allies that can thwart is **495** — one activation
+each. Lifetime output, `THW × ceil(HP / thwart_cost)`, is **1361**, a mean of
+2.85 activations before defeat. The naive ceiling is wrong in both directions at
+once: it understates an ally's total contribution ~2.75×, while overstating what
+is sustainable in any single turn.
+
+The spread is the point, because it is invisible to a THW sum:
+
+| Ally | THW | HP | `thwart_cost` | Lifetime threat removed |
+| --- | --- | --- | --- | --- |
+| Venom | 2 | 6 | 1 | **12** |
+| Cannonball | 2 | 2 | 2 | **2** |
+
+Both print THW 2. One removes six times the threat of the other.
+
+`ceil(HP / thwart_cost)` is an upper bound on uses, not a prediction: it assumes
+the ally never blocks, never attacks, takes no encounter damage and is never
+healed. All four assumptions are false in play. It is honest only as a bound,
+and must be labelled one — the same discipline §10.5 imposed on the word "rate".
+
+#### Three data caveats
+
+- **Nine allies have a real THW value but a null `thwart_cost`** — Cloak, Blade,
+  Bob, Agent of Hydra, and six Deadpool-set allies (Dogpool, Headpool, Kidpool,
+  Lady Deadpool, Negasonic Teenage Warhead, Pandapool). Null here is an upstream
+  gap, **not a printed zero**: Spider-Ham's genuine zero is stored as `0`. These
+  must be reported as unknown, never defaulted to 1. Candidate for a second
+  marvelsdb data PR alongside the `Home Summers` fix.
+- **Ant-Man's printed HP is 0**; all of his hit points come from pym counters.
+  Any `HP`-derived bound is arithmetically correct and semantically meaningless
+  for him. Counter-dependent stats are a class, not a one-off.
+- **18 allies modify the rule in card text** — `-1` conditionally (Chamber,
+  Captain Britain, Dagger, Venom, Deathcry, Snow Clone), `+1` as a cost (Dust,
+  Gentle), redirected (Elektra sends it to Daredevil), or defeat-prevention
+  (Deadpool, Firebird, SP//dr). None of these is derivable from the cost fields.
+  They are why the bound is a bound.
