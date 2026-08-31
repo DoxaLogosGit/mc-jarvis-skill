@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS cards (
     resource_wild       INTEGER,
     attack              INTEGER,
     thwart              INTEGER,
+    -- Consequential damage (RR p.13): the count of icons printed beneath
+    -- the ATK and THW fields, paid by an ally after it attacks or thwarts.
+    -- Printed separately and different on 56 allies, so one column cannot
+    -- serve both. Null is an upstream omission, not a printed zero --
+    -- Spider-Ham's genuine zero is stored as 0 (spec §10.6).
+    attack_cost         INTEGER,
+    thwart_cost         INTEGER,
     defense             INTEGER,
     recover             INTEGER,
     health              INTEGER,

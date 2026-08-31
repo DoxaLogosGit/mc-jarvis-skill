@@ -104,7 +104,8 @@ def handle_search(args) -> int:
 
 FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
                   "deck_limit", "quantity", "canonical_code", "is_reprint",
-                  "attack", "thwart", "defense", "recover", "health",
+                  "attack", "thwart", "attack_cost", "thwart_cost",
+                  "defense", "recover", "health",
                   "health_per_hero", "scheme", "stage",
                   "hand_size", "resource_physical", "resource_mental",
                   "resource_energy", "resource_wild", "flavor")

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 
+from .allycost import ally_rows, totals
 from .deckcheck import arriving, deckbuilding_cards, included
 
 RESOURCES = ("physical", "mental", "energy", "wild")
@@ -21,7 +22,7 @@ RESOURCES = ("physical", "mental", "energy", "wild")
 _EMPTY = {
     "size": 0, "deckbuilding_size": 0, "cost_curve": {}, "mean_cost": 0.0,
     "over": 0, "no_cost": 0, "resources": {}, "by_type": {}, "by_aspect": {},
-    "arrives_later": [],
+    "arrives_later": [], "allies": [], "ally_totals": {},
 }
 
 
@@ -63,6 +64,8 @@ def profile(conn, deck) -> dict:
         entry["cards"].append({"code": row["code"], "name": row["name"],
                                "quantity": copies})
 
+    allies = ally_rows(conn, cards)
+
     return {
         "aspects": deck.aspects,
         # What you will draw.
@@ -87,4 +90,10 @@ def profile(conn, deck) -> dict:
         # rather than of the deck.
         "arrives_later": [{"code": c["code"], "name": c["name"],
                            "via": c["enabler"]} for c in arriving(conn, deck)],
+        # Allies are the only card type whose output is priced in its own
+        # hit points, so THW alone overstates them (§10.6). Both bounds
+        # are reported because they compete for the same pool, and the
+        # markers say which rows the numbers do not describe (§10.7).
+        "allies": allies,
+        "ally_totals": totals(allies),
     }

@@ -1662,3 +1662,58 @@ attack-only uses `ceil(HP / attack_cost)` — because an ally spends one pool of
 hit points across thwarting, attacking and blocking. A single lifetime number
 silently assumes every activation is a thwart. Each bound is labelled
 single-purpose, and is suppressed rather than guessed where the cost is null.
+
+### 10.8 Not every ally pays in hit points
+
+§10.6 and §10.7 both assume the price of using an ally is its own health.
+Two cards show that is not general, and the first of them corrects §10.7
+directly.
+
+**Blade** pays in resources, not hit points. His Forced Response makes
+every thwart or attack cost a [physical] resource from hand *or he is
+discarded*. `ceil(health / cost)` is not merely unavailable for him, it is
+structurally inapplicable: his hit points do not govern how long he lasts.
+
+This falsifies the tidy reading of `cost-unknown` — that a null `*_cost` is
+an upstream omission and therefore **nothing to look up**. For Blade the
+null may be correct, because a card with no consequential damage icons
+prints none, and the real price is in his text. `cost-unknown` must
+therefore never be presented as "no lookup will help".
+
+His text also contains none of the words the other markers search for — no
+"consequential", no self-damage, no hit-point derivation — so before the
+`per-use-cost` marker he read as a free ally with an unknown price. He is
+the reason that marker exists.
+
+**Elektra (Daredevil)** shows a cost can move between characters mid-game.
+Her redirect is a **Forced Interrupt (Hero)**: in hero form Daredevil takes
+her consequential damage, in alter-ego form she takes it herself. Her
+stored `thwart_cost` of 1 is right in one form and wrong in the other, and
+no static field can express that. She is caught by
+`consequential-modified`, which is the marker doing its job.
+
+#### The marker set
+
+Six markers over 307 player-legal allies; **62 (20%)** carry at least one.
+
+| Marker | n | Says |
+| --- | --- | --- |
+| `consequential-modified` | 17 | text changes the price, possibly per form |
+| `self-damage` | 12 | the ally damages itself outside consequential damage |
+| `cost-unknown` | 11 | no `*_cost` upstream — usually a gap, sometimes real |
+| `per-use-cost` | 10 | acting costs something other than hit points |
+| `self-discard` | 8 | the ally leaves play by its own text |
+| `hit-points-derived` | 5 | health is counter- or board-dependent |
+| `cost-zero` | 3 | a printed 0, so the bound has no limit |
+
+`per-use-cost` and `self-discard` were one marker until the matches were
+read. They are different questions: Blade pays to *act*, while Goliath
+discards himself at end of phase and Angela if her search finds no minion.
+Neither group's lifetime is governed by hit points, but only the first is a
+price per use.
+
+The pronoun group in the self-damage patterns excludes **`it`** on purpose.
+`it` denotes the enemy far more often than the ally: including it made Iron
+Fist and Psylocke look self-damaging when the damage goes to the card they
+attack. Names are matched on their first word as well as in full, because
+`Bob, Agent of Hydra` is called `Bob` on his own card.
