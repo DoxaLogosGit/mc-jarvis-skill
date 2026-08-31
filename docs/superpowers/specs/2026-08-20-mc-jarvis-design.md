@@ -1603,3 +1603,62 @@ and must be labelled one — the same discipline §10.5 imposed on the word "rat
   Gentle), redirected (Elektra sends it to Daredevil), or defeat-prevention
   (Deadpool, Firebird, SP//dr). None of these is derivable from the cost fields.
   They are why the bound is a bound.
+
+### 10.7 Ally cost is five dimensions, and a scalar cannot hold it
+
+§10.6 proposed `THW × ceil(HP / thwart_cost)` as a lifetime bound and illustrated
+it with Venom against Cannonball. Both examples were wrong, in opposite
+directions, and the reasons generalise.
+
+**Cannonball (basic)** — THW 2, HP 2, `thwart_cost` 2 — scores a bound of 2. His
+text reduces consequential damage by the number of [[AERIAL]] cards **in hand**.
+With two in hand he takes none and thwarts indefinitely. The computed 2 is a
+*floor*, not a bound, and the correction lives in hand state the index cannot see.
+
+**Venom (basic)** — THW 2, HP 6, `thwart_cost` 1 — scores 12, the highest in the
+pool. He also carries **`scheme_hazard` 1**: an extra encounter card every round
+he stays in play. Six rounds of use costs six extra encounter cards, which the
+model counted as zero. His own Response also deals him 1 damage per trigger,
+shortening the life the bound assumes.
+
+#### The five dimensions
+
+| # | Dimension | Where it lives | Coverage |
+| --- | --- | --- | --- |
+| 1 | Resource cost to play | `cost` | indexed |
+| 2 | Consequential damage per use | `attack_cost`, `thwart_cost` | **not indexed** (§10.6) |
+| 3 | Persistent encounter-icon burden | `scheme_hazard`, `scheme_acceleration`, `scheme_amplify` | indexed, never read for allies |
+| 4 | Text modifiers to (2) | card text | 18 allies, not derivable |
+| 5 | Self-damage from own abilities | card text | not derivable |
+
+**Nine allies carry an encounter icon**: Venom (basic) and Negasonic Teenage
+Warhead and Pandapool carry hazard; Dogpool, Kidpool, Bob, Agent of Hydra and
+Cloak carry acceleration; Headpool and Lady Deadpool carry amplify. `scheme_crisis`
+appears on none. These are a recurring per-round tax that no output metric nets off.
+
+Cloak's acceleration icon is deliberate design, not an outlier: **Dagger's text
+removes it** ("Cloak loses each [acceleration] icon"). The pair only makes sense
+if the icon is part of Cloak's price.
+
+#### The null-cost gap is a data gap, confirmed
+
+§10.6 flagged nine allies with a real THW and a null `thwart_cost`, and noted a
+suspicious 8-of-9 overlap with the icon-carrying allies. The tempting hypothesis
+— that these cards print an encounter icon *instead of* consequential damage —
+is **falsified by Venom (basic)**, which carries `scheme_hazard` 1 *and*
+`thwart_cost` 1 *and* `attack_cost` 2. Icons and consequential damage coexist.
+Blade has neither an icon nor a cost, and breaks the correlation from the other
+side. The nine nulls are an upstream omission; they must report as unknown.
+
+#### What this settles about the output
+
+`assess --deck` reports the **dimensions, not a scalar**. Per ally: THW and
+`thwart_cost`, ATK and `attack_cost`, HP, resource cost, any encounter icon, and
+a flag when card text modifies consequential damage or the stat is
+counter-dependent (§10.6, Ant-Man).
+
+Bounds are reported **split** — thwart-only uses `ceil(HP / thwart_cost)` beside
+attack-only uses `ceil(HP / attack_cost)` — because an ally spends one pool of
+hit points across thwarting, attacking and blocking. A single lifetime number
+silently assumes every activation is a thwart. Each bound is labelled
+single-purpose, and is suppressed rather than guessed where the cost is null.
