@@ -1961,3 +1961,64 @@ So the pairing is **the deck's non-attack damage against the scenario's
 Guard sources**, and **non-thwart threat removal against Patrol** — with
 ally attack capacity reported as the answer to the *minion*, which is what
 allies actually contribute.
+
+### 10.13 Acceleration icons and tokens are different things
+
+§9's first item pairs "threat removal available per turn" against "the
+scenario's acceleration rate". §10.5 corrected the numerator to a ceiling.
+The denominator is wrong too: **acceleration is not one quantity.**
+
+The Rules Reference gives icons and tokens **separate entries** (both p.5)
+and states in each, twice over, that "acceleration icons are not considered
+acceleration tokens, and vice versa". A card effect naming one does nothing
+to the other.
+
+| | Acceleration icon | Acceleration token |
+| --- | --- | --- |
+| Where | printed on an encounter card in play | placed beside the main scheme |
+| Removal | **defeat the card it is printed on** | **cannot be removed from the main scheme** |
+| On a card other than the main scheme | n/a | removed when that card leaves play |
+| Survives the main scheme leaving play | no | **yes** — not discarded on stage advance |
+| In the card data | `scheme_acceleration` | **not representable** — runtime state |
+
+Tokens enter play when a card effect adds one, or **when the encounter deck
+empties**. That second route makes a long game permanently faster, and
+nothing in the index can see it.
+
+#### The two removal cards are not interchangeable
+
+The distinction is not academic — the pool contains one open-pool card for
+each side, and a player who confuses them buys the wrong one:
+
+- **`Mitigated Threat`** (protection) — "attached card loses each
+  [acceleration], [amplify], [crisis], and [hazard] icon". **Icons only.**
+- **`De-escalation`** (justice, a player side scheme) — "When Defeated:
+  Remove an acceleration token from play." **Tokens only**, and it is the
+  sole exception to the rule that main-scheme tokens cannot be removed —
+  card text overriding the rulebook, exactly the precedence the Golden Rules
+  establish (RR p.4).
+
+`Dagger` removes Cloak's acceleration *icon*, which is why that pair works.
+
+#### Icons live on side schemes, so the item is a loop, not a ratio
+
+Of 116 acceleration icons in play-capable cards, **97 are on side schemes**,
+with 1 minion, 2 attachments and 2 environments. Four are on *player* allies
+(§10.7).
+
+So the honest shape of §9's first item is not a rate compared against a
+capacity. Thwarting a side scheme **reduces the acceleration that generates
+the threat you must thwart**: it is a feedback loop, and stating it as a
+ratio implies a static exchange the game does not have. Reporting the
+scenario's icon sources and where they sit is truthful; reporting an
+"acceleration rate" against a "removal rate" is not.
+
+#### One hero wants them
+
+`Deadpool`'s kit inverts the whole question. `Cable` gets +1 THW and +1 ATK
+per acceleration token on the main scheme, `Montage` generates a resource
+per token, `It Ain't Over...` raises the attached scheme's target threat per
+token, and `Exhausting Personality` **places a token as a cost**. As with
+Colossus and tough (§10.5), a keyword that is a liability for most decks is
+an engine for one, and a global "acceleration is bad" reading gets that
+deck exactly backwards.
