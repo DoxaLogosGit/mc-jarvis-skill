@@ -1838,3 +1838,65 @@ hero who accumulates tough wants to know what *converts* it, and those
 payoffs are almost entirely hero-locked: his own seven cards, Luke Cage's
 ten, and `Misty Knight` in the open pool. §10.5's rule applies unchanged —
 the answer is read from the deck, not the pool.
+
+### 10.11 Ranged answers retaliate, and §9 had the mechanic wrong
+
+§9 proposes "ranged / area attacks against minion swarm size", and §10.5
+concluded ranged was dead because no player card prints it. Both were
+wrong, and in a way that repeats §10.10 exactly: the keyword was searched
+by name instead of by what it does.
+
+**`Ranged` (RR p.32) does exactly one thing: it ignores retaliate.** That
+is the whole entry. It has no relationship to swarms, to targeting, or to
+range of any kind, so §9's pairing of ranged against swarm size compares
+two quantities that never interact.
+
+**`Retaliate X` (RR p.38)** deals X damage to the attacker after a
+character with it is *attacked*. Two details shape the cross-reference:
+the trigger is being attacked rather than damaged, and "the character with
+retaliate X must be in play after the attack resolves" — so a hit that
+defeats the enemy outright takes no retaliate damage. As with Tough
+(§10.9), raw damage per instance is a second answer alongside the keyword.
+
+#### "Nothing prints ranged" was a false dichotomy
+
+Zero player cards print `Ranged.` as a keyword line, which §10.5 read as
+"no source exists". But `Star-Lord`, `Yondu` and `War Machine` each say
+their *attacks gain ranged* with no condition attached: a permanent
+self-grant is functionally a printed keyword. `Sidearm` grants it to any
+attached ally, and `Hawkeye's Bow` to every [[Arrow]] attack.
+
+The 21 player cards that mention ranged are four different things, and
+only the first two are reliable answers:
+
+| Kind | Cards |
+| --- | --- |
+| Permanent self-grant | Star-Lord, Yondu, War Machine, Sidearm, Hawkeye's Bow |
+| Weapon whose attack is ranged | Bazooka, Bishop's Rifle, Domino's Pistol, Missile Launcher, Particle Cannon, Plasma Rifle, Winter Rifle |
+| One attack only | Firepower, Psi-Bow Attack, Concentrated Fire, Spray Fire, Charged Card, Marvel Boy |
+| Pays off ranged, grants none | Directed Force, Sharpshooter |
+
+Ten are open pool; the rest are hero-locked, which matches the observation
+that few hero kits carry it.
+
+#### The scenario side must separate the villain from everything else
+
+A flat retaliate count is misleading. **Zola prints Retaliate 1 on all
+three stages**, so it taxes every attack for the entire game; a modular
+minion with retaliate taxes only the attacks you choose to make into it.
+
+| Where retaliate sits | Scenarios |
+| --- | --- |
+| Villain (persistent, all game) | **10** — Zola, Unus and En Sabah Nur on all three stages |
+| Non-villain only (situational) | 23 |
+| None | 20 |
+
+Counted flat, Zola (5 sources) sits next to Morlock Siege (4) as though
+they posed the same problem. Split, they are obviously different: one
+is a standing tax on the deck's whole attack plan, the other a reason to
+think before attacking a particular minion.
+
+So the pairing is **ranged sources in the deck against villain retaliate**,
+with non-villain retaliate reported separately and defeat-in-one-hit noted
+as the alternative answer. The unit on both sides is the attack, which is
+the same unit §10.10 established for Tough.
