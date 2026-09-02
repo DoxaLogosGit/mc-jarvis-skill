@@ -1717,3 +1717,58 @@ The pronoun group in the self-damage patterns excludes **`it`** on purpose.
 Fist and Psylocke look self-damaging when the damage goes to the card they
 attack. Names are matched on their first word as well as in full, because
 `Bob, Agent of Hydra` is called `Bob` on his own card.
+
+### 10.9 Tough is a trigger on damage taken, not a damage counter
+
+§10.5 concluded that Tough should fold into the attack side as a tax on
+damage instances. Three rules entries together show the tax is real but is
+not a subtraction, and that the deck side cannot be queried as a keyword.
+
+**Tough fires on "would take damage" (RR p.44).** It is not a shield that
+absorbs points. `Prevent` (RR p.35) draws the distinction it depends on:
+an effect that prevents damage *dealt* reduces what the character
+**takes** while leaving what was **dealt** unchanged, and "if an effect
+prevents all damage dealt to a character, that character is not considered
+to have taken damage."
+
+So a prevention effect that reduces incoming damage to zero means the
+character never *would take* damage, Tough never triggers, and **the tough
+card survives**. The Tough entry supplies the canonical case itself: a hero
+who defends and reduces the attack to 0 with DEF keeps their tough status
+card. Prevention protects Tough rather than stripping it.
+
+**Piercing (RR p.32) is the reverse, with a condition.** It discards each
+tough status card from the attacked character *before* the attack deals
+damage — but "if an attack with the piercing keyword would deal no damage
+to the attacked character, it does not discard tough status cards". It is
+not a free strip; the attack has to land.
+
+**Damage from one source is simultaneous.** The Repulsor Blast FAQ (p.56)
+rules that its additional damage is "a simultaneous modification of its
+first point of damage", so an attack cannot spend one point to remove a
+tough card and land the rest. **One tough card absorbs an entire damage
+instance, whatever its size.**
+
+#### The tax is per instance, and it is regressive in hit size
+
+This inverts the naive reading. Tough does not cost a deck one damage; it
+costs one *activation*. A deck built on a few large attacks loses more to
+each tough card than a deck built on many small ones — the 5-damage swing
+and the 1-damage ping are equally annulled. Any Tough figure must therefore
+sit beside a count of **damage instances**, never a damage total, and
+§10.5's "tax on the attack side" is wrong wherever it implied subtraction.
+
+#### And the deck side is not a keyword query
+
+**Zero player cards print piercing.** Of 38 that mention it, 37 grant it
+("your attacks gain piercing") and the last, `Directed Force`, references
+the keyword generically. This is exactly the shape `ranged` has (§10.5) and
+means the same thing: asking "does this deck have piercing" cannot be
+answered from a printed property. 63 encounter cards carry piercing, which
+is the side that mostly uses it.
+
+Together with §10.5's finding that one open-pool card removes enemy Tough,
+this closes the question: **Tough is not a cross-reference.** Neither side
+is queryable in the form §9 assumed, and the interaction is a timing
+question — dealt versus taken, and whether prevention fires first — that
+belongs to the rules commands, not to a deck statistic.
