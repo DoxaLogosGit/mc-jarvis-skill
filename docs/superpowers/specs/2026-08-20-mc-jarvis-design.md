@@ -1900,3 +1900,64 @@ So the pairing is **ranged sources in the deck against villain retaliate**,
 with non-villain retaliate reported separately and defeat-in-one-hit noted
 as the alternative answer. The unit on both sides is the attack, which is
 the same unit §10.10 established for Tough.
+
+### 10.12 Guard and Patrol restrict an action, not an outcome
+
+The third repetition of the §10.10 lesson, and the one that breaks §9's
+fourth item outright.
+
+**`Guard` (RR p.20):** while a minion with guard is engaged with a player,
+"that player cannot use cards they control to **attack** a villain".
+**`Patrol`:** the engaged player "cannot use cards they control to
+**thwart** the main scheme". Both are constant abilities that forbid an
+*action type*. Neither forbids dealing damage or removing threat.
+
+So **non-attack damage passes through Guard, and non-thwart threat removal
+passes through Patrol.** `The Bellerophon` deals 3 damage to the villain
+from an Action, not an attack, and a guard minion cannot stop it.
+
+#### §9's fourth item pairs the wrong quantities
+
+§9 proposes "ally count and health against Guard and minion attack
+values". Allies are not an answer to Guard: an ally's basic attack *is* an
+attack, and Guard forbids the player from using **any** card they control
+to attack the villain. Allies help by killing the guard minion, which is
+the ordinary answer, not by bypassing it. Pairing ally count against Guard
+implies a relationship the rule does not create.
+
+#### The deck side is queryable, through the action designators
+
+Card text carries the designator that decides this — `<i>(attack)</i>`,
+`<i>(thwart)</i>` — so the question can be asked precisely. Two traps:
+
+- **Designators compound.** `(attack/thwart)` appears 6 times,
+  `(attack/defense)` 3, `(attack/defense/thwart)` and `(defense/thwart)`
+  once each. A `NOT LIKE '%(attack)%'` filter lets `Hit and Run` through as
+  a Guard bypass when it is an attack. The test is whether **attack**
+  appears as a token, not whether the string does.
+- **Some damage is reachable only by attacking.** `Hulk`'s "After Hulk
+  attacks, discard the top card of your deck..." deals damage without being
+  an attack, but requires an attack to trigger, so Guard blocks it anyway.
+  7 cards are contingent this way on the Guard side, 3 on the Patrol side.
+
+| | Bypass cards | Open pool | Excluded as contingent |
+| --- | --- | --- | --- |
+| Guard — non-attack damage to the villain | **103** | 51 | 7 |
+| Patrol — non-thwart threat removal | **71** | 41 | 3 |
+
+#### The encounter side, with a multiplier the count misses
+
+| | Minions printing it | Cards granting it |
+| --- | --- | --- |
+| Guard | **61** (not 66 — five are `[[Imperial Guard]]`, §10.5) | 15 |
+| Patrol | 23 | 3 |
+
+The grants matter more than their count suggests: `Blue Area of the Moon`
+reads "each minion gains guard", so one environment card converts an entire
+scenario's minion population. A scenario's Guard load is therefore not a
+row count, and any figure must state whether a global grant is in play.
+
+So the pairing is **the deck's non-attack damage against the scenario's
+Guard sources**, and **non-thwart threat removal against Patrol** — with
+ally attack capacity reported as the answer to the *minion*, which is what
+allies actually contribute.
