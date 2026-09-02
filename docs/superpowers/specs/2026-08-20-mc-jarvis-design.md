@@ -1772,3 +1772,69 @@ this closes the question: **Tough is not a cross-reference.** Neither side
 is queryable in the form §9 assumed, and the interaction is a timing
 question — dealt versus taken, and whether prevention fires first — that
 belongs to the rules commands, not to a deck statistic.
+
+### 10.10 Tough survives as a cross-reference, once both sides are asked properly
+
+§10.5 concluded that exactly one open-pool card answers enemy Tough, and
+§10.9 concluded that Tough is not a cross-reference at all. Both were
+artifacts of the query, not findings about the game. The player-facing
+question is not "do I hold a card that removes Tough" but **"do I need to
+bring piercing, or more attackers"** — and in that form both sides count.
+
+#### The deck side is piercing, and it is not one card
+
+Searching for the word *tough* was the error. The mechanism that answers
+Tough is **piercing**, whose grants mostly never mention the word.
+`Brute Force` — "your basic attacks gain piercing" — is an open-pool
+aggression card that answers Tough, and §10.5 missed it.
+
+| Availability | Piercing sources |
+| --- | --- |
+| Open pool | **11** — aggression 6, basic 3, leadership 1, pool 1 |
+| Hero-locked | 25, plus 2 hero-specific basics |
+
+**Five of the eleven are allies** — Wolverine, Swordsman, Black Knight,
+Marvel Boy, Kidpool — and `Energy Spear` grants piercing to a [[Guardian]]
+ally. So allies are not merely extra damage instances against Tough; they
+are a primary carrier of the keyword that bypasses it.
+
+This does not disturb §10.5's separate finding that piercing is **never
+printed** on a player card (0 of 38; 37 grant it, `Directed Force`
+references it). Within a deck of 40-50 cards the grants are readable
+directly, which is why the deck side is tractable even though the pool
+side is not.
+
+#### The scenario side counts, and it varies enormously
+
+Tough load per scenario, over the scenario set plus its prescribed
+modulars:
+
+| Scenario | Tough sources |
+| --- | --- |
+| Mansion Attack | 10 |
+| Kang | 8 |
+| Apocalypse | 7 |
+| Master Mold | 6 |
+| Hela, Magneto, Thanos, Unus, Four Horsemen, En Sabah Nur | 5 |
+
+**13 of 53 scenarios throw no Tough at all.** A question whose answer
+ranges from 0 to 10 across scenarios is worth asking; this is the spread
+that makes "should I bring piercing" a real decision rather than a
+constant.
+
+#### What the output should be
+
+Three numbers, in matched units, from §10.9's finding that Tough annuls a
+damage *instance* rather than a damage total:
+
+- the scenario's Tough sources, keyword and granted counted separately;
+- the deck's piercing sources, read from the deck's own card text;
+- the deck's damage instances — hero basic attack plus each ally's
+  `attacking.uses` bound from `allycost` — since without piercing an extra
+  activation is the only other answer.
+
+The Colossus case is the mirror of this and stays a separate question. A
+hero who accumulates tough wants to know what *converts* it, and those
+payoffs are almost entirely hero-locked: his own seven cards, Luke Cage's
+ten, and `Misty Knight` in the open pool. §10.5's rule applies unchanged —
+the answer is read from the deck, not the pool.
