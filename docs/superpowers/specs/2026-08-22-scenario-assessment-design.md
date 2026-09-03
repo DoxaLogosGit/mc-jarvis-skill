@@ -424,6 +424,22 @@ numbers, not one**, because three different things limit them:
   average across the corpus. Still a ceiling, since it assumes the three
   best allies are in play, ready, and spending their activation on
   thwarting rather than attacking or blocking (design §10.6).
+
+  **Three is a default, not a constant**, and treating it as one was the
+  first implementation's error:
+
+  - It limits allies **in play**. One corpus deck holds 13 allies to field
+    three.
+  - **Cards raise it.** `The Triskelion` (leadership) unconditionally;
+    `Avengers Tower`, `Utopia`, `Flight Squadron` and `Knowhere` on a trait
+    condition. **16% of corpus decks carry one.** All five must be in play,
+    so they are *named as potential* and never folded into the ceiling —
+    applying them would assert a board state the deck cannot promise.
+  - **Allies are exempted from it.** `Stinger`, the four `New Recruits`
+    (Surge, Anole, Bling!, Indra) and the four `trickster_magic` linked
+    allies consume no slot, so they field *in addition* to the three. 3% of
+    corpus decks carry one; counting them within the limit understates the
+    ceiling.
 - **`(thwart)`-designated abilities — limited by resources, not
   exhaustion.** The same RR entry: "Unless specified by the ability's
   text, a hero does not exhaust" to resolve a `Hero Action (thwart)`.

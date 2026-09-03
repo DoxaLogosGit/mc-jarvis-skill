@@ -12,10 +12,10 @@ per turn unless something readies it -- and the ally side is capped again
 by the ally limit of three (RR p.7), which is a limit on allies *in play*,
 not allies in the deck. A deck holding twelve allies still fields three.
 
-**Abilities designated `(thwart)` are not.** The same entry: "Unless
-specified by the ability's text, a hero does not exhaust" to resolve a
-`Hero Action (thwart)`. These are additional instances, gated by resources
-and draw rather than by exhaustion, so they must not be added to the basic
+**Abilities designated `(thwart)` are not.** The same entry rules that
+resolving a `Hero Action (thwart)` leaves the hero ready unless the card
+says otherwise. These are additional instances, gated by resources and
+draw rather than by exhaustion, so they must not be added to the basic
 thwarts as though they competed for the same limit.
 
 **Threat removal that is not a thwart is a third thing.** It bypasses
@@ -29,8 +29,24 @@ import re
 from .allycost import ally_rows
 from .deckcheck import included
 
-# RR p.7. A limit on allies in play; the deck may hold any number.
+# RR p.7. Three things about this number, all of which a bare constant
+# gets wrong:
+#   - It limits allies IN PLAY. The deck may hold any number, and 62% of
+#     1,501 published decks hold more.
+#   - Cards raise it. `The Triskelion` (leadership) unconditionally;
+#     `Avengers Tower`, `Utopia`, `Flight Squadron` and `Knowhere` on a
+#     trait condition. All five must be in play to do anything, so they
+#     are named as potential rather than applied to the ceiling.
+#   - Allies are exempted from it. `Stinger`, the four `New Recruits`
+#     (Surge, Anole, Bling!, Indra) and the four `trickster_magic` linked
+#     allies do not consume a slot, so they field in addition to the base.
 ALLY_LIMIT = 3
+
+_RAISES_LIMIT = re.compile(r"increase your ally limit", re.I)
+_EXEMPT = re.compile(r"not count against (?:your |the )?ally limit", re.I)
+# Every raise but The Triskelion, and the New Recruits exemptions, are
+# gated on a trait the deck may not have.
+_CONDITIONAL = re.compile(r"^\s*(?:if|play only if)\b", re.I)
 
 _DESIGNATOR = re.compile(r"<i>\(([a-z/]+)\)</i>", re.I)
 _REMOVES_THREAT = re.compile(r"remove.{0,40}threat", re.I)
@@ -48,6 +64,12 @@ def designations(text: str | None) -> frozenset[str]:
         out |= {p for p in m.group(1).lower().split("/")
                 if p in ("attack", "thwart", "defense")}
     return frozenset(out)
+
+
+def _strip(text: str | None) -> str:
+    """Card text without its markup, so a leading `If`/`Play only if` is
+    visible to a start-anchored match."""
+    return re.sub(r"<[^>]+>|\[\[|\]\]", "", text or "").strip()
 
 
 def profile(conn, deck) -> dict:
@@ -73,10 +95,23 @@ def profile(conn, deck) -> dict:
             elif _REMOVES_THREAT.search(r["text"] or ""):
                 non_thwart.append(entry)
 
+    rows = {r["code"]: r for r in conn.execute(
+        f"SELECT code, name, text FROM cards WHERE code IN "
+        f"({','.join('?' * len(cards))})", list(cards))} if cards else {}
+
+    raisers = [{"code": c, "name": r["name"],
+                "conditional": bool(_CONDITIONAL.match(_strip(r["text"])))}
+               for c, r in rows.items() if _RAISES_LIMIT.search(r["text"] or "")]
+
     allies = [a for a in ally_rows(conn, cards) if a["thwart"]]
-    # Sorted by THW so the ceiling reflects the three best, which is what a
-    # player fielding three allies would choose.
-    best = sorted(allies, key=lambda a: a["thwart"], reverse=True)[:ALLY_LIMIT]
+    exempt, counted = [], []
+    for a in allies:
+        text = rows[a["code"]]["text"] if a["code"] in rows else ""
+        (exempt if _EXEMPT.search(text or "") else counted).append(a)
+    # Sorted by THW so the ceiling reflects the best allies a player would
+    # field. Exempt allies consume no slot, so they are added on top.
+    best = sorted(counted, key=lambda a: a["thwart"],
+                  reverse=True)[:ALLY_LIMIT] + exempt
 
     return {
         # Limited by exhaustion: one basic thwart each, per turn.
@@ -85,6 +120,12 @@ def profile(conn, deck) -> dict:
             "allies_in_deck": len(allies),
             "allies_fielded": len(best),
             "ally_limit": ALLY_LIMIT,
+            # Field in addition to the limit rather than within it.
+            "exempt_allies": [{"code": a["code"], "name": a["name"]}
+                              for a in exempt],
+            # Named, never applied: each must be in play, and all but
+            # The Triskelion also need a trait the deck may not have.
+            "raises_limit": raisers,
             # A ceiling, not a rate: it assumes the three best allies are
             # in play, ready, and spending their activation on thwarting
             # rather than attacking or blocking (design §10.6).

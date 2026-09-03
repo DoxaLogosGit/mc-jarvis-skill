@@ -79,3 +79,42 @@ def test_threat_removal_that_is_not_a_thwart_is_counted_apart(tmp_path):
     p = threatremoval.profile(conn, _deck({"e1": 1}))
     assert p["non_thwart_removal"]["copies"] == 1
     assert p["designated_thwart"]["copies"] == 0
+
+
+def test_an_exempt_ally_fields_in_addition_to_the_limit(tmp_path):
+    """`Stinger`, the four New Recruits and the trickster_magic linked
+    allies do not consume a slot, so a deck can field the limit *and*
+    them. Counting them within the three understates the ceiling."""
+    conn = _mkdb(tmp_path, [
+        ("h1", "Hero", "hero", 2, 10, None, ""),
+        ("a1", "A1", "ally", 3, 3, 1, ""), ("a2", "A2", "ally", 3, 3, 1, ""),
+        ("a3", "A3", "ally", 3, 3, 1, ""), ("a4", "A4", "ally", 3, 3, 1, ""),
+        ("x1", "Stinger", "ally", 2, 3, 1,
+         "Stinger does not count against your ally limit.")])
+    b = threatremoval.profile(
+        conn, _deck({"a1": 1, "a2": 1, "a3": 1, "a4": 1, "x1": 1})
+    )["basic_thwart"]
+    assert [a["name"] for a in b["exempt_allies"]] == ["Stinger"]
+    assert b["allies_fielded"] == 4          # three counted, plus Stinger
+    assert b["ceiling"] == 2 + 3 + 3 + 3 + 2
+
+
+def test_a_limit_raiser_is_named_and_never_applied(tmp_path):
+    """All five raisers must be in play to do anything, and four of them
+    also need a trait the deck may not have. Applying them to the ceiling
+    would assert a board state the deck cannot promise."""
+    conn = _mkdb(tmp_path, [
+        ("h1", "Hero", "hero", 2, 10, None, ""),
+        ("a1", "A1", "ally", 3, 3, 1, ""), ("a2", "A2", "ally", 3, 3, 1, ""),
+        ("a3", "A3", "ally", 3, 3, 1, ""), ("a4", "A4", "ally", 3, 3, 1, ""),
+        ("s1", "The Triskelion", "support", None, None, None,
+         "Increase your ally limit by 1."),
+        ("s2", "Utopia", "support", None, None, None,
+         "If each of your allies has the [[X-MEN]] trait, increase your "
+         "ally limit by 1.")])
+    b = threatremoval.profile(
+        conn, _deck({"a1": 1, "a2": 1, "a3": 1, "a4": 1, "s1": 1, "s2": 1})
+    )["basic_thwart"]
+    assert b["ceiling"] == 2 + 3 + 3 + 3      # still three allies
+    named = {r["name"]: r["conditional"] for r in b["raises_limit"]}
+    assert named == {"The Triskelion": False, "Utopia": True}
