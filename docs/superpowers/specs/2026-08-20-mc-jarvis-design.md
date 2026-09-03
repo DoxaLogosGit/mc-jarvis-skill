@@ -2022,3 +2022,63 @@ token, and `Exhausting Personality` **places a token as a cost**. As with
 Colossus and tough (§10.5), a keyword that is a liability for most decks is
 an engine for one, and a global "acceleration is bad" reading gets that
 deck exactly backwards.
+
+### 10.14 My own keyword counts were wrong, and the index was right
+
+Before consuming `card_keywords` for the §9 cross-references, its
+`printed` flag was reconciled against the counts §§10.10–10.13 arrived at
+by hand. **Every hand count was too high, and the table was correct.**
+
+| Count | Recorded by hand | Actual (`card_keywords`) |
+| --- | --- | --- |
+| Guard minions | 61 | **60** |
+| Patrol minions | 23 | **21** |
+| Retaliate villains | 20 | **17** |
+| Toughness, encounter side | 122 | **114** |
+
+Every discrepancy is the same defect, and it is the one this project keeps
+finding: a `text LIKE '%Guard.%'` match cannot tell *printing* a keyword
+from *granting* it. `Jennix` reads "each [[Inheritor]] minion gains
+guard"; `Unus` gains retaliate on a threat condition; `Brix` grants patrol.
+All three matched the substring and none prints the keyword.
+
+The irony is exact. `card_keywords` was built with a printed/granted split
+**precisely because** this failure had already happened once — 261 `surge`
+mentions against 80 printed cards. Having built the fix, I then hand-counted
+with substrings anyway and trusted the result over the table for four
+sections.
+
+#### The scenario-level split was worse
+
+§10.11's retaliate table was built from the same substring match and is
+materially wrong:
+
+| | Recorded | Actual |
+| --- | --- | --- |
+| Villain retaliate | 10 | **9** |
+| Non-villain only | 23 | **9** |
+| None | 20 | **35** |
+
+Two thirds of the "non-villain retaliate" scenarios had none: the match was
+counting cards whose text merely says *gains retaliate*.
+
+#### Two structures the reconciliation exposed
+
+- **A card can print one keyword and gain another.** `Symbiotic Thrall`
+  prints Guard and gains Patrol while a [[symbiote]] environment is in
+  play. Keyword counts are per keyword, never per card.
+- **Global grants are a class, not an outlier.** §10.12 flagged
+  `Blue Area of the Moon` ("each minion gains guard") as a multiplier the
+  count misses. It has company: `Batroc's Brigade` and `The Basketball
+  Court` and `Mojo Runner` each give *every* minion toughness. Any keyword
+  figure must state whether a global grant is in the set.
+
+**Consumption rule:** the scenario side reads `card_keywords` joined to
+`cards`, never a text match. The table carries no side or type, so every
+join must supply them — §10.11's whole finding is that villain retaliate is
+a different thing from minion retaliate.
+
+`printed` remains the wrong predicate for the **deck** side. It is a syntax
+flag, and §10.11's reliability axis is a different question: `Star-Lord`,
+`Yondu` and `War Machine` are `printed = 0` yet their attacks always have
+ranged. A deck-side classifier is still needed and is not this table.
