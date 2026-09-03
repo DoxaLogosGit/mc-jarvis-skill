@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 
 from .allycost import ally_rows, totals
 from .deckcheck import arriving, deckbuilding_cards, included
+from .threatremoval import profile as removal_profile
 
 RESOURCES = ("physical", "mental", "energy", "wild")
 
@@ -23,6 +24,7 @@ _EMPTY = {
     "size": 0, "deckbuilding_size": 0, "cost_curve": {}, "mean_cost": 0.0,
     "over": 0, "no_cost": 0, "resources": {}, "by_type": {}, "by_aspect": {},
     "arrives_later": [], "allies": [], "ally_totals": {},
+    "threat_removal": {},
 }
 
 
@@ -96,4 +98,8 @@ def profile(conn, deck) -> dict:
         # markers say which rows the numbers do not describe (§10.7).
         "allies": allies,
         "ally_totals": totals(allies),
+        # Split by what limits each kind: exhaustion caps basic thwarts
+        # (and the ally limit caps those again), while resources cap the
+        # `(thwart)`-designated abilities, which do not exhaust the hero.
+        "threat_removal": removal_profile(conn, deck),
     }

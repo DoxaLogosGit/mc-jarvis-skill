@@ -165,6 +165,14 @@ def totals(rows: list[dict]) -> dict:
     spends one pool of hit points across thwarting, attacking and
     blocking, so adding the two totals double-spends every hit point in
     the deck. They are reported side by side so the trade is visible.
+
+    These are LIFETIME totals over every ally in the deck, not per-turn
+    capacity. The ally limit is three in play (RR p.7) and 62% of 1,501
+    published decks hold more than that, so reading either number as a
+    turn's output overstates it by 1.4x on average. `threatremoval`
+    applies the limit; this function deliberately does not, because an
+    ally defeated in round two is replaced by one played in round three
+    and both contributed.
     """
     def add(key):
         return sum(r[key]["total"] for r in rows
@@ -172,8 +180,8 @@ def totals(rows: list[dict]) -> dict:
 
     return {
         "allies": len(rows),
-        "thwart_ceiling": add("thwarting"),
-        "attack_ceiling": add("attacking"),
+        "thwart_lifetime": add("thwarting"),
+        "attack_lifetime": add("attacking"),
         "unpriced": sum(1 for r in rows if UNKNOWN in r["markers"]),
         "marked": sum(1 for r in rows
                       if set(r["markers"]) - {UNKNOWN, UNBOUNDED}),

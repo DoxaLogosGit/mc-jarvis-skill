@@ -402,7 +402,7 @@ output must not imply otherwise:
 Each is a count beside a count in **matched units**. Where the deck side is
 unmeasured, it says so.
 
-**1. Side-scheme pressure against acceleration.** *Deck side unmeasured.*
+**1. Side-scheme pressure against acceleration.**
 
 Not a rate against a rate. 97 of 116 acceleration icons sit on side schemes,
 so thwarting one reduces the acceleration generating the threat you must
@@ -413,9 +413,29 @@ a per-turn rate, since a true rate needs readying, exhaustion, resources and
 draw (design §10.5). Ally contribution is bounded by consequential damage
 and reported split (design §10.6, §10.7).
 
-Needs measuring before implementation: the deck's non-thwart threat removal,
-and its damage/thwart instances per turn. `allycost.attacking.uses` gives
-per-ally activations only; the hero side is uncounted.
+Deck side measured and implemented in `threatremoval.py`. It is **three
+numbers, not one**, because three different things limit them:
+
+- **Basic thwarts — limited by exhaustion.** RR p.44: a character must
+  exhaust to use a basic power. One per character per turn, and the ally
+  side is capped again by the **ally limit of three in play** (RR p.7).
+  That cap is not cosmetic: **62% of 1,501 published decks hold more than
+  three allies**, and ignoring it overstates the ceiling **1.40x** on
+  average across the corpus. Still a ceiling, since it assumes the three
+  best allies are in play, ready, and spending their activation on
+  thwarting rather than attacking or blocking (design §10.6).
+- **`(thwart)`-designated abilities — limited by resources, not
+  exhaustion.** The same RR entry: "Unless specified by the ability's
+  text, a hero does not exhaust" to resolve a `Hero Action (thwart)`.
+  These are *additional* instances and must never be added into the
+  exhaustion ceiling as though they competed for it.
+- **Threat removal that is not a thwart.** Passes through Patrol (design
+  §10.12) and is not a thwart attempt for any card that cares.
+
+`allycost.totals` deliberately does **not** apply the ally limit: its
+figures are lifetime totals, and an ally defeated in round two is replaced
+by one played in round three. The two are named apart — `thwart_lifetime`
+there, `basic_thwart.ceiling` here.
 
 **2. Piercing against Tough.**
 

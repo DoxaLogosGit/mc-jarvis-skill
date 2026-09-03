@@ -111,9 +111,12 @@ def test_an_encounter_icon_is_a_cost_the_output_never_nets_off(tmp_path):
 
 def test_the_two_ceilings_are_alternatives_and_are_never_added(tmp_path):
     """An ally spends one pool of hit points across thwarting, attacking
-    and blocking. A combined total would double-spend every hit point."""
+    and blocking. A combined total would double-spend every hit point.
+
+    These are lifetime totals and carry no ally limit: the cap of three
+    applies to allies in play, and `threatremoval` is where it belongs."""
     conn = _mkdb(tmp_path, [("a1", "A", 2, 1, 2, 1, 4, "", None)])
     t = allycost.totals(allycost.ally_rows(conn, ["a1"]))
-    assert t["thwart_ceiling"] == 8
-    assert t["attack_ceiling"] == 8
-    assert "total_ceiling" not in t
+    assert t["thwart_lifetime"] == 8
+    assert t["attack_lifetime"] == 8
+    assert "total_lifetime" not in t
