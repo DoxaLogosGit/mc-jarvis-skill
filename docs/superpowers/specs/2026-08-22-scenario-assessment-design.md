@@ -496,6 +496,42 @@ guard, so a Guard figure must state whether a global grant is in play.
 Ally attack capacity belongs here as the answer to **the minion**, which is
 what allies actually contribute.
 
+### 9.2a Implemented, 2026-09-03
+
+`crossref.py`, reached by `assess <scenario> --deck <id|path>`. Two
+decisions the implementation settled:
+
+**The cross-reference attaches to every trajectory step, not to one deck.**
+The opening deck answers what you face first; it does not answer a session.
+`dark_beast` is the case that proves it: its opening deck prints no tough,
+no guard and no patrol, and after three sets shuffle in it has guard 3,
+patrol 2 and tough 1. A single figure for the whole scenario would hide
+the half that arrives later.
+
+**A villain stage is not an encounter-deck row.** `assess.deck_cards`
+returns the encounter deck, which never contains the villain, so the first
+working version reported **zero villain retaliate for Zola** — who prints
+Retaliate 1 on all three stages and is the single most important retaliate
+fact in the game. `crossref.villain_rows` supplies them from the scenario's
+set codes. This is the §10.5 population error a fourth time: the query was
+right and the population was wrong.
+
+Two classifier defects found by tests rather than by reading:
+
+- `"this attack gains ranged"` matched the permanent self-grant pattern,
+  putting `Marvel Boy` beside `Star-Lord`. The determiner discriminates —
+  a permanent grant is possessive (`'s`, `your`, `its`), a one-off is
+  demonstrative — and `this`/`that` are both five characters, so a
+  fixed-width lookbehind separates them.
+- Keywords are granted in **lists**. `Marvel Boy` reads "gains piercing and
+  ranged", so requiring the keyword to follow `gains` directly classified
+  six real grants as merely mentioning it.
+
+Verified against the whole pool: ranged resolves to 5 permanent, 14
+one-attack, 2 payoff-only (`Sharpshooter`, `Directed Force`); piercing to
+11 permanent, 2 conditional, 22 one-attack, 3 payoff-only — the last
+including both `Luke Cage` faces, whose text makes attacks *lose* piercing.
+
 ### 9.3 What this reports, and what it does not
 
 Facts in matched units, and the gap between them. The fix stays the model's

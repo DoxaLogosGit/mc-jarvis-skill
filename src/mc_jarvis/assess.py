@@ -514,9 +514,26 @@ def handle(args) -> int:
         return 1
 
     steps = trajectory(conn, scenario)
+
+    deck = None
+    if getattr(args, "deck", None):
+        from . import crossref, deckfetch
+        try:
+            deck = deckfetch.fetch(conn, args.deck)
+        except deckfetch.DeckError as exc:
+            print(f"mc-jarvis assess: {exc}")
+            return 1
+        sets = _sets(scenario)
+        for step in steps:
+            cards = deck_cards(conn, scenario, added=step["added"])
+            step["crossref"] = crossref.pairings(
+                conn, cards, deck, sets=sets)
+
     if args.json:
         emit({"scenario": scenario.scenario_set, "pool": scenario.pool,
-              "growth": scenario.growth, "steps": steps}, as_json=True)
+              "growth": scenario.growth,
+              "deck": deck.name if deck else None, "steps": steps},
+             as_json=True)
         return 0
 
     label = {"recommended": " (recommended, not required)",
@@ -535,4 +552,62 @@ def handle(args) -> int:
             print(f"\n  after {step['added']} set(s) shuffled in"
                   f"{' at random' if step['growth'] == 'random' else ''}:")
         _line(step)
+        if "crossref" in step:
+            print(f"    -- against {deck.name} --")
+            _crossref_line(step["crossref"])
     return 0
+
+
+def _crossref_line(x: dict) -> None:
+    """Render one step's cross-reference.
+
+    Every figure is printed with what limits it. A bare number here would
+    be read as a rate or as live board state, and neither is true: the
+    thwart figure is a ceiling, and the Guard figure is potential Guard,
+    since Guard only forbids attacking while a guard minion is engaged.
+    """
+    t, r = x["tough"], x["retaliate"]
+    g, a = x["guard_and_patrol"], x["acceleration"]
+
+    ts, ps = t["scenario_sources"], t["deck_piercing"]
+    if ts["total"]:
+        sure = ps["always"] + ps["conditional"]
+        extra = f" + {ps['per_use']} one-attack" if ps["per_use"] else ""
+        print(f"    tough {ts['total']} printed "
+              f"(villain {ts['villain']}, other {ts['other']})"
+              f"  vs piercing {sure} in deck{extra}")
+        if ts["global_grants"]:
+            names = ", ".join(c["name"] for c in ts["global_grants"])
+            print(f"      a card grants it to every minion: {names}")
+        if not sure and not ps["per_use"]:
+            print("      no piercing: each tough card costs a whole "
+                  "damage instance, however large")
+
+    rs, rd = r["scenario_sources"], r["deck_ranged"]
+    if rs["total"]:
+        sure = rd["always"] + rd["conditional"]
+        print(f"    retaliate: villain {rs['villain']}, other {rs['other']}"
+              f"  vs ranged {sure} in deck")
+        if rs["villain"] and not sure:
+            print("      the villain retaliates and the deck has no ranged: "
+                  "every attack all game pays it, unless it kills outright")
+
+    if g["guard"]["total"] or g["patrol"]["total"]:
+        print(f"    guard {g['guard']['total']}, patrol "
+              f"{g['patrol']['total']} (potential, not active - both only "
+              f"bite while engaged)")
+        print(f"      deck bypasses: {g['deck_non_attack_damage']} "
+              f"non-attack damage, {g['deck_non_thwart_removal']} "
+              f"non-thwart removal")
+        if g["excluded_needs_an_attack"]:
+            print(f"      {g['excluded_needs_an_attack']} more deal "
+                  f"non-attack damage but need an attack to trigger, so "
+                  f"guard blocks them too")
+
+    print(f"    acceleration {a['scenario_icons']} icon(s), "
+          f"{a['icons_on_side_schemes']} on side schemes"
+          f"  vs thwart ceiling {a['deck_basic_thwart_ceiling']}"
+          f" + {a['deck_designated_thwarts']} (thwart) card(s)"
+          f" + {a['deck_non_thwart_removal']} non-thwart")
+    print("      the ceiling assumes every ally is in play, ready, and "
+          "thwarting rather than attacking or blocking")

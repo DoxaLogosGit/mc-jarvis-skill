@@ -116,6 +116,10 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--heroic", type=int, default=0,
                      help="recorded, but does not change the numbers yet")
     asr.add_argument("--nemesis", action="append")
+    asr.add_argument("--deck",
+                     help="a marvelcdb deck id or a local decklist JSON; "
+                          "cross-references it against the scenario at "
+                          "every step of the deck's growth")
 
     tim = _leaf(sub, "timing", "trigger ordering and the game round")
     tim.add_argument("trigger", nargs="?", default=None,
