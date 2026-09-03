@@ -350,23 +350,131 @@ Shape of the output; the exact field names need a pass.
 Every number can name the cards behind it, so the model can cite rather than
 assert.
 
-## 9. Part 2 — deck cross-reference **[thin]**
+## 9. Part 2 — deck cross-reference
 
-**Blocked on `deck fetch` / `deck check`.** Do not begin this part before the
-deck-pipeline plan exists.
+**No longer blocked.** `deckfetch`, `deckcheck`, `deckstats` and `allycost`
+all exist and are tested; the schema carries `attack_cost` / `thwart_cost`
+as of version 22.
 
-`assess <villain> --deck <id>` reports relational facts:
+This section was rewritten on 2026-09-02 after every one of its four
+original pairings failed measurement. The findings are recorded in
+**`2026-08-20-mc-jarvis-design.md` §§10.5–10.13** — a different document,
+and a different §10 from this file's "Claims recorded as unverified".
+Citations below name it explicitly.
 
-- Threat removal available per turn against the scenario's acceleration rate.
-- Cards that remove or ignore Tough against the count of Tough minions.
-- Ranged / area attacks against minion swarm size.
-- Ally count and health against Guard and minion attack values.
+### 9.0 The mistake that produced the original four
 
-Each is a count set beside a count. The gap is stated; the fix is the model's
-to propose.
+Each original pairing was derived from a keyword's **name** rather than
+from what the Rules Reference says the keyword **does**. That single error
+produced four confidently wrong pairings:
 
-Open: where the decklist comes from (marvelcdb id, local JSON, or both) is a
-decision that belongs to the deck-pipeline plan, not to this spec.
+- `ranged` was paired against swarm size; it does nothing but ignore
+  retaliate (design §10.11).
+- Tough was measured by searching for the word *tough*, which found one
+  answer; the mechanism is piercing, which found eleven (design §10.10).
+- Guard was paired against ally count; it forbids an *action*, so allies —
+  whose basic attack is an attack — are not an answer at all (design
+  §10.12).
+- Acceleration was treated as one quantity; icons and tokens are formally
+  distinct and the Rules Reference says so in both entries (design §10.13).
+
+**Standing instruction for whoever implements this:** before counting a
+keyword, read its Rules Reference entry and count the *mechanism*. A query
+written from a keyword's name has been wrong four times out of four here.
+
+### 9.1 What the index cannot see
+
+Three inputs to these questions are runtime state with no column, and any
+output must not imply otherwise:
+
+- **Acceleration tokens** (design §10.13). Not representable. They also
+  enter play when the encounter deck empties, so a long game accelerates
+  invisibly.
+- **Hand contents.** `Cannonball` reduces his consequential damage by the
+  number of [[AERIAL]] cards in hand (design §10.7).
+- **Engagement.** This one is easy to report wrongly. Guard forbids
+  attacking the villain *while a guard minion is engaged with you*, and
+  Patrol likewise. A scenario's Guard count is therefore **potential
+  Guard**, never active Guard, and must be labelled as such.
+
+### 9.2 The four cross-references
+
+Each is a count beside a count in **matched units**. Where the deck side is
+unmeasured, it says so.
+
+**1. Side-scheme pressure against acceleration.** *Deck side unmeasured.*
+
+Not a rate against a rate. 97 of 116 acceleration icons sit on side schemes,
+so thwarting one reduces the acceleration generating the threat you must
+thwart: it is a feedback loop, and a ratio implies a static exchange the
+game does not have (design §10.13). Report the scenario's icon sources and
+where they sit, beside the deck's threat removal — as a **ceiling**, never
+a per-turn rate, since a true rate needs readying, exhaustion, resources and
+draw (design §10.5). Ally contribution is bounded by consequential damage
+and reported split (design §10.6, §10.7).
+
+Needs measuring before implementation: the deck's non-thwart threat removal,
+and its damage/thwart instances per turn. `allycost.attacking.uses` gives
+per-ally activations only; the hero side is uncounted.
+
+**2. Piercing against Tough.**
+
+Deck: piercing sources, read from the deck's own card text — 11 exist in the
+open pool, 5 of them allies, and `Brute Force` grants it to basic attacks.
+Piercing is never *printed* on a player card, so this is readable within a
+40–50 card deck but not queryable across the pool (design §10.10).
+Scenario: Tough sources, keyword and granted counted separately; the spread
+is 0–10 across scenarios and 13 of 53 have none.
+
+Second answer, reported alongside: **damage per instance**. One tough card
+annuls an entire damage instance whatever its size, so Tough is regressive
+in hit size (design §10.9).
+
+**3. Ranged against villain retaliate.**
+
+Deck: ranged sources, split by reliability — permanent self-grants
+(Star-Lord, Yondu, War Machine, Sidearm, Hawkeye's Bow) and ranged weapons
+are dependable; one-attack events are not; `Directed Force` and
+`Sharpshooter` grant nothing (design §10.11).
+Scenario: **villain retaliate separated from all other retaliate.** Zola
+prints Retaliate 1 on all three stages and taxes every attack all game;
+a modular minion taxes only the attacks you choose to make into it. 10
+scenarios carry villain retaliate, 23 carry it only elsewhere, 20 none.
+
+Second answer: retaliate needs the character to survive the attack, so a
+one-shot kill pays nothing.
+
+**4. Non-attack damage against Guard; non-thwart threat removal against
+Patrol.**
+
+Deck: 103 cards deal damage to the villain without being an attack (51 open
+pool); 71 remove threat without being a thwart (41 open pool). Read from the
+`(attack)` / `(thwart)` designators, which **compound** — `(attack/thwart)`,
+`(attack/defense/thwart)` — so the test is whether `attack` appears as a
+token, not as a substring. 7 cards deal non-attack damage that only an
+attack can trigger, and are excluded (design §10.12).
+Scenario: 61 Guard minions and 15 granting cards; 23 Patrol and 3. The
+grants are not additive — `Blue Area of the Moon` gives *every* minion
+guard, so a Guard figure must state whether a global grant is in play.
+
+Ally attack capacity belongs here as the answer to **the minion**, which is
+what allies actually contribute.
+
+### 9.3 What this reports, and what it does not
+
+Facts in matched units, and the gap between them. The fix stays the model's
+to propose (§3), and the pool stays out of reach: answering "you could have
+included X" requires the card pool, which is a recommendation, not a
+statistic (design §10.5).
+
+Two heroes invert the whole section and must not be reported as deficient:
+**Colossus** accumulates tough as a currency, and **Deadpool** scales off
+acceleration tokens — `Cable`, `Montage` and `It Ain't Over...` all grow
+with them and `Exhausting Personality` places one as a cost (design §10.5,
+§10.13).
+
+Open: where the decklist comes from is settled — `deckfetch` takes a
+marvelcdb id or a local JSON file.
 
 ## 10. Claims recorded as unverified
 
