@@ -103,3 +103,27 @@ def test_a_keyword_granted_in_a_list_is_still_granted(tmp_path):
     assert [e["name"] for e in got["per_use"]] == ["Marvel Boy"]
     # Sharpshooter pays off a ranged attack; it grants nothing.
     assert [e["name"] for e in got["mentions_only"]] == ["Sharpshooter"]
+
+
+def test_a_deck_that_wants_acceleration_is_not_reported_as_deficient(tmp_path):
+    """Deadpool's kit scales with acceleration tokens, so reporting them
+    as a plain liability states the opposite of the truth for that deck
+    (design §10.13). `Exhausting Personality` lands in two buckets on
+    purpose: it places a token AND draws per token."""
+    conn = _mkdb(tmp_path, [
+        ("c1", "Cable", "ally", None,
+         "Cable gets +1 THW for each acceleration token on the main "
+         "scheme.", 1, None),
+        ("c2", "Exhausting Personality", "event", None,
+         "<b>Hero Action</b>: Choose: • Place 1 acceleration token on the "
+         "main scheme → stun the villain. • Exhaust a player's identity → "
+         "that player draws 1 card for each acceleration token on the "
+         "main scheme.", 1, None),
+        ("c3", "De-escalation", "player_side_scheme", None,
+         "<b>When Defeated</b>: Remove an acceleration token from play.",
+         1, None)])
+    got = crossref.acceleration_interest(conn, {"c1": 1, "c2": 1, "c3": 1})
+    assert {e["name"] for e in got["scales_with"]} == {
+        "Cable", "Exhausting Personality"}
+    assert [e["name"] for e in got["places"]] == ["Exhausting Personality"]
+    assert [e["name"] for e in got["removes_token"]] == ["De-escalation"]

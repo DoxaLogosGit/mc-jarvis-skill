@@ -617,3 +617,17 @@ def _crossref_line(x: dict) -> None:
           f" + {a['deck_non_thwart_removal']} non-thwart")
     print("      the ceiling assumes every ally is in play, ready, and "
           "thwarting rather than attacking or blocking")
+    interest = a.get("deck_interest") or {}
+    if interest.get("scales_with"):
+        names = ", ".join(c["name"] for c in interest["scales_with"])
+        print(f"      this deck WANTS acceleration tokens: {names} "
+              f"scale with them")
+        if interest.get("places"):
+            print("      and "
+                  + ", ".join(c["name"] for c in interest["places"])
+                  + " places one deliberately")
+    for key, what in (("removes_token", "acceleration tokens"),
+                      ("removes_icon", "acceleration icons")):
+        if interest.get(key):
+            print(f"      removes {what}: "
+                  + ", ".join(c["name"] for c in interest[key]))

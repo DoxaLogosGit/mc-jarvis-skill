@@ -134,6 +134,43 @@ def deck_keyword(conn, codes, keyword: str) -> dict:
     return out
 
 
+# Acceleration tokens are a liability for almost every deck and an engine
+# for one. Deadpool's `Cable`, `Montage` and `It Ain't Over...` all scale
+# with them, and `Exhausting Personality` places one deliberately as a
+# cost. Reporting acceleration as a plain problem for that deck states the
+# opposite of the truth (design §10.13).
+_SCALES_WITH_TOKENS = re.compile(r"for each acceleration token", re.I)
+_PLACES_TOKEN = re.compile(r"(?:place|add)s? \d* ?acceleration token", re.I)
+_REMOVES_TOKEN = re.compile(r"remove (?:an?|\d+) acceleration token", re.I)
+# Icons and tokens are formally distinct and an effect naming one does
+# nothing to the other, so these are counted apart.
+_REMOVES_ICON = re.compile(r"lose(?:s)? each \[?acceleration", re.I)
+
+
+def acceleration_interest(conn, codes) -> dict:
+    """Deck cards that care about acceleration, by what they do to it."""
+    out = {"scales_with": [], "places": [], "removes_token": [],
+           "removes_icon": []}
+    if not codes:
+        return out
+    marks = ",".join("?" * len(codes))
+    for r in conn.execute(
+            f"SELECT code, name, text FROM cards WHERE code IN ({marks}) "
+            f"AND LOWER(text) LIKE '%acceleration%'", list(codes)):
+        entry = {"code": r["code"], "name": r["name"],
+                 "copies": codes[r["code"]]}
+        text = r["text"] or ""
+        if _SCALES_WITH_TOKENS.search(text):
+            out["scales_with"].append(entry)
+        if _PLACES_TOKEN.search(text):
+            out["places"].append(entry)
+        if _REMOVES_TOKEN.search(text):
+            out["removes_token"].append(entry)
+        if _REMOVES_ICON.search(text):
+            out["removes_icon"].append(entry)
+    return out
+
+
 def bypasses(conn, codes) -> dict:
     """Cards that answer Guard and Patrol by not being the forbidden action.
 
@@ -200,6 +237,7 @@ def pairings(conn, cards, deck, *, sets=()) -> dict:
             "deck_basic_thwart_ceiling": removal["basic_thwart"]["ceiling"],
             "deck_designated_thwarts": removal["designated_thwart"]["copies"],
             "deck_non_thwart_removal": removal["non_thwart_removal"]["copies"],
+            "deck_interest": acceleration_interest(conn, codes),
             "note": "a ceiling, not a rate; and a loop, not a ratio",
         },
         # 2. The mechanism is piercing, which mostly never says "tough".
