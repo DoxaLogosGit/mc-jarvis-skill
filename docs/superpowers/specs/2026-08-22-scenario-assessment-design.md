@@ -1233,7 +1233,21 @@ parse now excludes the scenario's own set name. This is the §10.5 shape
 again: the query was right and the population admitted a card that could
 not belong.
 
-Residual: `assess venom` resolves to the `vnm` hero pack rather than the
-`venom` villain set, which has a main scheme and three villain stages.
-Name resolution prefers the pack; it should prefer a set that is a
-scenario. Recorded, not yet fixed.
+#### Name collisions, fixed
+
+The residual noted above was not a one-off. **Four names belong to both a
+playable hero and a villain scenario** — Black Widow, Magneto, Nebula and
+Venom — and two more (Taskmaster, Thunderbolts, plus Enchantress) name
+both a villain set and a modular set.
+
+`resolve` ran `SELECT code FROM sets WHERE code = ? OR lower(name) =
+lower(?)` and took `fetchone()` with no ordering, so which row won was
+arbitrary. `Magneto` and `Nebula` happened to land on the scenario;
+`Venom` reached the hero pack and `Black Widow` the nemesis set, and both
+replied that the scenario was not a scenario.
+
+Resolution now orders by exact code first — someone typing `vnm` means
+`vnm` — then by whether the set has a main scheme, which is what makes a
+set a scenario. All four names now resolve to their scenario, and the
+component codes still reach the message naming the scenarios that face
+them.

@@ -76,9 +76,26 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             difficulty: str = "standard", heroic: int = 0,
             nemesis=()) -> Scenario:
     """A scenario, named by its own code or by a villain that appears in it."""
+    # Four names belong to both a playable hero and a villain scenario --
+    # Black Widow, Magneto, Nebula and Venom - and two more name both a
+    # villain set and a modular set. An unordered `fetchone` over
+    # `code = ? OR name = ?` picked whichever row came first, so
+    # `assess Venom` reached the hero pack and `assess "Black Widow"` the
+    # nemesis set, each reporting that a scenario was not a scenario.
+    #
+    # An exact code always wins: someone typing `vnm` means `vnm`. Failing
+    # that, prefer the set that actually has a main scheme, which is what
+    # makes a set a scenario at all.
     row = conn.execute(
-        "SELECT code FROM sets WHERE code = ? OR lower(name) = lower(?)",
-        (villain, villain)).fetchone()
+        "SELECT s.code FROM sets s "
+        "WHERE s.code = ? OR lower(s.name) = lower(?) "
+        "ORDER BY (s.code = ?) DESC, "
+        "         (SELECT COUNT(*) FROM cards c "
+        "          WHERE c.set_code = s.code "
+        "          AND c.type_code = 'main_scheme') DESC, "
+        "         s.code "
+        "LIMIT 1",
+        (villain, villain, villain)).fetchone()
     if row is None:
         raise UnknownScenario(
             f"{villain!r} is not in the card data. mc-jarvis indexes "

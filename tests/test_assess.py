@@ -600,3 +600,30 @@ def test_surge_is_counted_across_the_whole_deck(tmp_path):
     assert got["printed_copies"] == 2
     assert got["by_type"] == {"environment": 2}
     assert got["rate"] == 0.5
+
+
+def test_a_name_shared_by_a_hero_and_a_scenario_resolves_to_the_scenario(
+        tmp_path):
+    """Black Widow, Magneto, Nebula and Venom each name both a playable
+    hero and a villain scenario. An unordered fetchone over
+    `code = ? OR name = ?` reached the hero pack, and `assess Venom`
+    replied that Venom was not a scenario."""
+    from mc_jarvis import assess, index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO sets (code, name, card_set_type_code) VALUES (?, ?, ?)",
+        [("vnm", "Venom", "hero"), ("venom", "Venom", "villain")])
+    conn.execute(
+        "INSERT INTO cards (code, name, type_code, set_code, faction_code, "
+        "pack_code, canonical_code, is_reprint, raw, text) VALUES "
+        "('m1', 'Leave Us Alone', 'main_scheme', 'venom', 'encounter', "
+        "'sm', 'm1', 0, '{}', '')")
+    conn.execute("INSERT INTO scenario_modulars (scenario_set, kind, "
+                 "modular_set) VALUES ('venom', 'prescribed', 'down_to_earth')")
+    conn.commit()
+
+    assert assess.resolve(conn, "Venom").scenario_set == "venom"
+    # An exact code still wins: someone typing `vnm` means `vnm`.
+    with pytest.raises(assess.UnknownScenario):
+        assess.resolve(conn, "vnm")
