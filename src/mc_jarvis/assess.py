@@ -554,6 +554,12 @@ def handle(args) -> int:
         _line(step)
         if "crossref" in step:
             print(f"    -- against {deck.name} --")
+            if scenario.players > 1:
+                # The scenario side is sized for the table; the deck side
+                # is one deck. Without saying so, a reader compares one
+                # player's capacity against everyone's problem.
+                print(f"    (one deck; the scenario is set for "
+                      f"{scenario.players} players)")
             _crossref_line(step["crossref"])
     return 0
 

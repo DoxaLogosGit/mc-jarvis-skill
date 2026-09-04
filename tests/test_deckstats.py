@@ -170,3 +170,14 @@ def test_linked_cards_are_named_but_not_counted(tmp_path):
     assert got["arrives_later"] == [
         {"code": "43034", "name": "Combat Specialist",
          "via": "Specialized Training"}]
+
+
+def test_the_text_form_summarises_rather_than_dumps(tmp_path, capsys):
+    """`emit` dumped the whole profile, and adding the ally and threat
+    structures took `deck stats` to 415 lines for a 50-card deck. The
+    detail belongs in `--json`."""
+    conn = _mkdb(tmp_path, [("c1", "C1", "event", 1, 1, 0, 0, 0, 3)])
+    deckstats.render(deckstats.profile(conn, _deck(slots={"c1": 3})))
+    out = capsys.readouterr().out
+    assert len(out.splitlines()) < 12
+    assert "3 cards drawn" in out

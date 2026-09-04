@@ -102,6 +102,13 @@ def handle_search(args) -> int:
     return 0
 
 
+# The game's own abbreviations. A naive `k.upper()[:3]` produced ATT, HEA
+# and HAN, none of which appears on a card.
+STAT_LABELS = {
+    "attack": "ATK", "thwart": "THW", "scheme": "SCH", "defense": "DEF",
+    "recover": "REC", "health": "HP", "hand_size": "HAND",
+}
+
 FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
                   "deck_limit", "quantity", "canonical_code", "is_reprint",
                   "attack", "thwart", "attack_cost", "thwart_cost",
@@ -185,14 +192,21 @@ def _print_card(c: dict) -> None:
     if c.get("permanent"):
         line += ", permanent"
     print(line)
-    stats = [(k, c.get(k)) for k in
-             ("attack", "thwart", "scheme", "defense", "recover", "health",
-              "hand_size") if c.get(k) is not None]
+    stats = [(STAT_LABELS[k], c.get(k)) for k in STAT_LABELS
+             if c.get(k) is not None]
     if stats:
-        line = "  " + "  ".join(f"{k.upper()[:3]} {v}" for k, v in stats)
+        line = "  " + "  ".join(f"{k} {v}" for k, v in stats)
         if c.get("health_per_hero"):
             line += "  (HP per hero)"
         print(line)
+    # Consequential damage: what the ally pays out of its own hit points
+    # each time it uses that power (RR p.13). Printed beneath the stat it
+    # prices, and different on 56 allies, so it is shown beside each.
+    costs = [(STAT_LABELS[k], c.get(f"{k}_cost")) for k in
+             ("attack", "thwart") if c.get(f"{k}_cost") is not None]
+    if costs:
+        print("  consequential damage: "
+              + "  ".join(f"{k} {v}" for k, v in costs))
     if c.get("traits"):
         print(f"  {c['traits']}")
     if c.get("text"):

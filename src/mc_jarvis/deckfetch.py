@@ -227,7 +227,11 @@ def handle(args) -> int:
     if args.deck_cmd == "stats":
         from . import deckstats
 
-        emit(deckstats.profile(conn, deck), as_json=args.json)
+        prof = deckstats.profile(conn, deck)
+        if args.json:
+            emit(prof, as_json=True)
+        else:
+            deckstats.render(prof)
         return 0
 
     from . import deckcheck

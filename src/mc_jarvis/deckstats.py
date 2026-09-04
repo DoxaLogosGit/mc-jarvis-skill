@@ -103,3 +103,67 @@ def profile(conn, deck) -> dict:
         # `(thwart)`-designated abilities, which do not exhaust the hero.
         "threat_removal": removal_profile(conn, deck),
     }
+
+
+def render(p: dict) -> None:
+    """Text output for `deck stats`.
+
+    `--json` carries the whole profile, including a row per ally. The text
+    form deliberately does not: dumping the nested structures ran to 415
+    lines for a 50-card deck, which is not something anyone reads. Summary
+    here, detail in JSON.
+    """
+    print(f"{p['size']} cards drawn"
+          + (f", {p['deckbuilding_size']} built"
+             if p["deckbuilding_size"] != p["size"] else "")
+          + f"  ({', '.join(p['aspects']) or 'no aspect'})")
+
+    curve = "  ".join(f"{k}:{v}" for k, v in p["cost_curve"].items())
+    print(f"  cost {curve}   mean {p['mean_cost']} over {p['over']}"
+          + (f", {p['no_cost']} with no cost" if p["no_cost"] else ""))
+    print("  resources  "
+          + "  ".join(f"{k} {v}" for k, v in p["resources"].items()))
+    print("  types      "
+          + "  ".join(f"{k} {v['copies']}"
+                      for k, v in p["by_type"].items()))
+
+    a = p.get("ally_totals") or {}
+    if a.get("allies"):
+        print(f"  allies {a['allies']}: lifetime thwart "
+              f"{a['thwart_lifetime']}, attack {a['attack_lifetime']} "
+              f"(alternatives, not a sum)")
+        if a.get("unpriced"):
+            print(f"    {a['unpriced']} have no consequential damage cost "
+                  f"upstream, so no bound is computed for them")
+        if a.get("marked"):
+            print(f"    {a['marked']} carry card text the cost fields do "
+                  f"not express - read those cards")
+        if a.get("icon_burden"):
+            print("    encounter icons they add: "
+                  + ", ".join(f"{k} {v}"
+                              for k, v in a["icon_burden"].items()))
+
+    t = p.get("threat_removal") or {}
+    if t:
+        b = t["basic_thwart"]
+        print(f"  threat removal: basic thwart ceiling {b['ceiling']} "
+              f"(hero {b['hero']} + {b['allies_fielded']} of "
+              f"{b['allies_in_deck']} allies, limit {b['ally_limit']})")
+        if b.get("exempt_allies"):
+            print("    outside the limit: "
+                  + ", ".join(c["name"] for c in b["exempt_allies"]))
+        if b.get("raises_limit"):
+            print("    could raise the limit if played: "
+                  + ", ".join(
+                      f"{c['name']}"
+                      + (" (conditional)" if c["conditional"] else "")
+                      for c in b["raises_limit"]))
+        print(f"    plus {t['designated_thwart']['copies']} (thwart) card(s) "
+              f"- these do not exhaust the hero - and "
+              f"{t['non_thwart_removal']['copies']} that remove threat "
+              f"without thwarting, which Patrol cannot stop")
+
+    if p["arrives_later"]:
+        print("  arrives later: "
+              + ", ".join(f"{c['name']} (via {c['via']})"
+                          for c in p["arrives_later"]))

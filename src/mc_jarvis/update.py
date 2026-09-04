@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import datetime as _dt
 import time
 from pathlib import Path
 
@@ -72,6 +73,17 @@ def status(args) -> int:
         return 1
 
     conn = index.connect(db)
+    # `built_at` is written by `init` and was never refreshed here, so
+    # after any update `status` reported when the index was first created
+    # rather than when its data was built. `age_days` reads the file's
+    # mtime and so disagreed with it by however long ago init ran.
+    with index.connect(db) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+            ("built_at",
+             _dt.datetime.now(_dt.timezone.utc).isoformat()))
+        conn.commit()
+
     age = _age_days(db)
     meta = {r["key"]: r["value"]
             for r in conn.execute("SELECT key, value FROM build_meta")}
