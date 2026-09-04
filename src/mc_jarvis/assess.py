@@ -300,6 +300,12 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
                            + scenario.pool[:added]),
         "by_type": _by_type(cards),
         "by_set": dict(by_set),
+        # Surge decides how many encounter cards resolve in a turn, and it
+        # is printed on five card types. Counting it only on treacheries
+        # missed 66 of the 106 printed copies in the card pool -- and for
+        # Ebony Maw, whose eight surging Spell environments are 24% of the
+        # deck, reported a surge rate of 0%.
+        "surge": _surge(conn, cards),
         "minions": _minions(conn, cards),
         "treacheries": _treacheries(conn, cards),
         "side_schemes": _side_schemes(cards, scenario.players),
@@ -375,6 +381,22 @@ def _minions(conn, cards: list[dict]) -> dict:
         "granted_keywords": _keyword_copies(conn, rows, printed=False),
         "cards": _named(rows),
     }
+
+
+def _surge(conn, cards: list[dict]) -> dict:
+    """Surge across the whole encounter deck, not one card type."""
+    copies = sum(c["quantity"] for c in cards)
+    printed = _keyword_copies(conn, cards, printed=True).get("surge", 0)
+    granted = _keyword_copies(conn, cards, printed=False).get("surge", 0)
+    by_type: dict[str, int] = {}
+    for t in sorted({c["type_code"] for c in cards}):
+        rows = [c for c in cards if c["type_code"] == t]
+        n = _keyword_copies(conn, rows, printed=True).get("surge", 0)
+        if n:
+            by_type[t] = n
+    return {"printed_copies": printed, "conditional_copies": granted,
+            "rate": (printed / copies) if copies else 0.0,
+            "by_type": by_type}
 
 
 def _treacheries(conn, cards: list[dict]) -> dict:
@@ -491,9 +513,12 @@ def _line(step: dict) -> None:
           f"side schemes {ss['copies']} ({ss['threat_total']} threat)")
     # Printed and conditional surge are never summed: the condition is the
     # whole point of a card that says "this card gains surge".
-    print(f"    surge: {t['surge_copies']} printed "
-          f"({t['surge_rate']:.0%}), "
-          f"{t['conditional_surge_copies']} conditional")
+    sg = step["surge"]
+    spread = ("  " + ", ".join(f"{k} {v}" for k, v in sg["by_type"].items())
+              if len(sg["by_type"]) > 1 else "")
+    print(f"    surge: {sg['printed_copies']} printed "
+          f"({sg['rate']:.0%} of the deck), "
+          f"{sg['conditional_copies']} conditional{spread}")
     if m["keywords"]:
         print("    minion keywords: " + ", ".join(
             f"{k} {v}" for k, v in sorted(m["keywords"].items())))

@@ -571,3 +571,32 @@ def test_a_known_overstatement_is_printed_not_just_configured(real_index):
     clean = assess.profile(real_index,
                            assess.resolve(real_index, "rhino", modular=[]))
     assert clean["caveats"] == []
+
+
+def test_surge_is_counted_across_the_whole_deck(tmp_path):
+    """Surge is printed on five card types and decides how many encounter
+    cards resolve in a turn. Counting it only on treacheries missed 66 of
+    the 106 printed copies in the pool, and reported 0% for Ebony Maw,
+    whose eight surging Spell environments are 24% of its deck."""
+    from mc_jarvis import assess, index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO cards (code, name, type_code, set_code, quantity, "
+        "faction_code, pack_code, canonical_code, is_reprint, raw, text) "
+        "VALUES (?, ?, ?, 's1', ?, 'encounter', 'core', ?, 0, '{}', '')",
+        [("e1", "Fireball", "environment", 2, "e1"),
+         ("t1", "Advance", "treachery", 2, "t1")])
+    conn.executemany(
+        "INSERT INTO card_keywords (code, keyword, printed) VALUES (?, ?, 1)",
+        [("e1", "surge")])
+    conn.commit()
+
+    cards = [{"code": "e1", "name": "Fireball", "type_code": "environment",
+              "quantity": 2},
+             {"code": "t1", "name": "Advance", "type_code": "treachery",
+              "quantity": 2}]
+    got = assess._surge(conn, cards)
+    assert got["printed_copies"] == 2
+    assert got["by_type"] == {"environment": 2}
+    assert got["rate"] == 0.5
