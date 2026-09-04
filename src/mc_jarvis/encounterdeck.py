@@ -282,12 +282,13 @@ def required_modulars(text: str, known: dict, *, own: str = "") -> list[str]:
     """Modular sets named OUTSIDE the parenthetical clause.
 
     The parenthetical names are the box's suggestion; a modular set listed
-    in the contents proper is part of the scenario. `Taskmaster` reads
-    "Taskmaster, Hydra Patrol, and Standard encounter sets. One modular
-    encounter set (Weapon Master)" -- Hydra Patrol is required and Weapon
-    Master is the suggestion, and the same set appears parenthetically for
-    Absorbing Man. Reading only the parentheses dropped a required set
-    from 26 of 53 scenarios, between 2 and 14 cards each.
+    in the contents proper is part of the scenario. Taskmaster's block
+    names Hydra Patrol among its own sets and brackets Weapon Master, so
+    the first is required and the second substitutable -- and Hydra Patrol
+    is itself bracketed for Absorbing Man. The same set is required in one
+    scenario and suggested in another, told apart by nothing but the
+    punctuation. Reading only the parentheses dropped a required set from
+    26 of 53 scenarios, between 2 and 14 cards each.
     """
     flat = " ".join((text or "").split())
     if "Contents" not in flat:
