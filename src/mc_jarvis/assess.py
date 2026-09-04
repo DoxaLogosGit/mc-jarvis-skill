@@ -561,7 +561,16 @@ def handle(args) -> int:
              as_json=True)
         return 0
 
+    # `prescribed` used to print no label at all, which read as "these are
+    # required" by omission. The card text does not say that. It states a
+    # COUNT and names sets parenthetically -- "Two modular encounter set
+    # (Armies of Titan and Black Order)" -- and the RR allows modular sets
+    # to be added to or removed from nearly any scenario. The only thing
+    # separating this from the `recommended` wording is that three
+    # scenarios print the word aloud.
     label = {"recommended": " (recommended, not required)",
+             "prescribed": " (named by the scenario; the printed "
+                           "constraint is the count)",
              "open": " (you choose these)",
              "random": " (drawn at random)"}.get(scenario.modular_kind, "")
     print(f"{scenario.scenario_set} - {scenario.difficulty}, "

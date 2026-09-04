@@ -795,7 +795,8 @@ plus an enumerated residue**.
 - The **`recommended` vs `prescribed` distinction** is drawn from grammar
   alone. It should be checked against one printed insert before it is
   relied on, per §10's rule that a stated mechanic must not quietly become
-  a modelled fact.
+  a modelled fact. **Checked 2026-09-03 and the warning was justified —
+  see §14.11.**
 - Whether a `Contents` block lists what a scenario **requires** or what
   **shipped in the box** — `dark_beast` names five sets, only one of them
   modular. The parse takes the modular clause specifically, which sidesteps
@@ -1159,3 +1160,40 @@ can host is only needed once §13.2's villain-stats section is built, and
 FNE cannot be tested against until marvelcdb publishes it
 (`2026-08-25-card-data-sources.md`).
 
+
+
+### 14.11 `prescribed` never meant required, and the label implied it did
+
+The open item in §14.4 — that the `recommended`/`prescribed` split was
+drawn from grammar alone and should be checked before being relied on —
+was correct to worry, and the label failed the check.
+
+`assess` printed a suffix for `recommended`, `open` and `random` and
+**nothing** for `prescribed`, so a prescribed pairing read as required by
+omission. Asked to analyse Ebony Maw "with recommended modulars", I went
+further and told the user its modulars were "required, not recommended —
+there's nothing optional to pick". That was an unverified grammatical
+label restated as a rule, which is exactly what §10 exists to stop.
+
+**The primary source does not say required.** Ebony Maw's main scheme
+reads: *"Two modular encounter set (Armies of Titan and Black Order)."*
+The constraint stated is the **count**; the names sit in parentheses. The
+surveyed contents blocks come in only two shapes:
+
+| Shape | Scenarios | States |
+| --- | --- | --- |
+| `Two modular sets (A and B)` | the large majority | a count, names parenthetical |
+| `One modular set (recommended: X)` | Rhino, Klaw, Ultron | the same, with the word printed |
+
+The only difference is that three scenarios say "recommended" aloud.
+
+**And the Rules Reference is against the stronger reading.** `Modular
+Encounter Set` (RR p.29) opens by defining them as cards that can be added
+to or removed from nearly any scenario, and says that *depending on the
+scenario* some are required while others are chosen. So a required
+category does exist — but nothing in these contents blocks marks which
+sets fall in it, and the parse cannot tell.
+
+`prescribed` therefore means **"named by the scenario"**, not "required",
+and now prints that way. The honest reading of the data is that the count
+is the hard constraint and the named sets are the box's default pairing.
