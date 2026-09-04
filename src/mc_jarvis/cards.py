@@ -25,7 +25,7 @@ def _fts_query(raw: str) -> str:
     return " AND ".join('"' + t.replace('"', '""') + '"' for t in tokens)
 
 
-def search(conn, query=None, *, aspect=None, type=None, cost=None,
+def search(conn, query=None, *, owned=False, aspect=None, type=None, cost=None,
            trait=None, text=None, limit=20) -> list[dict]:
     """Search cards, one row per card rather than per printing.
 
@@ -67,6 +67,15 @@ def search(conn, query=None, *, aspect=None, type=None, cost=None,
         where.append(f"cards.cost {m.group(1) or '='} ?")
         params.append(int(m.group(2)))
 
+    # `--owned` was declared on five commands and read by none of them:
+    # the flag parsed, and every result came back unfiltered. An empty
+    # collection still filters nothing (see collection.filter_codes) --
+    # not having said what you own is not the same as owning nothing.
+    if owned:
+        from .collection import owned_packs, owned_predicate
+        if owned_packs(conn):
+            where.append("cards." + owned_predicate())
+
     sql = (f"SELECT {', '.join('cards.' + c for c in SUMMARY)} FROM cards "
            f"WHERE {' AND '.join(where)} ORDER BY cards.code LIMIT ?")
     params.append(limit)
@@ -83,7 +92,8 @@ def _open():
 def handle_search(args) -> int:
     conn = _open()
     try:
-        hits = search(conn, args.query, aspect=args.aspect, type=args.type,
+        hits = search(conn, args.query, owned=getattr(args, 'owned', False),
+                      aspect=args.aspect, type=args.type,
                       cost=args.cost, trait=args.trait, text=args.text,
                       limit=args.limit)
     except ValueError as exc:
@@ -157,7 +167,7 @@ def printings(conn, canonical_code: str) -> list[dict]:
         "WHERE canonical_code = ? ORDER BY code", (canonical_code,))]
 
 
-def show(conn, ident: str) -> dict:
+def show(conn, ident: str, *, owned: bool = False) -> dict:
     """One card, or the candidates when a name is ambiguous.
 
     Never guesses: 60 character names exist as both an identity face and
@@ -169,9 +179,16 @@ def show(conn, ident: str) -> dict:
         return {"card": canon, "faces": _faces(conn, canon),
                 "printings": printings(conn, canon["code"])}
 
+    # An ambiguous name narrows usefully when the player owns only some
+    # of the candidates: three Colossus cards become one.
+    gate = ""
+    if owned:
+        from .collection import owned_packs, owned_predicate
+        if owned_packs(conn):
+            gate = f" AND {owned_predicate()}"
     matches = [dict(r) for r in conn.execute(
         f"SELECT {', '.join(SUMMARY)} FROM cards "
-        f"WHERE lower(name) = lower(?) AND code = canonical_code "
+        f"WHERE lower(name) = lower(?) AND code = canonical_code{gate} "
         f"ORDER BY code", (ident,))]
 
     if len(matches) == 1:
@@ -215,7 +232,7 @@ def _print_card(c: dict) -> None:
 
 def handle_show(args) -> int:
     conn = _open()
-    result = show(conn, args.name)
+    result = show(conn, args.name, owned=getattr(args, 'owned', False))
     if getattr(args, "explain", False) and "card" in result:
         from . import rules
         result["keywords"] = rules.explain(conn, result["card"]["code"])
@@ -244,7 +261,16 @@ def handle_show(args) -> int:
             print(f"\n  {kw['term']} (p.{kw['page']}) - {kw['body']}")
         return 0
     if not result["ambiguous"]:
-        print(f"no card named {args.name!r}")
+        # With `--owned` the card may exist and simply not be yours, and
+        # saying it does not exist would send the reader looking for a
+        # typo that is not there.
+        unfiltered = show(conn, args.name) if getattr(
+            args, "owned", False) else {}
+        if "card" in unfiltered or unfiltered.get("ambiguous"):
+            print(f"no card named {args.name!r} in your collection "
+                  f"(drop --owned to search every pack)")
+        else:
+            print(f"no card named {args.name!r}")
         return 1
     print(f"{args.name!r} matches several cards - pick one by code:")
     for c in result["ambiguous"]:

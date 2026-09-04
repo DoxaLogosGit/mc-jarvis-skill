@@ -28,7 +28,7 @@ def register(conn) -> None:
     conn.create_function("_plain_term", 1, plain_term)
 
 
-def show(conn, term: str) -> dict:
+def show(conn, term: str, *, owned: bool = False) -> dict:
     """One Rules Reference entry, with its page.
 
     Prefers an addressable entry: a pointer carries a citation but no
@@ -61,11 +61,18 @@ def show(conn, term: str) -> dict:
         "WHERE lower(term) = lower(?) AND source_doc = ?",
         (row["term"], row["source_doc"]))]
 
+    # "Cards using this keyword" is far more useful narrowed to the ones
+    # the player can actually field.
+    gate = ""
+    if owned:
+        from .collection import owned_packs, owned_predicate
+        if owned_packs(conn):
+            gate = f" AND c.{owned_predicate()}"
     cards = [dict(r) for r in conn.execute(
-        "SELECT c.code, c.name, c.type_code FROM card_rules_links l "
-        "JOIN cards c ON c.code = l.code "
-        "WHERE lower(l.term) = lower(?) AND c.code = c.canonical_code "
-        "ORDER BY c.code LIMIT 40", (row["term"],))]
+        f"SELECT c.code, c.name, c.type_code FROM card_rules_links l "
+        f"JOIN cards c ON c.code = l.code "
+        f"WHERE lower(l.term) = lower(?) AND c.code = c.canonical_code{gate} "
+        f"ORDER BY c.code LIMIT 40", (row["term"],))]
 
     # Additive, never a replacement: the Rules Reference citation stands
     # and the ruling sits beside it, so the player sees both and judges.
@@ -136,7 +143,7 @@ def _cite(row: dict) -> str:
 
 def handle_show(args) -> int:
     conn = _open()
-    result = show(conn, args.term)
+    result = show(conn, args.term, owned=getattr(args, 'owned', False))
     if args.json:
         emit(result, as_json=True)
         return 0 if result["term"] else 1

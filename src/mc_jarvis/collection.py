@@ -89,8 +89,16 @@ def handle(args) -> int:
     conn = _open()
     if args.collection_cmd == "show":
         if args.available:
-            emit([{"code": c, "name": n} for c, n in available_packs(conn)],
-                 as_json=args.json)
+            packs = available_packs(conn)
+            if args.json:
+                emit([{"code": c, "name": n} for c, n in packs], as_json=True)
+                return 0
+            # A dict per pack ran to 189 lines for a list whose whole use
+            # is to be scanned for a code to type back.
+            width = max((len(c) for c, _ in packs), default=0)
+            for code, name in packs:
+                print(f"  {code:<{width}}  {name}")
+            print(f"\n{len(packs)} pack(s)")
             return 0
         owned = owned_packs(conn)
         if args.json:

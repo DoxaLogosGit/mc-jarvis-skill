@@ -82,3 +82,41 @@ def test_owned_is_offered_only_where_it_means_something():
     for name in ("doctor", "status", "update", "install-skill", "timing",
                  "rules search"):
         assert name not in collection.OWNED_COMMANDS
+
+
+def test_the_owned_flag_actually_filters(tmp_path):
+    """`--owned` was declared on five commands and read by none of them:
+    the flag parsed and every result came back unfiltered, so a player
+    who had set a collection saw cards they cannot field."""
+    from mc_jarvis import cards, index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO cards (code, name, type_code, faction_code, pack_code, "
+        "set_code, canonical_code, is_reprint, deck_limit, quantity, raw, "
+        "text) VALUES (?, ?, 'ally', 'basic', ?, 'x', ?, 0, 3, 3, '{}', '')",
+        [("c1", "Owned Ally", "core", "c1"),
+         ("c2", "Foreign Ally", "later_pack", "c2")])
+    conn.execute("INSERT INTO owned_packs (pack_code) VALUES ('core')")
+    conn.commit()
+
+    # Filtered by type rather than by query: `cards_fts` is an
+    # external-content table that a direct INSERT does not populate.
+    assert len(cards.search(conn, type="ally")) == 2
+    got = cards.search(conn, type="ally", owned=True)
+    assert [c["name"] for c in got] == ["Owned Ally"]
+
+
+def test_an_empty_collection_filters_nothing(tmp_path):
+    """Not having said what you own is not the same as owning nothing;
+    filtering to zero there looks exactly like a broken index."""
+    from mc_jarvis import cards, index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.execute(
+        "INSERT INTO cards (code, name, type_code, faction_code, pack_code, "
+        "set_code, canonical_code, is_reprint, deck_limit, quantity, raw, "
+        "text) VALUES ('c1', 'A', 'ally', 'basic', 'core', 'x', 'c1', 0, "
+        "3, 3, '{}', '')")
+    conn.commit()
+    assert len(cards.search(conn, type="ally", owned=True)) == 1
