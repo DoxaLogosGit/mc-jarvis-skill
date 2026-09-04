@@ -1288,6 +1288,12 @@ opposition in **either** mode, so nothing about the resolution or the
 stage display depends on which is being played — but the earlier framing
 described half of what these sets are.
 
+One thing does depend on it: **setup**. Competitive reveals the
+`Choosing Sides` side scheme, cooperative reveals the chosen leader's own.
+Which is faced is a choice no decklist carries and no card field infers,
+so `assess` states it as a caveat rather than silently counting one of
+them.
+
 **`Registration` and `Resistance` are genuinely ambiguous.** Civil War's
 `registration` (16 cards) and Synthezoid Smackdown's
 `synthezoid_registration` (4) share a name *and* a type, so no ordering

@@ -304,6 +304,17 @@ def caveats(scenario: Scenario, sets: list[str],
     """
     config = config if config is not None else load_config()
     out = []
+    # Civil War and Synthezoid Smackdown print two modes, and the setup
+    # differs between them: competitive reveals `Choosing Sides`,
+    # cooperative reveals the chosen leader's own side scheme. Which one
+    # you face is a choice the decklist cannot carry and the card data
+    # cannot infer, so it is stated rather than silently picked.
+    if any(s_.endswith("_leader") for s_ in sets):
+        out.append(
+            "this scenario is playable competitively or cooperatively, and "
+            "setup differs: the competitive side scheme is revealed in one "
+            "and the leader's own in the other, so one side scheme below is "
+            "not the one you will face")
     for code, entry in (config.get("adds_during_play") or {}).items():
         over = (entry or {}).get("overstates_opening_deck")
         if over and code in sets:

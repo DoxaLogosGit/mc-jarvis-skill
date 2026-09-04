@@ -669,3 +669,20 @@ def test_the_pvp_scenarios_are_not_typed_villain(tmp_path):
         "SELECT card_set_type_code FROM sets WHERE code IN "
         "('registration', 'resistance', 'synthezoid_registration')")}
     assert kinds == {"main_scheme"}
+
+
+def test_a_leader_scenario_states_that_setup_differs_by_mode():
+    """Civil War and Synthezoid Smackdown print two modes, and setup
+    differs: competitive reveals `Choosing Sides`, cooperative reveals the
+    chosen leader's own side scheme. Which you face is a choice no
+    decklist carries and no card field infers."""
+    from mc_jarvis import assess
+
+    sc = assess.Scenario(
+        scenario_set="registration", modulars=["iron_man_leader"],
+        difficulty="standard", players=1, heroic=0, nemesis=[],
+        modular_kind="open", pool=[], growth="", max_draws=None)
+    got = assess.caveats(sc, ["registration", "iron_man_leader"], config={})
+    assert any("competitively or cooperatively" in c for c in got)
+    # A villain scenario says nothing about modes.
+    assert assess.caveats(sc, ["zola", "under_attack"], config={}) == []
