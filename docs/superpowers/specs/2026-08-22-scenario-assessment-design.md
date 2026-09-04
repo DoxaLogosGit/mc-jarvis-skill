@@ -1265,7 +1265,7 @@ found something.
 | Shape | Names |
 | --- | --- |
 | hero ↔ villain | Black Widow, Magneto, Nebula, Venom |
-| hero ↔ PvP leader | Iron Man, Vision, She-Hulk, Captain America, Captain Marvel |
+| hero ↔ leader | Iron Man, Vision, She-Hulk, Captain America, Captain Marvel |
 | villain ↔ modular | Taskmaster, Thunderbolts, Enchantress, Wrecking Crew |
 | hero ↔ modular | Spider-Man, Maria Hill |
 | scenario ↔ scenario | **Registration, Resistance** |
@@ -1275,11 +1275,18 @@ Only the first row had been looked at.
 **The data does separate them, and `card_set_type_code` is still the wrong
 test.** It carries hero (69), villain (58), nemesis (69), modular (159),
 leader (6) and main_scheme (4). But **Civil War and Synthezoid Smackdown
-are hero-versus-hero and contain no villain**: their sets are typed
-`main_scheme`, and their opposition is a `leader` set named after a hero.
-Keying "is a scenario" on `card_set_type_code = 'villain'` would drop all
-four PvP scenarios. Having a main scheme remains the right test — it is
-what the type field cannot express.
+contain no villain**: their sets are typed `main_scheme`, and their
+opposition is a `leader` set named after a hero. Keying "is a scenario" on
+`card_set_type_code = 'villain'` would drop all four. Having a main scheme
+remains the right test — it is what the type field cannot express.
+
+**These scenarios are not competitive-only, and calling them "PvP" was
+wrong.** Their own setup text reads *"In competitive mode…"* and *"In
+cooperative mode…"*: both modes are printed on the scenario, and the two
+differ in which side scheme is revealed at setup. The leader is the
+opposition in **either** mode, so nothing about the resolution or the
+stage display depends on which is being played — but the earlier framing
+described half of what these sets are.
 
 **`Registration` and `Resistance` are genuinely ambiguous.** Civil War's
 `registration` (16 cards) and Synthezoid Smackdown's

@@ -328,7 +328,7 @@ CREATE INDEX IF NOT EXISTS idx_encounter_role ON encounter_role(role);
 CREATE TABLE IF NOT EXISTS scenario_modulars (
     -- The set holding the scenario's MAIN SCHEME, which is not always a
     -- villain set: 7 scenarios choose their villain (the Marauders pair,
-    -- the PvP leaders) or compose it from several (wrecking_crew).
+    -- the leader scenarios) or compose it from several (wrecking_crew).
     scenario_set TEXT NOT NULL,
     kind        TEXT NOT NULL,   -- prescribed|recommended|open|random|none
     modular_set TEXT             -- NULL when the scenario names none

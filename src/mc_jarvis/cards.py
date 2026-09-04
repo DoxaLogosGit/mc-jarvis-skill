@@ -355,7 +355,7 @@ def encounter(conn, name: str) -> dict:
         f"       cards.thwart "
         f"FROM cards WHERE set_code = ? AND code = canonical_code "
         f"ORDER BY code", (row["code"],))]
-    # A PvP leader IS the opposition the players fight: the `leader`
+    # A leader IS the opposition the players fight: the `leader`
     # cards carry stages, hit points per hero, ATK and SCH exactly as a
     # villain does. Filtering to `villain` alone printed a leader set's
     # contents with no stat line at all, for the one card in it that the

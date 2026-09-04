@@ -77,7 +77,7 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             nemesis=()) -> Scenario:
     """A scenario, named by its own code or by a villain that appears in it."""
     # 18 set names are ambiguous, in five different ways: hero against
-    # villain (Venom, Nebula, Magneto, Black Widow), hero against a PvP
+    # villain (Venom, Nebula, Magneto, Black Widow), hero against a
     # leader (Iron Man, Vision, She-Hulk, Captain America, Captain
     # Marvel), villain against modular (Taskmaster, Thunderbolts,
     # Enchantress, Wrecking Crew), hero against modular (Spider-Man,
@@ -88,7 +88,8 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
     # An exact code always wins: someone typing `vnm` means `vnm`.
     # Otherwise prefer a set that has a main scheme, which is what makes a
     # set a scenario. `card_set_type_code = 'villain'` is NOT the test:
-    # the PvP scenarios are typed `main_scheme` and have no villain at all.
+    # the leader scenarios are typed `main_scheme` and have no villain
+    # at all -- their opposition is a leader, in either play mode.
     rows = conn.execute(
         "SELECT s.code, "
         "  (SELECT COUNT(*) FROM cards c WHERE c.set_code = s.code "
@@ -121,7 +122,7 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             (code,)).fetchone()
         set_kind = kind_row["card_set_type_code"] if kind_row else None
         if set_kind == "leader":
-            # A PvP leader is a hero played as the opposition, so its set
+            # A leader is a hero played as the opposition, so its set
             # is named after a hero and reads like a scenario. The
             # scenarios that use it say "chosen leader's set" rather than
             # naming any leader, so `_host_scenarios` finds nothing and
@@ -133,7 +134,7 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
                 "AND lower(text) LIKE '%leader%set%' ORDER BY set_code")]
             # A leader IS the opposition -- its cards carry stages, hit
             # points per hero, ATK and SCH like any villain. What it lacks
-            # is a main scheme, which the PvP scenario supplies, so it is
+            # is a main scheme, which the scenario supplies, so it is
             # assessed by naming both.
             raise UnknownScenario(
                 f"{code!r} is a leader: the opposition the table plays "
@@ -149,7 +150,7 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
         hosts = _host_scenarios(conn, code)
         # When the name was ambiguous, say so rather than reporting only
         # the arm the tie-break happened to pick. "Iron Man" names both a
-        # hero set and a PvP leader set, and neither has a main scheme, so
+        # hero set and a leader set, and neither has a main scheme, so
         # a message about just one of them looks like the data is missing.
         others = [r["code"] for r in rows if r["code"] != code]
         also = (f" {villain!r} also names: {', '.join(others)}."
