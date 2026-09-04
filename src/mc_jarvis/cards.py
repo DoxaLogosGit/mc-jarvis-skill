@@ -355,7 +355,13 @@ def encounter(conn, name: str) -> dict:
         f"       cards.thwart "
         f"FROM cards WHERE set_code = ? AND code = canonical_code "
         f"ORDER BY code", (row["code"],))]
-    villain = [c for c in contents if c["type_code"] == "villain"]
+    # A PvP leader IS the opposition the players fight: the `leader`
+    # cards carry stages, hit points per hero, ATK and SCH exactly as a
+    # villain does. Filtering to `villain` alone printed a leader set's
+    # contents with no stat line at all, for the one card in it that the
+    # table is playing against.
+    villain = [c for c in contents
+               if c["type_code"] in ("villain", "leader")]
     return {"set_code": row["code"], "set_name": row["name"],
             "villain": villain, "contents": contents}
 
@@ -371,7 +377,10 @@ def handle_encounter(args) -> int:
         return 1
     print(f"{result['set_name']}  [{result['set_code']}]")
     if result["villain"]:
-        print("\nVillain stages:")
+        kind = ("Leader stages" if all(v["type_code"] == "leader"
+                                      for v in result["villain"])
+                else "Villain stages")
+        print(f"\n{kind}:")
         for v in result["villain"]:
             hp = f"HP {v['health']}"
             if v.get("health_per_hero"):

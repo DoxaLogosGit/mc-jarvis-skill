@@ -131,10 +131,16 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
                 "SELECT DISTINCT set_code FROM cards "
                 "WHERE type_code = 'main_scheme' "
                 "AND lower(text) LIKE '%leader%set%' ORDER BY set_code")]
+            # A leader IS the opposition -- its cards carry stages, hit
+            # points per hero, ATK and SCH like any villain. What it lacks
+            # is a main scheme, which the PvP scenario supplies, so it is
+            # assessed by naming both.
             raise UnknownScenario(
-                f"{code!r} is a leader set - a hero played as the "
-                f"opposition - not a scenario. It is chosen when playing: "
-                + ", ".join(hosts) + ".")
+                f"{code!r} is a leader: the opposition the table plays "
+                f"against, but its main scheme comes from the scenario. "
+                f"Assess the pair, e.g. `mc-jarvis assess "
+                f"{hosts[0] if hosts else 'registration'} --modular {code}`. "
+                f"Scenarios that choose a leader: " + ", ".join(hosts) + ".")
         if set_kind in ("modular", "nemesis"):
             raise UnknownScenario(
                 f"{code!r} is a {set_kind} set, not a scenario. Assess the "

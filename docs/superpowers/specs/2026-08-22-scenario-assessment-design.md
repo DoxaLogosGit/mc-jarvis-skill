@@ -1288,11 +1288,18 @@ separates them and the alphabetical tie-break was silently assessing Civil
 War. `resolve` now reports the ambiguity and names both codes, the same
 way `card show` refuses to guess between a hero face and an ally (§8).
 
-**Leader sets get their own message.** A leader is a hero played as the
-opposition, so its set is named after a hero and reads like a scenario.
-The scenarios that use one say "chosen leader's set" without naming any,
-so `_host_scenarios` finds nothing and the generic reply claimed the data
-could not tell — when it can, from the other direction.
+**A leader IS the villain of its scenario.** The first pass treated a
+leader set as a component to be routed around. It is not: the `leader`
+cards carry **stages I–IV, hit points per hero, ATK and SCH** exactly as a
+villain's do, and the table plays against them. What a leader set lacks is
+a main scheme, which the PvP scenario supplies.
+
+Two consequences. `encounter` filtered its stage line to
+`type_code = 'villain'`, so a leader set printed its contents with **no
+stat line at all for the card being fought**; it now prints "Leader
+stages". And `assess` now names the working invocation —
+`assess registration --modular iron_man_leader` — rather than only
+explaining what a leader is not.
 
 Finally, when a name was ambiguous and the chosen set is not a scenario,
 the error now names the other candidates. `Iron Man` reporting only on
