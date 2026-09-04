@@ -1251,3 +1251,50 @@ Resolution now orders by exact code first — someone typing `vnm` means
 set a scenario. All four names now resolve to their scenario, and the
 component codes still reach the message naming the scenarios that face
 them.
+
+
+### 14.13 The name collisions are 18, not 4, and `villain` is not the test
+
+§14.12 fixed four hero/villain name collisions. The user asked whether
+Civil War and Synthezoid Smackdown had been checked, and whether the
+source data already separates hero packs from encounters. Both questions
+found something.
+
+**The collision space is 18 set names, in five shapes:**
+
+| Shape | Names |
+| --- | --- |
+| hero ↔ villain | Black Widow, Magneto, Nebula, Venom |
+| hero ↔ PvP leader | Iron Man, Vision, She-Hulk, Captain America, Captain Marvel |
+| villain ↔ modular | Taskmaster, Thunderbolts, Enchantress, Wrecking Crew |
+| hero ↔ modular | Spider-Man, Maria Hill |
+| scenario ↔ scenario | **Registration, Resistance** |
+
+Only the first row had been looked at.
+
+**The data does separate them, and `card_set_type_code` is still the wrong
+test.** It carries hero (69), villain (58), nemesis (69), modular (159),
+leader (6) and main_scheme (4). But **Civil War and Synthezoid Smackdown
+are hero-versus-hero and contain no villain**: their sets are typed
+`main_scheme`, and their opposition is a `leader` set named after a hero.
+Keying "is a scenario" on `card_set_type_code = 'villain'` would drop all
+four PvP scenarios. Having a main scheme remains the right test — it is
+what the type field cannot express.
+
+**`Registration` and `Resistance` are genuinely ambiguous.** Civil War's
+`registration` (16 cards) and Synthezoid Smackdown's
+`synthezoid_registration` (4) share a name *and* a type, so no ordering
+separates them and the alphabetical tie-break was silently assessing Civil
+War. `resolve` now reports the ambiguity and names both codes, the same
+way `card show` refuses to guess between a hero face and an ally (§8).
+
+**Leader sets get their own message.** A leader is a hero played as the
+opposition, so its set is named after a hero and reads like a scenario.
+The scenarios that use one say "chosen leader's set" without naming any,
+so `_host_scenarios` finds nothing and the generic reply claimed the data
+could not tell — when it can, from the other direction.
+
+Finally, when a name was ambiguous and the chosen set is not a scenario,
+the error now names the other candidates. `Iron Man` reporting only on
+`iron_man` looked like missing data rather than a choice between a hero
+set and a leader set.

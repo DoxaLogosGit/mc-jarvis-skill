@@ -627,3 +627,45 @@ def test_a_name_shared_by_a_hero_and_a_scenario_resolves_to_the_scenario(
     # An exact code still wins: someone typing `vnm` means `vnm`.
     with pytest.raises(assess.UnknownScenario):
         assess.resolve(conn, "vnm")
+
+
+def test_two_scenarios_sharing_a_name_are_reported_not_guessed(tmp_path):
+    """Civil War's `registration` and Synthezoid Smackdown's
+    `synthezoid_registration` are both named Registration and both are
+    typed `main_scheme`, so no ordering separates them. Guessing would
+    assess the wrong deck in silence."""
+    from mc_jarvis import assess, index
+
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.executemany(
+        "INSERT INTO sets (code, name, card_set_type_code) VALUES (?, ?, ?)",
+        [("registration", "Registration", "main_scheme"),
+         ("synthezoid_registration", "Registration", "main_scheme")])
+    conn.executemany(
+        "INSERT INTO cards (code, name, type_code, set_code, faction_code, "
+        "pack_code, canonical_code, is_reprint, raw, text) VALUES "
+        "(?, 'S', 'main_scheme', ?, 'encounter', 'p', ?, 0, '{}', '')",
+        [("m1", "registration", "m1"), ("m2", "synthezoid_registration", "m2")])
+    conn.commit()
+
+    with pytest.raises(assess.UnknownScenario, match="more than one scenario"):
+        assess.resolve(conn, "Registration")
+    # An exact code is never ambiguous.
+    conn.execute("INSERT INTO scenario_modulars (scenario_set, kind, "
+                 "modular_set) VALUES ('registration', 'open', NULL)")
+    conn.commit()
+    assert assess.resolve(conn, "registration").scenario_set == "registration"
+
+
+def test_the_pvp_scenarios_are_not_typed_villain(tmp_path):
+    """`card_set_type_code = 'villain'` is not the test for "is a
+    scenario": Civil War and Synthezoid Smackdown are hero-versus-hero,
+    typed `main_scheme`, and contain no villain at all. Resolution keys on
+    having a main scheme instead."""
+    from mc_jarvis import index, paths
+
+    conn = index.connect(paths.db_path())
+    kinds = {r["card_set_type_code"] for r in conn.execute(
+        "SELECT card_set_type_code FROM sets WHERE code IN "
+        "('registration', 'resistance', 'synthezoid_registration')")}
+    assert kinds == {"main_scheme"}

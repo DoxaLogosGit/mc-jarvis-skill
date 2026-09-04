@@ -76,26 +76,35 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             difficulty: str = "standard", heroic: int = 0,
             nemesis=()) -> Scenario:
     """A scenario, named by its own code or by a villain that appears in it."""
-    # Four names belong to both a playable hero and a villain scenario --
-    # Black Widow, Magneto, Nebula and Venom - and two more name both a
-    # villain set and a modular set. An unordered `fetchone` over
-    # `code = ? OR name = ?` picked whichever row came first, so
-    # `assess Venom` reached the hero pack and `assess "Black Widow"` the
-    # nemesis set, each reporting that a scenario was not a scenario.
+    # 18 set names are ambiguous, in five different ways: hero against
+    # villain (Venom, Nebula, Magneto, Black Widow), hero against a PvP
+    # leader (Iron Man, Vision, She-Hulk, Captain America, Captain
+    # Marvel), villain against modular (Taskmaster, Thunderbolts,
+    # Enchantress, Wrecking Crew), hero against modular (Spider-Man,
+    # Maria Hill), and two scenarios that share a name outright --
+    # Civil War's `registration`/`resistance` against Synthezoid
+    # Smackdown's. An unordered `fetchone` picked whichever came first.
     #
-    # An exact code always wins: someone typing `vnm` means `vnm`. Failing
-    # that, prefer the set that actually has a main scheme, which is what
-    # makes a set a scenario at all.
-    row = conn.execute(
-        "SELECT s.code FROM sets s "
-        "WHERE s.code = ? OR lower(s.name) = lower(?) "
-        "ORDER BY (s.code = ?) DESC, "
-        "         (SELECT COUNT(*) FROM cards c "
-        "          WHERE c.set_code = s.code "
-        "          AND c.type_code = 'main_scheme') DESC, "
-        "         s.code "
-        "LIMIT 1",
-        (villain, villain, villain)).fetchone()
+    # An exact code always wins: someone typing `vnm` means `vnm`.
+    # Otherwise prefer a set that has a main scheme, which is what makes a
+    # set a scenario. `card_set_type_code = 'villain'` is NOT the test:
+    # the PvP scenarios are typed `main_scheme` and have no villain at all.
+    rows = conn.execute(
+        "SELECT s.code, "
+        "  (SELECT COUNT(*) FROM cards c WHERE c.set_code = s.code "
+        "   AND c.type_code = 'main_scheme') AS schemes "
+        "FROM sets s WHERE s.code = ? OR lower(s.name) = lower(?) "
+        "ORDER BY (s.code = ?) DESC, schemes DESC, s.code",
+        (villain, villain, villain)).fetchall()
+    row = rows[0] if rows else None
+    # Two scenarios really can share a name, and no ordering separates
+    # them. Guessing would assess the wrong 16-card deck in silence.
+    if len(rows) > 1 and rows[0]["code"] != villain \
+            and rows[0]["schemes"] and rows[1]["schemes"]:
+        raise UnknownScenario(
+            f"{villain!r} names more than one scenario: "
+            + ", ".join(r["code"] for r in rows if r["schemes"])
+            + ". Pass the one you mean by its code.")
     if row is None:
         raise UnknownScenario(
             f"{villain!r} is not in the card data. mc-jarvis indexes "
@@ -111,19 +120,42 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             "SELECT card_set_type_code FROM sets WHERE code = ?",
             (code,)).fetchone()
         set_kind = kind_row["card_set_type_code"] if kind_row else None
+        if set_kind == "leader":
+            # A PvP leader is a hero played as the opposition, so its set
+            # is named after a hero and reads like a scenario. The
+            # scenarios that use it say "chosen leader's set" rather than
+            # naming any leader, so `_host_scenarios` finds nothing and
+            # the generic message says the data cannot tell -- when it
+            # can, from the other direction.
+            hosts = [r["set_code"] for r in conn.execute(
+                "SELECT DISTINCT set_code FROM cards "
+                "WHERE type_code = 'main_scheme' "
+                "AND lower(text) LIKE '%leader%set%' ORDER BY set_code")]
+            raise UnknownScenario(
+                f"{code!r} is a leader set - a hero played as the "
+                f"opposition - not a scenario. It is chosen when playing: "
+                + ", ".join(hosts) + ".")
         if set_kind in ("modular", "nemesis"):
             raise UnknownScenario(
                 f"{code!r} is a {set_kind} set, not a scenario. Assess the "
                 f"scenario you are facing and pass this set with "
                 f"--{'modular' if set_kind == 'modular' else 'nemesis'}.")
         hosts = _host_scenarios(conn, code)
+        # When the name was ambiguous, say so rather than reporting only
+        # the arm the tie-break happened to pick. "Iron Man" names both a
+        # hero set and a PvP leader set, and neither has a main scheme, so
+        # a message about just one of them looks like the data is missing.
+        others = [r["code"] for r in rows if r["code"] != code]
+        also = (f" {villain!r} also names: {', '.join(others)}."
+                if others else "")
         raise UnknownScenario(
             f"{code!r} has no main scheme, so it is a component of a "
             f"scenario rather than a scenario itself"
             + (f" - it is faced in: {', '.join(hosts)}. Assess one of those."
                if hosts else
                ". No scenario's Contents block names it, so which scenario "
-               "faces it cannot be read from the card data."))
+               "faces it cannot be read from the card data.")
+            + also)
 
     growing = (load_config().get("growing") or {}).get(code) or {}
     growth = growing.get("mechanism", "")
