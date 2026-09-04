@@ -1197,3 +1197,43 @@ sets fall in it, and the parse cannot tell.
 `prescribed` therefore means **"named by the scenario"**, not "required",
 and now prints that way. The honest reading of the data is that the count
 is the hard constraint and the named sets are the box's default pairing.
+
+
+### 14.12 Half the scenarios were assessed without a required modular set
+
+§14.11 corrected the *label*. The user then supplied the rule the label
+should have encoded: **a modular set named inside parentheses is the
+suggestion; one named outside them is required.**
+
+Checked against the contents blocks, the rule holds exactly, and
+`Taskmaster` is its own proof: *"Taskmaster, Hydra Patrol, and Standard
+encounter sets. One modular encounter set (Weapon Master)."* Hydra Patrol
+is required there and **parenthetical for Absorbing Man** — the same set,
+required in one scenario and suggested in another, distinguished by
+nothing but the brackets.
+
+`MODULAR_NAMED_RE` only ever captured the parenthetical clause, so every
+set named outside it was dropped. **26 of 53 scenarios were assessed
+against an encounter deck missing a required set**, between 2 and 14 cards
+each. Taskmaster ran 30 cards instead of 38, Crossbones 37 instead of 41,
+Unus 23 instead of 30. Deck size, boost mean, keyword counts, minion and
+side-scheme totals and every `--deck` cross-reference were wrong for half
+the scenarios in the game.
+
+`required_modulars()` now reads the non-parenthetical portion and stores
+those sets under a `required` kind. `assess` includes them, and
+`--modular` substitutes for the *suggestion* only — a required set cannot
+be dropped by passing a different list.
+
+**One trap, found by the fix producing a wrong answer.** `Taskmaster`,
+`Thunderbolts` and `Enchantress` each name **both a villain set and a
+modular set**. The first pass pulled the Taskmaster modular set into the
+Taskmaster scenario because the contents line names the villain set. The
+parse now excludes the scenario's own set name. This is the §10.5 shape
+again: the query was right and the population admitted a card that could
+not belong.
+
+Residual: `assess venom` resolves to the `vnm` hero pack rather than the
+`venom` villain set, which has a main scheme and three villain stages.
+Name resolution prefers the pack; it should prefer a set that is a
+scenario. Recorded, not yet fixed.

@@ -528,3 +528,42 @@ def test_the_aside_gate_names_a_card_left_in_the_deck(tmp_path):
     conn.commit()
     problems = ed.aside_gate(conn)
     assert problems and "Whatsit" in problems[0]
+
+
+def test_a_modular_named_outside_the_parentheses_is_required():
+    """The parenthetical names are the box's suggestion; a modular set
+    listed in the contents proper is part of the scenario. Reading only
+    the parentheses dropped a required set from 26 of 53 scenarios."""
+    from mc_jarvis.encounterdeck import required_modulars
+
+    known = {"Hydra Patrol": "hydra_patrol", "Weapon Master": "weap_master"}
+    text = ("<b>Contents</b>: Taskmaster (I) and Taskmaster (II). "
+            "Taskmaster, Hydra Patrol, and Standard encounter sets. "
+            "One modular encounter set (Weapon Master). <b>Setup</b>: x")
+    assert required_modulars(text, known) == ["hydra_patrol"]
+
+
+def test_the_scenarios_own_name_is_not_one_of_its_modulars():
+    """`Taskmaster`, `Thunderbolts` and `Enchantress` each name BOTH a
+    villain set and a modular set, so "Taskmaster, Hydra Patrol, and
+    Standard encounter sets" would otherwise pull in a modular set the
+    scenario does not use."""
+    from mc_jarvis.encounterdeck import required_modulars
+
+    known = {"Taskmaster": "taskmaster_modular",
+             "Hydra Patrol": "hydra_patrol"}
+    text = ("<b>Contents</b>: Taskmaster, Hydra Patrol, and Standard "
+            "encounter sets. <b>Setup</b>: x")
+    assert required_modulars(text, known, own="Taskmaster") == ["hydra_patrol"]
+
+
+def test_an_expert_mode_aside_is_not_a_required_set():
+    """Parentheses also carry expert-mode stage swaps, which name no set
+    but must not be scanned as though they might."""
+    from mc_jarvis.encounterdeck import required_modulars
+
+    known = {"Infinites": "infinites"}
+    text = ("<b>Contents</b>: Unus (I) and Unus (II). (Unus (II) and "
+            "Unus (III) instead for expert mode.) Unus, Infinites, and "
+            "Standard sets. One modular set (Dystopian Nightmare).")
+    assert required_modulars(text, known) == ["infinites"]

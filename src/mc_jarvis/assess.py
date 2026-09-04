@@ -127,12 +127,19 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             f"{code!r} has no modular mapping. Pass --modular to say which "
             f"sets are on your table.")
 
-    kind = mapped[0]["kind"] if mapped else "open"
+    # Sets named outside the parentheses are part of the scenario; the
+    # parenthetical ones are its suggestion. `--modular` substitutes for
+    # the suggestion and must not drop a required set.
+    required = [m["modular_set"] for m in mapped
+                if m["kind"] == "required" and m["modular_set"]]
+    suggested = [m for m in mapped if m["kind"] != "required"]
+    kind = suggested[0]["kind"] if suggested else "required"
     if modular is not None:
-        # An explicit list REPLACES the default (§6).
-        modulars = list(modular)
+        # An explicit list REPLACES the suggestion (§6).
+        modulars = required + [m for m in modular if m not in required]
     else:
-        modulars = [m["modular_set"] for m in mapped if m["modular_set"]]
+        modulars = required + [m["modular_set"] for m in suggested
+                               if m["modular_set"]]
 
     return Scenario(scenario_set=code, modulars=modulars,
                     difficulty=difficulty, players=players, heroic=heroic,

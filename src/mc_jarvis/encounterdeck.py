@@ -278,6 +278,29 @@ def has_contents(text: str) -> bool:
     return bool(CONTENTS_HEADING_RE.search(text or ""))
 
 
+def required_modulars(text: str, known: dict, *, own: str = "") -> list[str]:
+    """Modular sets named OUTSIDE the parenthetical clause.
+
+    The parenthetical names are the box's suggestion; a modular set listed
+    in the contents proper is part of the scenario. `Taskmaster` reads
+    "Taskmaster, Hydra Patrol, and Standard encounter sets. One modular
+    encounter set (Weapon Master)" -- Hydra Patrol is required and Weapon
+    Master is the suggestion, and the same set appears parenthetically for
+    Absorbing Man. Reading only the parentheses dropped a required set
+    from 26 of 53 scenarios, between 2 and 14 cards each.
+    """
+    flat = " ".join((text or "").split())
+    if "Contents" not in flat:
+        return []
+    body = flat[flat.index("Contents"):].split("Setup")[0]
+    body = re.sub(r"<[^>]+>", "", body)
+    # Every parenthetical is a suggestion or an expert-mode aside.
+    outside = re.sub(r"\([^)]*\)", " ", body)
+    return sorted({code for name, code in known.items()
+                   if name != own
+                   and re.search(rf"\b{re.escape(name)}\b", outside)})
+
+
 def parse_contents(text: str) -> dict:
     """The modular clause of a main scheme's `Contents` block.
 
@@ -314,6 +337,8 @@ def build_scenarios(conn) -> dict[str, int]:
     aliases = config.get("modular_aliases") or {}
     by_name = {r["name"]: r["code"] for r in conn.execute(
         "SELECT code, name FROM sets WHERE card_set_type_code = 'modular'")}
+    villain_names = {r["code"]: r["name"] for r in conn.execute(
+        "SELECT code, name FROM sets WHERE card_set_type_code = 'villain'")}
 
     conn.execute("DELETE FROM scenario_modulars")
     counts: Counter = Counter()
@@ -328,6 +353,13 @@ def build_scenarios(conn) -> dict[str, int]:
             continue
         parsed = parse_contents(row["text"])
         counts[parsed["kind"]] += 1
+        # Sets named outside the parentheses are part of the scenario, not
+        # a suggestion, and are stored as their own kind so `assess` can
+        # include them while still reporting the suggestion separately.
+        for code in required_modulars(row["text"], by_name,
+                                      own=villain_names.get(row["set_code"], "")):
+            rows.append((row["set_code"], "required", code))
+            counts["scenario_required"] += 1
         if not parsed["names"]:
             rows.append((row["set_code"], parsed["kind"], None))
             continue
