@@ -380,7 +380,7 @@ def run(args) -> int:
         print(f"extracted {pages} rulebook(s) to text")
 
     print("building index...")
-    conn = index.connect(paths.db_path())
+    conn = index.connect(paths.db_path(), rebuild=True)
     counts = rebuild_index(conn, root)
     for key, value in counts.items():
         print(f"  {key}: {value}")

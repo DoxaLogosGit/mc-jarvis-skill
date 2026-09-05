@@ -56,8 +56,18 @@ def run(args) -> int:
         print(f"  {extracted} rulebook(s) re-extracted to text")
 
     print("building index...")
-    conn = index.connect(paths.db_path())
+    conn = index.connect(paths.db_path(), rebuild=True)
     counts = init.rebuild_index(conn, root)
+    # `built_at` is written by `init` and was never refreshed here, so
+    # after any update `status` named the day the index was first created
+    # while `age_days` read the file's mtime, and the two disagreed by
+    # however long ago init ran. It belongs HERE, after the rebuild that
+    # makes it true -- an earlier attempt put it in `status`, which then
+    # rewrote the timestamp on every read.
+    conn.execute(
+        "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
+        ("built_at", _dt.datetime.now(_dt.timezone.utc).isoformat()))
+    conn.commit()
     if getattr(args, "json", False):
         emit(counts, as_json=True)
     else:
@@ -72,17 +82,11 @@ def status(args) -> int:
         print("no index — run `mc-jarvis init`")
         return 1
 
-    conn = index.connect(db)
-    # `built_at` is written by `init` and was never refreshed here, so
-    # after any update `status` reported when the index was first created
-    # rather than when its data was built. `age_days` reads the file's
-    # mtime and so disagreed with it by however long ago init ran.
-    with index.connect(db) as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO build_meta (key, value) VALUES (?, ?)",
-            ("built_at",
-             _dt.datetime.now(_dt.timezone.utc).isoformat()))
-        conn.commit()
+    try:
+        conn = index.connect(db)
+    except index.StaleIndex as exc:
+        print(f"mc-jarvis status: {exc}")
+        return 1
 
     age = _age_days(db)
     meta = {r["key"]: r["value"]

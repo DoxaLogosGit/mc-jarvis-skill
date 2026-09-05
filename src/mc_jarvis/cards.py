@@ -105,7 +105,13 @@ def _open():
     db = paths.db_path()
     if not db.exists():
         raise SystemExit("no index found - run `mc-jarvis init` first")
-    return index.connect(db)
+    try:
+        return index.connect(db)
+    except index.StaleIndex as exc:
+        # Every read command funnels through here, so this is where a
+        # stale index has to stop rather than be silently rebuilt out
+        # from under the question being asked.
+        raise SystemExit(f"mc-jarvis: {exc}")
 
 
 def handle_search(args) -> int:

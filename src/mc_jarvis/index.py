@@ -49,15 +49,54 @@ COLUMNS = (
 ).split()
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
+class StaleIndex(RuntimeError):
+    """The index on disk was built against an older schema."""
+
+
+def connect(db_path: Path, *, rebuild: bool = False) -> sqlite3.Connection:
+    """Open the index.
+
+    `rebuild=True` permits dropping an index built against an older
+    schema, and ONLY `init` and `update` pass it. Every other command
+    reads, and a read must never destroy what it is reading: dropping on
+    open meant `card show 01001a` against a stale index silently emptied
+    all 39 tables and then answered "no card named", which is a wrong
+    answer rather than an error. `status` afterwards reported a fresh
+    index holding zero cards.
+    """
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    _reset_if_stale(conn)
+    if rebuild:
+        _reset_if_stale(conn)
+    else:
+        _refuse_if_stale(conn)
     conn.executescript(schema.SCHEMA)
     return conn
+
+
+def _refuse_if_stale(conn: sqlite3.Connection) -> None:
+    """Stop before a read touches an index from an older schema.
+
+    A brand-new file reports version 0 and holds no tables; that is not
+    stale, it is empty, and the caller creates it below.
+    """
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version == SCHEMA_VERSION:
+        return
+    has_tables = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%'").fetchone()[0]
+    if not has_tables:
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
+        return
+    raise StaleIndex(
+        f"this index was built against schema {version}, and this "
+        f"mc-jarvis expects {SCHEMA_VERSION}. Run `mc-jarvis update` to "
+        f"rebuild it. (Nothing has been changed.)")
 
 
 def _reset_if_stale(conn: sqlite3.Connection) -> bool:

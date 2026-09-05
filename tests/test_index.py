@@ -1,3 +1,4 @@
+import sqlite3
 import json
 
 import pytest
@@ -172,7 +173,11 @@ def test_real_reprints_mostly_resolve_to_player_cards(real_index):
 
 def test_an_index_from_an_older_schema_is_rebuilt(tmp_path):
     """A stale derived index must be dropped, not half-migrated: otherwise
-    the first query on a new column fails with a bare "no such column"."""
+    the first query on a new column fails with a bare "no such column".
+
+    Only under `rebuild=True`. This used to happen on any open, so a read
+    command destroyed the index it was reading; see
+    `test_a_read_never_destroys_a_stale_index`."""
     import sqlite3
     db = tmp_path / "mc.sqlite"
     stale = sqlite3.connect(db)
@@ -181,7 +186,7 @@ def test_an_index_from_an_older_schema_is_rebuilt(tmp_path):
     stale.commit()
     stale.close()
 
-    conn = index.connect(db)
+    conn = index.connect(db, rebuild=True)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(cards)")}
     assert "canonical_code" in cols
     assert conn.execute("PRAGMA user_version").fetchone()[0] == \
@@ -217,3 +222,49 @@ def test_boost_invariant_accepts_absent_and_one_to_four():
         {"code": "c", "name": "C", "boost": 1},
         {"code": "d", "name": "D", "boost": 4},
     ])
+
+
+def test_a_read_never_destroys_a_stale_index(tmp_path):
+    """`connect` dropped every table whenever the schema version differed,
+    and every command opens through it. A `card show` against an index
+    from an older schema silently emptied all 39 tables and then answered
+    "no card named", which is a wrong answer rather than an error."""
+    db = tmp_path / "mc.sqlite"
+    conn = index.connect(db, rebuild=True)
+    conn.execute(
+        "INSERT INTO cards (code, name, type_code, faction_code, pack_code, "
+        "set_code, canonical_code, is_reprint, raw, text) VALUES "
+        "('c1', 'A', 'ally', 'basic', 'core', 's', 'c1', 0, '{}', '')")
+    conn.commit()
+    conn.execute(f"PRAGMA user_version = {index.SCHEMA_VERSION - 1}")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(index.StaleIndex):
+        index.connect(db)
+
+    # Nothing was touched: the row is still there for the rebuild to keep.
+    check = sqlite3.connect(db)
+    assert check.execute("SELECT COUNT(*) FROM cards").fetchone()[0] == 1
+
+
+def test_a_rebuild_may_still_drop_a_stale_index(tmp_path):
+    """The reset is what makes `update` able to recover; it is only the
+    implicit reset on read that was wrong."""
+    db = tmp_path / "mc.sqlite"
+    conn = index.connect(db, rebuild=True)
+    conn.execute(f"PRAGMA user_version = {index.SCHEMA_VERSION - 1}")
+    conn.commit()
+    conn.close()
+
+    conn = index.connect(db, rebuild=True)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == \
+        index.SCHEMA_VERSION
+
+
+def test_a_brand_new_file_is_empty_rather_than_stale(tmp_path):
+    """A new database reports version 0 and holds no tables. That is not
+    a stale index and must not be refused."""
+    conn = index.connect(tmp_path / "new.sqlite")
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == \
+        index.SCHEMA_VERSION
