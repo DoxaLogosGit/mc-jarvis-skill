@@ -309,3 +309,17 @@ def test_errata_is_indexed_per_card(real_index):
         "SELECT body FROM rules_entries WHERE term LIKE 'Errata: Loki%'"
     ).fetchone()
     assert loki and "Forced Interrupt" in loki["body"]
+
+
+def test_a_truncated_rules_search_says_so(conn):
+    """`rules search damage` returned 10 entries against 113 that match
+    and said nothing about the other 103. A rules answer is the one place
+    this tool must not look exhaustive when it is not."""
+    hits = rules.search(conn, "the", limit=1)
+    if len(hits) == 1:
+        assert hits.truncated in (True, False)
+    wide = rules.search(conn, "the", limit=500)
+    narrow = rules.search(conn, "the", limit=max(1, len(wide) - 1))
+    if len(wide) > 1:
+        assert narrow.truncated is True
+    assert wide.truncated is False

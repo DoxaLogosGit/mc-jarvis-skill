@@ -392,16 +392,22 @@ def for_term(conn, term: str) -> list[dict]:
         f"ORDER BY r.ruled_on DESC", (term,))]
 
 
-def search(conn, text: str, *, limit: int = 10) -> list[dict]:
-    from .cards import _fts_query
+def search(conn, text: str, *, limit: int = 10):
+    """Rulings matching `text`. Over-fetches by one to detect truncation
+    (see `rules.search`)."""
+    from .cards import Results, _fts_query
 
     expr = _fts_query(text)
     if not expr:
-        return []
-    return [dict(r) for r in conn.execute(
+        return Results()
+    rows = [dict(r) for r in conn.execute(
         f"SELECT {_COLUMNS} FROM rulings_fts f "
         f"JOIN rulings r ON r.id = f.rowid "
-        f"WHERE rulings_fts MATCH ? ORDER BY rank LIMIT ?", (expr, limit))]
+        f"WHERE rulings_fts MATCH ? ORDER BY rank LIMIT ?",
+        (expr, limit + 1))]
+    out = Results(rows[:limit])
+    out.truncated = len(rows) > limit
+    return out
 
 
 def count(conn) -> int:

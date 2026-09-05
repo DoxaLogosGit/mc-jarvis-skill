@@ -86,17 +86,29 @@ def show(conn, term: str, *, owned: bool = False) -> dict:
             "see_also": see_also, "cards": cards, "rulings": active}
 
 
-def search(conn, text: str, *, limit: int = 10) -> list[dict]:
+def search(conn, text: str, *, limit: int = 10):
+    """Rules entries matching `text`, most relevant first.
+
+    Over-fetches by one so the caller can say when the limit cut the
+    answer short: `rules search damage` returned 10 entries against 113
+    that match, and said nothing about the other 103.
+    """
+    from .cards import Results
+
     expr = _fts_query(text)
     if not expr:
-        return []
-    rows = conn.execute(
-        "SELECT e.term, e.body, e.page, e.source_doc, e.entry_addressable, "
-        "e.searchable "
-        "FROM rules_fts f JOIN rules_entries e ON e.id = f.rowid "
-        "WHERE rules_fts MATCH ? ORDER BY rank LIMIT ?", (expr, limit))
-    return [{**dict(r), "entry_addressable": bool(r["entry_addressable"]),
-             "searchable": bool(r["searchable"])} for r in rows]
+        return Results()
+    rows = [{**dict(r), "entry_addressable": bool(r["entry_addressable"]),
+             "searchable": bool(r["searchable"])}
+            for r in conn.execute(
+                "SELECT e.term, e.body, e.page, e.source_doc, "
+                "e.entry_addressable, e.searchable "
+                "FROM rules_fts f JOIN rules_entries e ON e.id = f.rowid "
+                "WHERE rules_fts MATCH ? ORDER BY rank LIMIT ?",
+                (expr, limit + 1))]
+    out = Results(rows[:limit])
+    out.truncated = len(rows) > limit
+    return out
 
 
 def build_links(conn: sqlite3.Connection) -> int:
@@ -189,4 +201,9 @@ def handle_search(args) -> int:
         body = " ".join(h["body"].split())
         print(f"\n{h['term']}  {_cite(h)}")
         print(f"  {body[:300]}{'...' if len(body) > 300 else ''}")
+    if getattr(hits, "truncated", False):
+        # A rules answer that silently stops at the limit is the one place
+        # this tool must not look exhaustive when it is not.
+        print(f"\n(first {len(hits)}; more entries match - narrow the "
+              f"search or pass a more specific term)")
     return 0

@@ -85,3 +85,23 @@ def test_real_search_returns_no_duplicate_cards(real_index):
         assert len(codes) == len(set(codes)), q
         exact = [h for h in hits if h["name"] == q]
         assert len(exact) <= 1, (q, exact)
+
+
+def test_a_truncated_search_says_so(conn):
+    """`--aspect justice` showed 20 rows against 134 matching cards and
+    said nothing, so the result read as exhaustive. The limit must be
+    visible or the answer is wrong by omission."""
+    hits = cards.search(conn, limit=2)
+    assert len(hits) == 2
+    assert hits.truncated is True
+
+
+def test_an_exhaustive_search_does_not_claim_more(conn):
+    """Over-fetching by one distinguishes "exactly the limit" from "the
+    first N of many"; without it a result of exactly the limit would
+    always claim there was more."""
+    everything = cards.search(conn, limit=500)
+    assert not everything.truncated
+    exact = cards.search(conn, limit=len(everything))
+    assert len(exact) == len(everything)
+    assert exact.truncated is False

@@ -25,6 +25,18 @@ def _fts_query(raw: str) -> str:
     return " AND ".join('"' + t.replace('"', '""') + '"' for t in tokens)
 
 
+class Results(list):
+    """Search hits, plus whether the limit cut them short.
+
+    Truncation is a property of the result SET, not of any card in it, so
+    it does not belong on the rows -- putting it there leaked a
+    `truncated` key into every record of the JSON output. A list subclass
+    keeps `len`, indexing and equality working for every existing caller.
+    """
+
+    truncated = False
+
+
 def search(conn, query=None, *, owned=False, aspect=None, type=None, cost=None,
            trait=None, text=None, limit=20) -> list[dict]:
     """Search cards, one row per card rather than per printing.
@@ -76,10 +88,17 @@ def search(conn, query=None, *, owned=False, aspect=None, type=None, cost=None,
         if owned_packs(conn):
             where.append("cards." + owned_predicate())
 
+    # One row more than asked for, so the caller can tell "exactly 20
+    # matches" from "the first 20 of many". A search that silently stops
+    # at the limit reads as an exhaustive answer: `--aspect justice`
+    # showed 20 rows against 134 matching cards, with nothing to say so.
     sql = (f"SELECT {', '.join('cards.' + c for c in SUMMARY)} FROM cards "
            f"WHERE {' AND '.join(where)} ORDER BY cards.code LIMIT ?")
-    params.append(limit)
-    return [dict(r) for r in conn.execute(sql, params)]
+    params.append(limit + 1)
+    rows = [dict(r) for r in conn.execute(sql, params)]
+    out = Results(rows[:limit])
+    out.truncated = len(rows) > limit
+    return out
 
 
 def _open():
@@ -109,6 +128,9 @@ def handle_search(args) -> int:
         cost = "-" if h["cost"] is None else h["cost"]
         print(f"{h['code']:<8} {h['name']:<34} "
               f"{h['faction_code']:<12} {h['type_code']:<10} {cost}")
+    if getattr(hits, "truncated", False):
+        print(f"\n(first {len(hits)}; more match - raise --limit or "
+              f"narrow the search)")
     return 0
 
 
