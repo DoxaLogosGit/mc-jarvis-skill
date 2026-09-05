@@ -1320,7 +1320,7 @@ the error now names the other candidates. `Iron Man` reporting only on
 set and a leader set.
 
 
-### 14.14 Open: the main scheme's target threat is not in the schema
+### 14.14 Closed: the target threat was in the payload, not the columns
 
 `assess` now reports the villain ladder, deck density and the deck's
 acceleration icons, but **not the main scheme's clock**, because the field
@@ -1341,6 +1341,31 @@ confidently sourced wrong number §10.15 exists to stop, and target threat
 is the number a player most wants when judging whether a scenario can be
 out-thwarted.
 
-Worth checking against a printed card image before modelling: the target
-threat may be a per-hero value printed only on the scheme art, in which
-case marvelsdb may not carry it at all.
+**Resolved the same day.** The conclusion above was wrong because I
+checked the *indexed columns* and stopped, rather than the raw payload.
+marvelsdb carries it plainly as **`threat`**, on 129 of 246 main schemes
+— every B-side — and it had simply never been indexed.
+
+`Target Threat` (RR p.43) is the amount required for the main scheme deck
+to advance, printed in the card's upper-left corner. It is per hero unless
+`threat_fixed` (5 cards), matching every other threat value. Verified
+against Rhino, whose printed 7 the field reproduces.
+
+Now indexed as `target_threat` / `target_threat_fixed`, schema 22 → 23,
+renamed on the way in because upstream's bare `threat` would sit
+confusingly beside `base_threat`, `escalation_threat` and the villain's
+`scheme`.
+
+Two shapes had to be handled rather than averaged over:
+
+- **`-1` is a sentinel, not a quantity.** Apocalypse's target is printed
+  as X and worked out from the villain's hit points. Treating it as a
+  number reports a negative target threat, and summing it corrupts the
+  total; it now renders as `X` with no total offered.
+- **`0` appears on A-side faces**, which carry no target at all, and is
+  skipped.
+
+The user's own reading of Crossbones is what this exposes: three stages at
+**3, 6 and 5** at one player, each gaining 1 per villain phase, with the
+last stage named *The Getaway*. Against 5 acceleration icons that is a
+race, and no amount of villain hit points would have said so.

@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 
 class InvariantError(RuntimeError):
@@ -37,6 +37,13 @@ class BuildReport:
 PLAYER_FACTIONS = ("aggression", "justice", "leadership", "protection",
                    "basic", "hero", "pool")
 
+# Two columns are renamed on the way in. Upstream calls the main
+# scheme's target threat plainly `threat`, which in this schema would sit
+# confusingly beside `base_threat`, `escalation_threat` and the villain's
+# `scheme`; `target_threat` is what RR p.43 calls it.
+UPSTREAM_NAME = {"target_threat": "threat",
+                 "target_threat_fixed": "threat_fixed"}
+
 COLUMNS = (
     "code name subname type_code faction_code pack_code set_code back_link "
     "double_sided is_unique permanent duplicate_of cost quantity "
@@ -45,7 +52,8 @@ COLUMNS = (
     "stage hand_size text flavor traits "
     "boost base_threat escalation_threat scheme_acceleration scheme_amplify "
     "scheme_crisis scheme_hazard hidden base_threat_fixed "
-    "escalation_threat_fixed boost_star attack_star scheme_star"
+    "escalation_threat_fixed boost_star attack_star scheme_star "
+    "target_threat target_threat_fixed"
 ).split()
 
 
@@ -285,7 +293,7 @@ def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
         f"canonical_code, is_reprint, deck_limit, deck_limit_raw, raw) "
         f"VALUES ({', '.join('?' * len(COLUMNS))}, ?, ?, ?, ?, ?)",
         [
-            tuple(c.get(col) for col in COLUMNS)
+            tuple(c.get(UPSTREAM_NAME.get(col, col)) for col in COLUMNS)
             + (c["canonical_code"], c["is_reprint"],
                resolve_deck_limit(c), c.get("deck_limit"),
                json.dumps(c, ensure_ascii=False))

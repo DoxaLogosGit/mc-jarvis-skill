@@ -400,6 +400,7 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
         "minions": _minions(conn, cards),
         "treacheries": _treacheries(conn, cards),
         "side_schemes": _side_schemes(cards, scenario.players),
+        "main_scheme": _main_scheme(conn, scenario),
         "scheme_pressure": {
             # Acceleration icons raise the main scheme every round, so
             # they compound in a way a threat total does not.
@@ -503,6 +504,51 @@ def _demands(conn, cards: list[dict], scenario: Scenario) -> dict:
 # where a hit point total is not what stands between you and winning.
 _UNDEFEATABLE = re.compile(r"cannot be defeated", re.I)
 _SCHEME_WIN = re.compile(r"players win", re.I)
+
+
+def _main_scheme(conn, scenario: Scenario) -> dict:
+    """The threat clock: what each stage needs before the villain wins.
+
+    Target threat (RR p.43) is per hero unless `target_threat_fixed`, and
+    it is the number that decides whether a scenario can be out-thwarted.
+    Crossbones is the case that shows why it matters -- its three stages
+    need only 3, 6 and 5 at one player, and the last is called The
+    Getaway, so the scenario is a race rather than a fight.
+
+    `base_threat` is the threat a stage starts with and
+    `escalation_threat` the amount added every villain phase.
+    """
+    sets = _sets(scenario)
+    marks = ",".join("?" * len(sets))
+    out = []
+    for r in conn.execute(
+            f"SELECT name, stage, target_threat, target_threat_fixed, "
+            f"base_threat, base_threat_fixed, escalation_threat "
+            f"FROM cards WHERE set_code IN ({marks}) "
+            f"AND type_code = 'main_scheme' AND is_reprint = 0 "
+            f"AND target_threat IS NOT NULL AND target_threat != 0 "
+            f"ORDER BY stage", sets):
+        # -1 is upstream's marker for a target printed as X and worked out
+        # from card text, never a quantity.
+        variable = r["target_threat"] < 0
+        scale = 1 if r["target_threat_fixed"] else scenario.players
+        out.append({
+            "name": r["name"], "stage": r["stage"],
+            "target": None if variable else r["target_threat"] * scale,
+            "variable": variable,
+            "starts_at": (r["base_threat"] or 0)
+            * (1 if r["base_threat_fixed"] else scenario.players),
+            "per_phase": r["escalation_threat"] or 0,
+        })
+    seen, uniq = set(), []
+    for x in out:
+        key = (x["stage"], x["target"])
+        if key not in seen:
+            seen.add(key)
+            uniq.append(x)
+    return {"stages": uniq,
+            "total_target": sum(x["target"] for x in uniq
+                                if x["target"] is not None)}
 
 
 def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
@@ -778,6 +824,23 @@ def _line(step: dict) -> None:
     if m["keywords"]:
         print("    minion keywords: " + ", ".join(
             f"{k} {v}" for k, v in sorted(m["keywords"].items())))
+    ms = step.get("main_scheme") or {}
+    if ms.get("stages"):
+        bits = []
+        for x in ms["stages"]:
+            t = "X" if x["variable"] else x["target"]
+            bit = f"{x['stage']}: {t}"
+            if x["per_phase"]:
+                bit += f" (+{x['per_phase']}/phase)"
+            bits.append(bit)
+        line = "    threat to advance - " + "   ".join(bits)
+        # A total is only meaningful when every stage carries a number;
+        # with a variable stage in the mix it read "total 0".
+        if ms["total_target"] and not any(x["variable"] for x in ms["stages"]):
+            line += f"   total {ms['total_target']}"
+        elif any(x["variable"] for x in ms["stages"]):
+            line += "   (X is worked out from card text, so no total)"
+        print(line)
     sp = step.get("scheme_pressure") or {}
     if sp.get("acceleration_icons"):
         # Computed all along and never printed, so a reader of the text

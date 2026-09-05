@@ -813,3 +813,39 @@ def test_acceleration_icons_reach_the_text_output(real_index, capsys):
     step["growth"] = ""
     assess._line(step)
     assert "acceleration icons" in capsys.readouterr().out
+
+
+def test_the_main_scheme_threat_clock_is_reported(real_index):
+    """Target threat (RR p.43) is what a stage needs before the villain
+    advances, and it decides whether a scenario can be out-thwarted. It
+    is carried by marvelsdb as `threat` and was never indexed. Crossbones
+    is the case: three stages at 3, 6 and 5, the last called The Getaway,
+    so the scenario is a race rather than a fight."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Crossbones", difficulty="expert")
+    ms = assess.profile(real_index, sc)["main_scheme"]
+    assert [x["target"] for x in ms["stages"]] == [3, 6, 5]
+    assert ms["total_target"] == 14
+    assert all(x["per_phase"] == 1 for x in ms["stages"])
+
+
+def test_target_threat_scales_with_the_table(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Crossbones", difficulty="expert",
+                        players=4)
+    ms = assess.profile(real_index, sc)["main_scheme"]
+    assert [x["target"] for x in ms["stages"]] == [12, 24, 20]
+
+
+def test_a_variable_target_is_a_marker_not_a_number(real_index):
+    """Apocalypse's target is printed as X and worked out from the
+    villain's hit points; upstream encodes that as -1. Treating the
+    sentinel as a quantity would report a negative target threat."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Apocalypse", players=1)
+    ms = assess.profile(real_index, sc)["main_scheme"]
+    assert ms["stages"][0]["variable"] is True
+    assert ms["stages"][0]["target"] is None

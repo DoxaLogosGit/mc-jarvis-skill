@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS cards (
     -- printing raw villain hit points.
     base_threat_fixed       INTEGER,
     escalation_threat_fixed INTEGER,
+    -- Target threat (RR p.43): what a main scheme needs before the deck
+    -- advances, printed in the card's upper-left corner. Carried by
+    -- marvelsdb as `threat` and never indexed, so the one number a player
+    -- needs to judge whether a scenario can be out-thwarted was missing.
+    -- Per hero unless `target_threat_fixed`, like every other threat
+    -- value. A value of -1 is upstream's sentinel for a target printed as
+    -- X and computed from card text (Apocalypse takes it from the
+    -- villain's hit points), so it is a marker, never a number.
+    target_threat           INTEGER,
+    target_threat_fixed     INTEGER,
     -- The `*_star` family is a FLAG, never a value (§4.4, §14.3): eleven
     -- such fields exist and every one is boolean. 134 cards carry both
     -- `boost` and `boost_star`, so the star is an extra icon with a
