@@ -40,7 +40,16 @@ PRODUCT_PAGE = ("https://www.fantasyflightgames.com/en/products/"
                 "marvel-champions-the-card-game/")
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 WAYBACK_SNAPSHOT = "https://web.archive.org/web/{ts}id_/{url}"
-DEFAULT_SLUGS = ("marvel-champions-rules-reference", "learn-to-play")
+# The Rules Reference defines neither `Leader` nor `Scenario`: the
+# leader mechanic and both modes of play arrived in a scenario pack that
+# RR 1.8 has not absorbed, so an entire game mode had no rules coverage
+# (design §10.15). Synthezoid Smackdown is the narrow fix -- it ships its
+# own two leaders and its own scenarios, so it must define the mode
+# standalone, and it does: its rulebook mentions Civil War only in story
+# text and an advert. Civil War itself adds four more leaders and its own
+# scenario, not new mode rules, so it stays out (spec §10.2b).
+DEFAULT_SLUGS = ("marvel-champions-rules-reference", "learn-to-play",
+                 "synthezoid-smackdown-rulebook")
 USER_AGENT = "mc-jarvis"
 
 

@@ -285,6 +285,27 @@ def notes(conn, deck) -> list[Finding]:
                    f"progress, which this tool does not model and marvelcdb "
                    f"does not record."))
 
+    # A leader set carries four `basic` player cards alongside its
+    # encounter side -- 24 across the six sets, and no villain set has
+    # any. They read as ordinary basic cards to every encoded rule, but
+    # each one acts on "your leader", which exists only in a Civil War or
+    # Synthezoid Smackdown game with that leader chosen. The restriction
+    # is in the scenario insert, which the Rules Reference has not
+    # absorbed (it defines neither `Leader` nor `Scenario`), so no rule
+    # here can fail them and the deck is legal as far as this tool knows.
+    leaders = [r["name"] for r in conn.execute(
+        f"SELECT c.name FROM cards c JOIN sets s ON s.code = c.set_code "
+        f"WHERE c.code IN ({marks}) AND s.card_set_type_code = 'leader' "
+        f"ORDER BY c.name", list(cards))]
+    if leaders:
+        out.append(Finding(
+            rule="leader", ok=True, kind="note", cards=leaders,
+            detail=f"{len(leaders)} card(s) from a leader set - "
+                   f"{', '.join(leaders)}. These act on a leader you "
+                   f"control, which exists only in a scenario where a "
+                   f"leader is chosen. Outside one they do nothing, and no "
+                   f"rule this tool encodes forbids them."))
+
     if found:
         # `deck_limit` on a campaign card counts the copies the BOX holds
         # - typically one per player at four players - not the copies one

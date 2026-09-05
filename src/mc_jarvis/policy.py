@@ -76,9 +76,20 @@ LOCATOR_FILES = re.compile(r"\.(py|yaml|yml|toml)$")
 # Collapsed back into one word, which is what it is.
 INITIALISM_RE = re.compile(r"\b(?:[A-Za-z]\.){2,}[A-Za-z]?\.?")
 
+# The game's own title is a proper noun this project has to be able to
+# say, and it opens most rulebooks. Indexing a third rulebook made the
+# README collide with it -- "for Marvel Champions: The Card Game. It" is
+# seven words, and both the README and the new book use them in that
+# order. Naming the product is not distributing its text, so the title is
+# removed from BOTH sides before windows are taken. Only the exact title:
+# anything after it is still compared.
+PRODUCT_TITLE_RE = re.compile(
+    r"\bmarvel\s+champions\s*:?\s*(?:the\s+card\s+game)?", re.I)
+
 
 def _words(text: str | None) -> list[str]:
     flat = TAGS.sub(" ", text or "").replace("’", "'")
+    flat = PRODUCT_TITLE_RE.sub(" ", flat)
     flat = INITIALISM_RE.sub(lambda m: m.group(0).replace(".", ""), flat)
     return PUNCT.sub(" ", flat).lower().split()
 

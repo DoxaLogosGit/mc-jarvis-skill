@@ -2123,3 +2123,52 @@ Two corollaries, both of which cost a correction in this pass:
   and no `Scenario` entry: the leader mechanic arrived in a scenario
   insert the Rules Reference has not absorbed. That must be reported as
   uncovered, not filled in from how the cards read.
+
+### 10.16 A third rulebook, for the mode the Rules Reference omits
+
+§10.15 recorded that RR 1.8 defines neither `Leader` nor `Scenario`, so an
+entire mode of play had no rules coverage and every question about it was
+answered by inference. **`synthezoid-smackdown-rulebook` is now a third
+`DEFAULT_SLUG`**, fetched by `init` alongside the Rules Reference and
+Learn to Play.
+
+**Why that book and not Civil War.** Both ship leaders, and Civil War is
+the larger box — but Synthezoid Smackdown ships **its own two leaders
+(She-Hulk, Vision) and its own two scenarios**, so it cannot function
+unless it defines the mode standalone. Confirmed after fetching: its text
+mentions Civil War only in story flavour and a closing advert, and it
+carries `MODES OF PLAY`, `PLAYING COOPERATIVELY`, `PLAYING COMPETITIVELY`,
+`SETTING UP A COMPETITIVE GAME`, `LEADER-SPECIFIC BASIC CARDS`,
+`WINNING A COMPETITIVE GAME` and `TIE-BREAK CONDITIONS`. Civil War would
+add four more leaders and one more scenario, not new mode rules, so
+§10.2b holds for it and for the other 13 box rulebooks.
+
+It has no alphabetical index, so it is page-chunked like Learn to Play —
+**20 entries, searchable but not addressable by name**. `rules search
+leader` reaches it; `rules show Leader` does not, and should not pretend
+to.
+
+#### What it answered immediately
+
+- **The four `basic` cards per leader set are earned, not deckbuilt.**
+  They are set aside during competitive setup, and a player earns *two* of
+  them by defeating the `Choosing Sides` side scheme, after which they
+  join that player's deck. This is why `deck check` notes them rather than
+  failing them: nothing about them is a deckbuilding constraint.
+- Two rules no card text would have revealed: an attack by the enemy
+  leader against your leader **ignores guard and admits no defender**, and
+  a player **cannot use a hero sharing a title with the chosen leader** —
+  which is the name-collision problem of §14.13 as a printed rule.
+
+#### The corpus grew, and the policy checker caught the README
+
+Adding a source document is not free: `README.md` began failing the
+distribution check on *"for Marvel Champions: The Card Game. It"* — seven
+words shared with the new book's opening line, by coincidence of the
+product's own title plus one word.
+
+The title is a proper noun this project must be able to say, and it opens
+most rulebooks, so it is now stripped from **both** sides before windows
+are taken. Only the exact title: text either side of it is still compared,
+so the exemption cannot become a hiding place. Every future rulebook would
+have reproduced this collision.

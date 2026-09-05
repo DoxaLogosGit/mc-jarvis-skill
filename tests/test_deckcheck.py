@@ -785,3 +785,28 @@ def test_the_campaign_note_says_copy_limits_are_unverifiable(tmp_path):
     assert "campaign book" in note.detail
     # More than the box holds is still catchable and still wrong.
     assert not deckcheck.check_copies(conn, _deck(slots={"40196": 5})).ok
+
+
+def test_a_leader_set_card_is_noted_and_never_failed(tmp_path):
+    """The six leader sets carry four `basic` player cards each -- 24 in
+    all, where no villain set has any. Each acts on "your leader", which
+    exists only in a scenario where one is chosen, but every encoded rule
+    sees an ordinary basic card. The restriction lives in a scenario
+    insert the Rules Reference has not absorbed, so this is noted rather
+    than failed."""
+    conn = index.connect(tmp_path / "mc.sqlite")
+    conn.execute("INSERT INTO sets (code, name, card_set_type_code) "
+                 "VALUES ('iron_man_leader', 'Iron Man', 'leader')")
+    conn.execute(
+        "INSERT INTO cards (code, name, type_code, faction_code, pack_code, "
+        "set_code, canonical_code, is_reprint, deck_limit, quantity, raw, "
+        "text) VALUES ('56132', 'Suit Up', 'resource', 'basic', 'cw', "
+        "'iron_man_leader', '56132', 0, 1, 1, '{}', '')")
+    conn.commit()
+
+    deck = deckfetch.Deck(name="D", hero_code="h1", hero_name="H",
+                          aspects=["leadership"], slots={"56132": 1})
+    found = [f for f in deckcheck.notes(conn, deck) if f.rule == "leader"]
+    assert len(found) == 1
+    assert found[0].kind == "note" and found[0].ok
+    assert found[0].cards == ["Suit Up"]

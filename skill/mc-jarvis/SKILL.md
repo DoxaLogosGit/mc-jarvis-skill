@@ -205,6 +205,37 @@ card — different numbers of aspects, or different constraints entirely.
 The index records which heroes do this and what their rule says. Never
 assume the standard rule applies.
 
+## Leaders and the two modes of play
+
+Some scenarios are fought against a **leader** rather than a villain: a
+hero card played as the opposition. The Rules Reference does not cover
+this — it defines neither `Leader` nor `Scenario` — so the rules live in
+the Synthezoid Smackdown rulebook, which `init` fetches alongside the
+Rules Reference. **Look them up there rather than reasoning from the
+cards**: `mc-jarvis rules search leader`.
+
+What the index can tell you without a lookup:
+
+- `mc-jarvis encounter <leader set>` prints **Leader stages**, the same
+  stat block a villain has — stage, hit points per hero, ATK, SCH.
+- A leader has no main scheme; the scenario supplies it. Assess the pair:
+  `mc-jarvis assess <scenario> --modular <leader set>`.
+- These scenarios play **either competitively or cooperatively**, and
+  setup differs between them, so `assess` says so rather than counting one
+  arm silently.
+
+Two traps worth knowing before you answer a question about them:
+
+- **A leader set is not a pure encounter set.** Each carries four `basic`
+  player cards, where a villain set carries none. They are not deckbuilt —
+  the rulebook says how they are earned during play, in competitive mode
+  only — so `deck check` reports them as a note rather than a failure, and
+  a deck listing them is legal by every rule this tool encodes.
+- **Names collide in both directions.** A leader set is named after a
+  hero, and a scenario box may reprint a hero's own cards as encounter
+  cards under the same names. `card show` and `assess` key on codes and
+  will ask you to disambiguate; take the code rather than guessing.
+
 ## Staleness
 
 Check `mc-jarvis status`. If the index is more than 14 days old, mention

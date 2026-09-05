@@ -195,3 +195,27 @@ def test_coverage_names_a_source_it_does_not_have(tmp_path):
     got = policy.coverage(conn)
     assert got["cards"] == 1
     assert got["rules_entries"] == 0
+
+
+def test_the_games_own_title_is_not_rules_text():
+    """The title is a proper noun the project has to be able to say, and
+    it opens most rulebooks. Indexing a third rulebook made the README
+    collide with it: "for Marvel Champions: The Card Game. It" is seven
+    words and both use them in that order. Naming the product is not
+    distributing its text."""
+    from mc_jarvis import policy
+
+    assert "marvel" not in policy._words("for Marvel Champions: The Card Game")
+    # Only the title is dropped; what follows is still compared.
+    assert policy._words("Marvel Champions: The Card Game. It contains two") \
+        == ["it", "contains", "two"]
+
+
+def test_a_real_quotation_is_still_caught_around_the_title():
+    """The exemption must not become a hiding place: text either side of
+    the title is still windowed."""
+    from mc_jarvis import policy
+
+    words = policy._words(
+        "In Marvel Champions each player must exhaust to use this power")
+    assert words[:3] == ["in", "each", "player"]
