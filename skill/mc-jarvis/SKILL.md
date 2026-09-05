@@ -32,6 +32,41 @@ from memory — a confident wrong ruling with a citation attached is the
 worst thing this tool can produce, and it is the exact failure the
 commands below are built to refuse.
 
+### Searching card text is not looking up a rule
+
+The rule above is not satisfied by running *some* command. Card text and
+the rulebook answer different questions, and reaching for the wrong one
+produces a confident wrong answer with a command behind it.
+
+**A keyword is a defined term, not an English word.** The rulebook is a
+formal vocabulary for this system: each keyword has one entry that says
+exactly what it does, and the entry is usually narrower than the word
+suggests. `ranged` is about a single interaction and has nothing to do
+with distance or with how many enemies you face. `guard` restricts one
+action rather than the outcome that action produces. Reasoning from the
+ordinary meaning of the word gets both backwards.
+
+So: **`mc-jarvis rules show <keyword>` before `mc-jarvis card search`.**
+Read what the keyword does, then count the cards that do it. A count
+assembled from a text search answers "which cards say this word", which is
+a different question from "which cards do this thing", and the two differ
+by an order of magnitude often enough to be the normal case.
+
+Two habits follow:
+
+- **Grammar is not a rule.** How a card phrases something — a name inside
+  brackets, a word omitted — is evidence about printing, not about what is
+  required. If a distinction matters, find the entry that defines it, and
+  say so plainly when no entry does.
+- **Printing a keyword and granting one are different facts.** A card that
+  gives a keyword to something else does not have it. `card show` and the
+  keyword counts keep the two apart; a `LIKE` over card text cannot.
+
+When the rulebook has no entry for something — newer mechanics arrive in
+scenario inserts the Rules Reference has not absorbed yet — **say that the
+rulebook does not cover it** rather than inferring a rule from how the
+cards read.
+
 ## Setup check
 
 If any command reports "no index", the user has not run `mc-jarvis init`.

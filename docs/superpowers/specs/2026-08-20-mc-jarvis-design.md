@@ -2082,3 +2082,44 @@ a different thing from minion retaliate.
 flag, and §10.11's reliability axis is a different question: `Star-Lord`,
 `Yondu` and `War Machine` are `printed = 0` yet their attacks always have
 ranged. A deck-side classifier is still needed and is not this table.
+
+### 10.15 Searching card text is not looking up a rule
+
+Six wrong conclusions in this working pass share one cause, and it is a
+method failure rather than six separate mistakes.
+
+| Wrong conclusion | The entry that already said otherwise |
+| --- | --- |
+| `ranged` pairs against minion swarm size | `Ranged` (p.32) — it concerns retaliate and nothing else |
+| One open-pool card answers Tough | `Piercing` (p.32) — the mechanism, found eleven |
+| Allies are the answer to Guard | `Guard` (p.20) — it forbids an action, and an ally's attack is one |
+| Acceleration is one quantity | `Acceleration Icon` and `Acceleration Token`, separate entries (p.5) |
+| The ally limit is a constant 3 | `Ally Limit` (p.7) |
+| Named modular sets are required | `Modular Encounter Set` (p.29) — they may be added to or removed from nearly any scenario |
+
+The Rules Reference carries **268 addressable entries**, and *every* term
+reasoned about in this pass is one of them. In each row above the
+definition was available and a card-text search was run instead.
+
+**The rulebook is a formal vocabulary, not prose.** A keyword names one
+defined interaction, and the definition is routinely narrower than the
+English word: `ranged` is not about distance, `guard` restricts an action
+and not an outcome. Inferring meaning from the word, or from how a card
+happens to phrase something, is guessing with a command behind it — which
+reads as sourced and is not.
+
+The rule this establishes, now in `SKILL.md` under "The one rule":
+**`rules show <keyword>` before `card search`.** Read what the keyword
+does, then count the cards that do it. "Which cards say this word" and
+"which cards do this thing" are different questions, and they differ by an
+order of magnitude often enough to be the normal case.
+
+Two corollaries, both of which cost a correction in this pass:
+
+- **Grammar is not a rule.** A name inside brackets versus outside is
+  evidence about printing; whether it is *required* is a question for an
+  entry. `prescribed` was asserted as "required" from punctuation alone.
+- **The rulebook's silence is a finding.** RR 1.8 has no `Leader` entry
+  and no `Scenario` entry: the leader mechanic arrived in a scenario
+  insert the Rules Reference has not absorbed. That must be reported as
+  uncovered, not filled in from how the cards read.
