@@ -13,6 +13,41 @@ def _difficulties():
     return list(DIFFICULTIES)
 
 
+def _players(value: str) -> int:
+    """A player count the game actually supports.
+
+    Learn to Play describes a game for one to four players, and every
+    per-player value scales off this number. Unvalidated, `--players -3`
+    reported a scenario with -17 threat and `--players 999` one with
+    6997, both stated as flatly as a real figure.
+    """
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number")
+    if not 1 <= n <= 4:
+        raise argparse.ArgumentTypeError(
+            f"{n} is not a supported player count - the game is played by "
+            f"one to four players, and every per-player value scales off "
+            f"this number")
+    return n
+
+
+def _positive(value: str) -> int:
+    """A result limit of at least one.
+
+    SQLite reads a negative LIMIT as no limit, so `--limit -5` returned
+    the whole table while the footer claimed the results were complete.
+    """
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number")
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"{n} is not a usable limit")
+    return n
+
+
 def _leaf(sub, name: str, help_: str, *, owned: bool = False,
           **kw) -> argparse.ArgumentParser:
     """A leaf command. `--json` everywhere; `--owned` only where it acts.
@@ -63,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--cost")
     search.add_argument("--trait")
     search.add_argument("--text")
-    search.add_argument("--limit", type=int, default=20)
+    search.add_argument("--limit", type=_positive, default=20)
     show = _leaf(card_sub, "show", "one card in full", owned=True)
     show.add_argument("name")
     show.add_argument("--explain", action="store_true",
@@ -110,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--modular", action="append",
                      help="the modular sets on your table; REPLACES the "
                           "scenario's defaults rather than adding to them")
-    asr.add_argument("--players", type=int, default=1)
+    asr.add_argument("--players", type=_players, default=1)
     asr.add_argument("--difficulty", default="standard",
                      choices=_difficulties())
     asr.add_argument("--heroic", type=int, default=0,

@@ -1,3 +1,4 @@
+import pytest
 import json
 
 from mc_jarvis import cli
@@ -58,3 +59,31 @@ def test_owned_is_accepted_only_where_it_can_act():
 
     assert "card search" in collection.OWNED_COMMANDS
     assert "timing" not in collection.OWNED_COMMANDS
+
+
+def test_the_player_count_is_bounded_to_what_the_game_supports():
+    """Learn to Play describes a game for one to four players, and every
+    per-player value scales off this number. Unvalidated, `--players -3`
+    reported a Zola deck with -17 threat and `--players 999` one with
+    6997, both stated as flatly as a real figure."""
+    import argparse
+
+    from mc_jarvis.cli import _players
+
+    assert _players("1") == 1 and _players("4") == 4
+    for bad in ("0", "-3", "999", "two"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _players(bad)
+
+
+def test_a_result_limit_must_be_at_least_one():
+    """SQLite reads a negative LIMIT as no limit, so `--limit -5` returned
+    the whole table while the footer claimed the results were complete."""
+    import argparse
+
+    from mc_jarvis.cli import _positive
+
+    assert _positive("1") == 1
+    for bad in ("0", "-5", "x"):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _positive(bad)
