@@ -572,7 +572,10 @@ def _opposition(conn, scenario: Scenario) -> dict:
             alternates += 1
             continue
         seen[key] = {"name": r["name"], "stage": r["stage"], "health": hp,
-                     "per_hero": bool(r["health_per_hero"])}
+                     "per_hero": bool(r["health_per_hero"]),
+                     # Hit points say how long the fight is; ATK and SCH
+                     # say what it costs you each turn it lasts.
+                     "attack": r["attack"], "scheme": r["scheme"]}
     stages = sorted(seen.values(), key=lambda x: (x["name"], x["stage"] or ""))
     names = {x["name"] for x in stages}
     return {"stages": stages,
@@ -738,10 +741,13 @@ def _line(step: dict) -> None:
             f"{k.replace('_', ' ')} {v['pct']}%" for k, v in den.items()))
     opp = step.get("opposition") or {}
     if opp.get("stages"):
-        ladder = "  ".join(
-            f"{x['stage'] or '-'}:{x['health']}" for x in opp["stages"])
-        print(f"    villain hit points by stage: {ladder}"
-              + ("  (per hero, scaled to this table)"
+        ladder = "   ".join(
+            f"{x['stage'] or '-'}: {x['health']} HP"
+            + (f" ATK {x['attack']}" if x["attack"] is not None else "")
+            + (f" SCH {x['scheme']}" if x["scheme"] is not None else "")
+            for x in opp["stages"])
+        print(f"    by stage - {ladder}"
+              + ("   (HP per hero, scaled to this table)"
                  if any(x["per_hero"] for x in opp["stages"]) else ""))
         # Not summed on purpose: a scenario plays a subset of its printed
         # stages, and the set may hold alternates rather than a longer
@@ -772,6 +778,13 @@ def _line(step: dict) -> None:
     if m["keywords"]:
         print("    minion keywords: " + ", ".join(
             f"{k} {v}" for k, v in sorted(m["keywords"].items())))
+    sp = step.get("scheme_pressure") or {}
+    if sp.get("acceleration_icons"):
+        # Computed all along and never printed, so a reader of the text
+        # output never saw the scenario's clock at all.
+        print(f"    acceleration icons in the deck: "
+              f"{sp['acceleration_icons']}  (extra threat every villain "
+              f"phase while in play)")
     dem = step.get("demands") or {}
     if dem:
         parts = []

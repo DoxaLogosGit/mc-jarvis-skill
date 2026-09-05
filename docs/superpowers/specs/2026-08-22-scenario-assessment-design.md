@@ -1318,3 +1318,29 @@ Finally, when a name was ambiguous and the chosen set is not a scenario,
 the error now names the other candidates. `Iron Man` reporting only on
 `iron_man` looked like missing data rather than a choice between a hero
 set and a leader set.
+
+
+### 14.14 Open: the main scheme's target threat is not in the schema
+
+`assess` now reports the villain ladder, deck density and the deck's
+acceleration icons, but **not the main scheme's clock**, because the field
+that would carry it has not been identified.
+
+`Main Scheme, Main Scheme Deck` (RR p.27) names two numbers: the
+**acceleration field**, which is the threat placed during step one of
+every villain phase, and the **target threat value**, which completes the
+stage when reached. Checked against Rhino and Klaw, the indexed columns
+map as `base_threat` = starting threat (0, fixed on both) and
+`escalation_threat` = the per-phase acceleration (1). **Neither is the
+target threat value**, and no column obviously holds it — the A-side rows
+carry nothing at all.
+
+Until that is settled the clock is not reported. A "threat to complete"
+figure taken from the wrong column would be exactly the kind of
+confidently sourced wrong number §10.15 exists to stop, and target threat
+is the number a player most wants when judging whether a scenario can be
+out-thwarted.
+
+Worth checking against a printed card image before modelling: the target
+threat may be a per-hero value printed only on the scheme art, in which
+case marvelsdb may not carry it at all.

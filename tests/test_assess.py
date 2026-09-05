@@ -788,3 +788,28 @@ def test_a_zero_hit_point_face_is_not_a_rung_on_the_ladder(real_index):
     sc = assess.resolve(real_index, "Escape the Museum", players=1)
     stages = assess.profile(real_index, sc)["opposition"]["stages"]
     assert [x["stage"] for x in stages] == ["A1", "B1"]
+
+
+def test_the_ladder_carries_attack_and_scheme(real_index):
+    """Hit points say how long the fight is; ATK and SCH say what it
+    costs you each turn it lasts. Awareness of what you are up against
+    needs both."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Zola", players=1)
+    stages = assess.profile(real_index, sc)["opposition"]["stages"]
+    assert [(x["health"], x["attack"], x["scheme"]) for x in stages] == [
+        (12, 1, 2), (14, 2, 2), (16, 2, 3)]
+
+
+def test_acceleration_icons_reach_the_text_output(real_index, capsys):
+    """`scheme_pressure` was computed all along and never printed, so a
+    reader of the text output never saw the scenario's clock."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Zola", players=1)
+    step = assess.profile(real_index, sc)
+    step["added"] = 0
+    step["growth"] = ""
+    assess._line(step)
+    assert "acceleration icons" in capsys.readouterr().out
