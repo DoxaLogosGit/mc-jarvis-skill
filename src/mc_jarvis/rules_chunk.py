@@ -474,6 +474,27 @@ def chunk_appendices(pages: list[str], *, first: int,
     return out
 
 
+# A page's first line is usually its heading, but not always: the
+# Synthezoid rulebook prints the page number first, so every entry came
+# out labelled `p.14: 14`, and two more carried a copyright footer and an
+# illustrator credit. A citation that reads as broken makes a real answer
+# look untrustworthy.
+_PAGE_NOISE = re.compile(
+    r"^(?:\d{1,3}|[ivxlc]+|.*©.*|.*\ball rights reserved\b.*)$", re.I)
+
+
+def _page_label(body: str) -> str:
+    """The first line of a page that looks like a heading rather than
+    furniture. Returns "" when the page opens with nothing usable, and
+    the caller then cites the page alone."""
+    for line in body.split("\n"):
+        line = " ".join(line.split())
+        if len(line) < 3 or _PAGE_NOISE.match(line):
+            continue
+        return line
+    return ""
+
+
 def chunk_pages(pages: list[str], *, source_doc: str) -> list[Entry]:
     """Non-RR documents lack the alphabetical entry structure, so they
     are chunked by page with their leading heading. Searchable, not
@@ -483,8 +504,9 @@ def chunk_pages(pages: list[str], *, source_doc: str) -> list[Entry]:
         body = text.strip()
         if not body:
             continue
-        first = next((l.strip() for l in body.split("\n") if l.strip()), "")
-        out.append(Entry(term=f"{source_doc} p.{n}: {first[:60]}",
+        first = _page_label(body)
+        out.append(Entry(term=(f"{source_doc} p.{n}: {first[:60]}" if first
+                              else f"{source_doc} p.{n}"),
                          body=body, page=n, source_doc=source_doc,
                          entry_addressable=False, searchable=True))
     return out

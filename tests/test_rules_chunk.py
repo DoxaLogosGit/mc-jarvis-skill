@@ -427,3 +427,25 @@ def test_a_product_heading_is_trimmed_but_a_single_term_is_not():
     assert rules_chunk._trim_answer(
         "Machine Man gets +1 THW and +1 ATK"
     ) == "Machine Man gets +1 THW and +1 ATK"
+
+
+def test_a_page_labelled_by_its_number_gets_a_real_heading():
+    """The Synthezoid rulebook prints the page number as the first line,
+    so every entry came out labelled `p.14: 14`, and two more carried a
+    copyright footer and an illustrator credit. A citation that reads as
+    broken makes a real answer look untrustworthy."""
+    from mc_jarvis.rules_chunk import chunk_pages
+
+    pages = ["14\nWHEN THE ENEMY LEADER ATTACKS\nSome card abilities...",
+             "©MARVEL©2025 FFG  JoeyVaz\nMODES OF PLAY\nTwo ways."]
+    got = chunk_pages(pages, source_doc="bk")
+    assert got[0].term.endswith("WHEN THE ENEMY LEADER ATTACKS")
+    assert got[1].term.endswith("MODES OF PLAY")
+
+
+def test_a_page_with_no_usable_heading_cites_the_page_alone():
+    """Better a bare page citation than one that repeats furniture."""
+    from mc_jarvis.rules_chunk import chunk_pages
+
+    got = chunk_pages(["7\n© 2025 FFG"], source_doc="bk")
+    assert got[0].term == "bk p.1"
