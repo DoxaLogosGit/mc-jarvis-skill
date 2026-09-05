@@ -715,3 +715,76 @@ def test_a_global_grant_is_reported_even_when_nothing_prints_it(real_index):
     tough = assess.profile(real_index, sc)["demands"]["toughness"]
     assert tough["total"] == 0
     assert [g["name"] for g in tough["global_grants"]] == ["Batroc's Brigade"]
+
+
+def test_alternate_villain_stages_are_collapsed_not_summed(real_index):
+    """`en_sabah_nur` prints each of stages I, II and III three times --
+    alternate cards for one stage, not three fights -- and `god_of_lies`
+    holds four alternate Lokis plus a `Fading Figment` at a sentinel 99
+    hit points. A naive total made Loki 100 hit points at one player."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "en_sabah_nur", players=1)
+    opp = assess.profile(real_index, sc)["opposition"]
+    assert [x["stage"] for x in opp["stages"]] == ["I", "II", "III"]
+    assert opp["collapsed_duplicates"] == 6
+    assert opp["branching"] is True
+
+
+def test_villain_hit_points_scale_with_the_table(real_index):
+    from mc_jarvis import assess
+
+    one = assess.profile(
+        real_index, assess.resolve(real_index, "Zola", players=1))
+    four = assess.profile(
+        real_index, assess.resolve(real_index, "Zola", players=4))
+    assert [x["health"] for x in one["opposition"]["stages"]] == [12, 14, 16]
+    assert [x["health"] for x in four["opposition"]["stages"]] == [48, 56, 64]
+    # Never summed: which stages are played is scenario prose, and the
+    # set may hold alternates rather than a longer fight.
+    assert "total" not in one["opposition"]
+
+
+def test_density_is_a_share_of_the_deck(real_index):
+    """Minion density runs 0% to 42% across the scenarios, median 21%,
+    and three have none at all. A raw count hides that, because 10
+    minions in a 38-card deck and 10 in a 21-card deck are different
+    games."""
+    from mc_jarvis import assess
+
+    p = assess.profile(real_index, assess.resolve(real_index, "Zola"))
+    assert p["density"]["minion"]["pct"] == 26
+    assert p["density"]["treachery"]["pct"] == 37
+
+
+def test_a_scenario_won_by_schemes_says_so(real_index):
+    """Escape the Museum prints "Collector cannot be defeated" and its
+    main scheme says the players win by advancing, so a hit point ladder
+    is not its difficulty. Nine scenarios carry one of these."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Escape the Museum", players=1)
+    win = assess.profile(real_index, sc)["win_condition"]
+    assert [c["name"] for c in win["undefeatable"]] == ["Collector"] * len(
+        win["undefeatable"])
+    assert win["scheme_win"]
+
+
+def test_a_main_scheme_is_not_an_encounter_deck_row(real_index):
+    """Main schemes, like villains, are absent from `deck_cards`. Reading
+    it alone missed the scheme-win text on Batroc, Loki, Morlock Siege and
+    On the Run entirely."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Batroc", players=1)
+    assert assess.profile(real_index, sc)["win_condition"].get("scheme_win")
+
+
+def test_a_zero_hit_point_face_is_not_a_rung_on_the_ladder(real_index):
+    """The Collector's A2/B2 faces are his "cannot be defeated" sides.
+    Printing `A2:0` beside real stages reads as a bug."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Escape the Museum", players=1)
+    stages = assess.profile(real_index, sc)["opposition"]["stages"]
+    assert [x["stage"] for x in stages] == ["A1", "B1"]

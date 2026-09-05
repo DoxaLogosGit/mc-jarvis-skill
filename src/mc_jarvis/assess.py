@@ -389,6 +389,14 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
         # `--deck`, which is backwards: you cannot build a deck against
         # demands you can only see once you have one.
         "demands": _demands(conn, cards, scenario),
+        # How much has to be chewed through, and how dense the deck is.
+        # Both are comparable across scenarios only as ratios: 10 minions
+        # in a 38-card deck and 10 in a 21-card deck are different games.
+        "opposition": _opposition(conn, scenario),
+        # Nine scenarios are not won by damaging the villain, so a hit
+        # point ladder is not their difficulty.
+        "win_condition": _win_condition(conn, scenario, cards),
+        "density": _density(cards, size),
         "minions": _minions(conn, cards),
         "treacheries": _treacheries(conn, cards),
         "side_schemes": _side_schemes(cards, scenario.players),
@@ -486,6 +494,110 @@ def _demands(conn, cards: list[dict], scenario: Scenario) -> dict:
         got = crossref.scenario_keyword(conn, rows, kw)
         if got["total"] or got["global_grants"]:
             out[kw] = got
+    return out
+
+
+# `Escape the Museum` prints "Collector cannot be defeated" and its main
+# scheme says the players win by advancing. Five sets carry the first
+# phrase and five the second, nine scenarios in all -- 17% of them --
+# where a hit point total is not what stands between you and winning.
+_UNDEFEATABLE = re.compile(r"cannot be defeated", re.I)
+_SCHEME_WIN = re.compile(r"players win", re.I)
+
+
+def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
+    """Cards saying the game is won by something other than damage.
+
+    Named rather than judged: "cannot be defeated" is often a phase or a
+    card side rather than the whole scenario -- the Collector's A2 face
+    flips back at end of round -- so this points at the card to read
+    instead of declaring the villain invulnerable.
+    """
+    from . import crossref
+
+    # Neither villains NOR main schemes are encounter-deck rows, so both
+    # must be fetched. Reading `cards` alone missed the scheme-win text on
+    # Batroc, Loki, Morlock Siege and On the Run entirely -- the same
+    # population error as the villain half (design §10.5).
+    sets = _sets(scenario)
+    marks = ",".join("?" * len(sets))
+    schemes = [dict(r) for r in conn.execute(
+        f"SELECT * FROM cards WHERE set_code IN ({marks}) "
+        f"AND type_code = 'main_scheme' AND is_reprint = 0", sets)]
+    rows = list(cards) + crossref.villain_rows(conn, sets) + schemes
+    out: dict[str, list] = {"undefeatable": [], "scheme_win": []}
+    for r in rows:
+        text = r["text"] or ""
+        entry = {"code": r["code"], "name": r["name"]}
+        if r["type_code"] in ("villain", "leader") and _UNDEFEATABLE.search(text):
+            out["undefeatable"].append(entry)
+        if r["type_code"] == "main_scheme" and _SCHEME_WIN.search(text):
+            out["scheme_win"].append(entry)
+    return {k: v for k, v in out.items() if v}
+
+
+def _opposition(conn, scenario: Scenario) -> dict:
+    """The villain or leader ladder, scaled to the table.
+
+    Deliberately NOT summed. Most scenarios play two stages, some three,
+    and which ones is stated in prose -- but the card data cannot be
+    added up even where that is known:
+
+    - `en_sabah_nur` prints each of stages I, II and III **three times**,
+      alternate cards for one stage rather than three fights.
+    - `god_of_lies` holds Loki plus four alternate Lokis you do not all
+      face, each paired with a `Fading Figment` carrying a sentinel 99
+      hit points that is shattered rather than damaged.
+
+    A naive total made Loki 100 hit points at one player. So the ladder
+    is reported as a fact, alternates are collapsed and flagged, and the
+    reader adds up the stages their scenario actually uses.
+    """
+    from . import crossref
+
+    rows = crossref.villain_rows(conn, _sets(scenario))
+    seen: dict[tuple, dict] = {}
+    alternates = 0
+    for r in rows:
+        if r["health"] is None:
+            continue
+        hp = r["health"] * (scenario.players if r["health_per_hero"] else 1)
+        if not hp:
+            # A zero-hit-point face is the "cannot be defeated" side of a
+            # flipping villain, not a rung on the ladder. `win_condition`
+            # reports it; printing `A2:0` here only reads as a bug.
+            continue
+        key = (r["name"], r["stage"], hp)
+        if key in seen:
+            alternates += 1
+            continue
+        seen[key] = {"name": r["name"], "stage": r["stage"], "health": hp,
+                     "per_hero": bool(r["health_per_hero"])}
+    stages = sorted(seen.values(), key=lambda x: (x["name"], x["stage"] or ""))
+    names = {x["name"] for x in stages}
+    return {"stages": stages,
+            # More than one villain named in a set means alternates to
+            # choose between, not a longer fight.
+            "branching": len(names) > 1 or bool(alternates),
+            "collapsed_duplicates": alternates}
+
+
+def _density(cards: list[dict], size: int) -> dict:
+    """Card-type mix as a share of the deck.
+
+    Minion density ranges from 0% to 42% across the scenarios, median
+    21%, and three have no minions at all -- so a hero who needs minions
+    to function and one who drowns in them are answering very different
+    questions, which a raw count hides.
+    """
+    if not size:
+        return {}
+    out = {}
+    for t in ("minion", "treachery", "side_scheme", "attachment",
+              "environment"):
+        n = sum(c["quantity"] for c in cards if c["type_code"] == t)
+        if n:
+            out[t] = {"copies": n, "pct": round(n * 100 / size)}
     return out
 
 
@@ -617,6 +729,38 @@ def _line(step: dict) -> None:
         f"{k}:{v}" for k, v in b["histogram"].items()))
     print(f"    minions {m['copies']}, treacheries {t['copies']}, "
           f"side schemes {ss['copies']} ({ss['threat_total']} threat)")
+    den = step.get("density") or {}
+    if den:
+        # A share of the deck, because the counts are not comparable
+        # across scenarios: minion density runs 0% to 42%, and three
+        # scenarios hold none at all.
+        print("    of the deck: " + ", ".join(
+            f"{k.replace('_', ' ')} {v['pct']}%" for k, v in den.items()))
+    opp = step.get("opposition") or {}
+    if opp.get("stages"):
+        ladder = "  ".join(
+            f"{x['stage'] or '-'}:{x['health']}" for x in opp["stages"])
+        print(f"    villain hit points by stage: {ladder}"
+              + ("  (per hero, scaled to this table)"
+                 if any(x["per_hero"] for x in opp["stages"]) else ""))
+        # Not summed on purpose: a scenario plays a subset of its printed
+        # stages, and the set may hold alternates rather than a longer
+        # fight.
+        note = "most scenarios play two of these; some three"
+        if opp["branching"]:
+            note += (f", and this set holds alternates "
+                     f"({opp['collapsed_duplicates']} duplicate stage "
+                     f"card(s) collapsed) - you face one, not all")
+        print(f"      {note}")
+    win = step.get("win_condition") or {}
+    if win:
+        if win.get("undefeatable"):
+            names = ", ".join(sorted({c["name"] for c in win["undefeatable"]}))
+            print(f"      {names} carries text saying it cannot be defeated "
+                  f"- read the card before treating hit points as the goal")
+        if win.get("scheme_win"):
+            print("      a main scheme here states a win condition of its "
+                  "own; this scenario may not be won by damage")
     # Printed and conditional surge are never summed: the condition is the
     # whole point of a card that says "this card gains surge".
     sg = step["surge"]
