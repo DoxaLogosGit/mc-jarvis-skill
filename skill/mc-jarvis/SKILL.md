@@ -249,6 +249,37 @@ Two traps worth knowing before you answer a question about them:
   cards under the same names. `card show` and `assess` key on codes and
   will ask you to disambiguate; take the code rather than guessing.
 
+## Proposing a deck for a scenario
+
+There is no `propose` command, and there should not be: the commands emit
+facts, and choosing cards is the judgement you are here to supply. The
+pieces are all present, in this order.
+
+1. **Read what the scenario asks.** `mc-jarvis assess <scenario>` now
+   prints its printed keyword load across the whole scenario, villain side
+   included, plus any card that grants a keyword to every minion. Do this
+   first: `Zola` wants an answer to retaliate on all three villain stages,
+   `Batroc` prints no toughness at all and hands it to every minion.
+2. **Look up what actually answers it** — `mc-jarvis rules show <keyword>`.
+   The answer is usually not the keyword's own name. Piercing answers
+   Tough; ranged answers retaliate; non-attack damage walks past Guard.
+3. **Find the cards** with `card search --text`, `--trait`, `--aspect`,
+   and `--owned` if a collection is set. Search for the *mechanism* from
+   step 2, never the keyword you started from.
+4. **Write the deck as JSON** — `{"name":…, "hero_code":…, "slots":{code:
+   n}}` — and run `mc-jarvis deck check <file>`. It enforces size, copy
+   limits, aspect, uniqueness and signature cards, so a proposal that
+   cannot legally be played is caught before you offer it.
+5. **Close the loop** with `mc-jarvis assess <scenario> --deck <file>`,
+   which sets your deck's answers beside the scenario's demands.
+
+Never skip 4. A deck you assembled by reasoning is a hypothesis; `check`
+is the only thing that knows whether it is legal.
+
+Two things the numbers will not tell you, so say them yourself: a count is
+a ceiling and not a rate, and a hero whose kit is built on a mechanic —
+Colossus with tough, Deadpool with acceleration — is not deficient in it.
+
 ## Staleness
 
 Check `mc-jarvis status`. If the index is more than 14 days old, mention

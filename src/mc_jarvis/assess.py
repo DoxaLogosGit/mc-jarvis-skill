@@ -381,6 +381,14 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
         # Ebony Maw, whose eight surging Spell environments are 24% of the
         # deck, reported a surge rate of 0%.
         "surge": _surge(conn, cards),
+        # What the scenario asks a deck to answer, villain side included.
+        # `minion keywords` alone reported toughness 1 for Mansion Attack,
+        # whose real load is 9 with 8 of them on villains -- so a reader
+        # choosing a deck saw an 89% understatement of the thing the
+        # scenario is built around. These were reachable only through
+        # `--deck`, which is backwards: you cannot build a deck against
+        # demands you can only see once you have one.
+        "demands": _demands(conn, cards, scenario),
         "minions": _minions(conn, cards),
         "treacheries": _treacheries(conn, cards),
         "side_schemes": _side_schemes(cards, scenario.players),
@@ -456,6 +464,29 @@ def _minions(conn, cards: list[dict]) -> dict:
         "granted_keywords": _keyword_copies(conn, rows, printed=False),
         "cards": _named(rows),
     }
+
+
+# The keywords a deck can be built to answer. Each is a printed property
+# of the scenario, not an opinion about a deck (§3).
+DEMAND_KEYWORDS = ("toughness", "guard", "patrol", "retaliate", "quickstrike")
+
+
+def _demands(conn, cards: list[dict], scenario: Scenario) -> dict:
+    """Printed keyword load, split villain from everything else.
+
+    Villain stages are not encounter-deck rows, so they must be added
+    back: reading `cards` alone reported zero villain retaliate for Zola,
+    who prints it on all three stages (design §10.11).
+    """
+    from . import crossref
+
+    rows = list(cards) + crossref.villain_rows(conn, _sets(scenario))
+    out = {}
+    for kw in DEMAND_KEYWORDS:
+        got = crossref.scenario_keyword(conn, rows, kw)
+        if got["total"] or got["global_grants"]:
+            out[kw] = got
+    return out
 
 
 def _surge(conn, cards: list[dict]) -> dict:
@@ -597,6 +628,26 @@ def _line(step: dict) -> None:
     if m["keywords"]:
         print("    minion keywords: " + ", ".join(
             f"{k} {v}" for k, v in sorted(m["keywords"].items())))
+    dem = step.get("demands") or {}
+    if dem:
+        parts = []
+        for kw, v in dem.items():
+            if not v["total"]:
+                # Batroc prints no toughness at all and hands it to every
+                # minion from a side scheme. Listing "toughness 0" beside
+                # that grant reads as a contradiction; the grant is the
+                # whole story.
+                continue
+            bit = f"{kw} {v['total']}"
+            if v["villain"]:
+                bit += f" ({v['villain']} on the villain)"
+            parts.append(bit)
+        if parts:
+            print("    printed across the whole scenario: " + ", ".join(parts))
+        for kw, v in dem.items():
+            for g in v["global_grants"]:
+                print(f"      {g['name']} grants {kw} to every minion"
+                      + (" (none prints it)" if not v["total"] else ""))
 
 
 def handle(args) -> int:

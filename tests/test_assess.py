@@ -690,3 +690,28 @@ def test_a_leader_scenario_states_that_setup_differs_by_mode():
     assert any("cooperatively by default" in c for c in got)
     # A villain scenario says nothing about modes.
     assert assess.caveats(sc, ["zola", "under_attack"], config={}) == []
+
+
+def test_the_scenario_states_its_keyword_load_without_a_deck(real_index):
+    """`minion keywords` counts minions only, so Mansion Attack reported
+    toughness 1 against a real load of 9, eight of them on villains. The
+    full figure was reachable only through `--deck`, which is backwards:
+    a deck cannot be built against demands that appear only once you
+    have one."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Mansion Attack", players=1)
+    got = assess.profile(real_index, sc)["demands"]
+    assert got["toughness"]["total"] == 9
+    assert got["toughness"]["villain"] == 8
+
+
+def test_a_global_grant_is_reported_even_when_nothing_prints_it(real_index):
+    """Batroc prints no toughness and hands it to every minion from a
+    side scheme. A count alone misses the scenario's whole shape."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Batroc", players=1)
+    tough = assess.profile(real_index, sc)["demands"]["toughness"]
+    assert tough["total"] == 0
+    assert [g["name"] for g in tough["global_grants"]] == ["Batroc's Brigade"]
