@@ -37,3 +37,22 @@ def test_handle_returns_nonzero_only_on_hard_failure(monkeypatch, tmp_path):
 
     monkeypatch.setattr(doctor, "has_fts5", lambda: False)
     assert doctor.handle(Args()) == 1
+
+
+def test_a_data_dir_that_does_not_exist_yet_is_not_a_failure(tmp_path,
+                                                             monkeypatch):
+    """`doctor` is the first command a new user runs, and on a machine
+    where neither the data dir nor its parent existed it reported a hard
+    FAIL. `init` creates the whole chain, so the question is whether the
+    nearest existing ancestor is writable."""
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "never" / "made"))
+    got = {c.name: c for c in doctor.run_checks(network=False)}
+    assert got["data-dir"].ok
+    assert "will be created" in got["data-dir"].detail
+
+
+def test_an_unwritable_data_dir_is_still_a_failure(tmp_path, monkeypatch):
+    """The relaxation must not swallow a real permissions problem."""
+    monkeypatch.setenv("XDG_DATA_HOME", "/proc/nope")
+    got = {c.name: c for c in doctor.run_checks(network=False)}
+    assert not got["data-dir"].ok

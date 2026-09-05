@@ -102,8 +102,19 @@ def run_checks(*, network: bool = True) -> list[Check]:
         hard=True))
 
     root = paths.data_dir()
-    probe = root if root.exists() else root.parent
-    checks.append(Check("data-dir", os.access(probe, os.W_OK), str(root),
+    # Walk to the nearest ancestor that exists, rather than looking one
+    # level up. `init` creates the whole chain with `parents=True`, so the
+    # question is whether the first real directory above it is writable.
+    # Probing only the parent reported a hard FAIL on any machine where
+    # neither the data dir nor its parent existed yet -- a fresh container,
+    # or a custom XDG_DATA_HOME - which is the state `doctor` exists to
+    # inspect, and it is the first command a new user runs.
+    probe = root
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    checks.append(Check("data-dir", os.access(probe, os.W_OK),
+                        str(root) + ("" if root.exists()
+                                     else "  - will be created by `init`"),
                         hard=True))
 
     db = paths.db_path()
