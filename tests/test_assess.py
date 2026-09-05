@@ -657,15 +657,17 @@ def test_two_scenarios_sharing_a_name_are_reported_not_guessed(tmp_path):
     assert assess.resolve(conn, "registration").scenario_set == "registration"
 
 
-def test_the_pvp_scenarios_are_not_typed_villain(tmp_path):
+def test_the_leader_scenarios_are_not_typed_villain(real_index):
     """`card_set_type_code = 'villain'` is not the test for "is a
-    scenario": Civil War and Synthezoid Smackdown are hero-versus-hero,
-    typed `main_scheme`, and contain no villain at all. Resolution keys on
-    having a main scheme instead."""
-    from mc_jarvis import index, paths
+    scenario": Civil War and Synthezoid Smackdown contain no villain at
+    all, are typed `main_scheme`, and their opposition is a leader.
+    Resolution keys on having a main scheme instead.
 
-    conn = index.connect(paths.db_path())
-    kinds = {r["card_set_type_code"] for r in conn.execute(
+    Uses `real_index` rather than `paths.db_path()` directly: this asserts
+    a fact about the published card data, so it must SKIP where no index
+    has been built instead of failing. Reading the live index without the
+    fixture is what broke CI."""
+    kinds = {r["card_set_type_code"] for r in real_index.execute(
         "SELECT card_set_type_code FROM sets WHERE code IN "
         "('registration', 'resistance', 'synthezoid_registration')")}
     assert kinds == {"main_scheme"}
