@@ -301,10 +301,12 @@ def notes(conn, deck) -> list[Finding]:
         out.append(Finding(
             rule="leader", ok=True, kind="note", cards=leaders,
             detail=f"{len(leaders)} card(s) from a leader set - "
-                   f"{', '.join(leaders)}. These act on a leader you "
-                   f"control, which exists only in a scenario where a "
-                   f"leader is chosen. Outside one they do nothing, and no "
-                   f"rule this tool encodes forbids them."))
+                   f"{', '.join(leaders)}. These are never deckbuilt: they "
+                   f"are set aside and earned during a competitive game. "
+                   f"In cooperative play - the normal mode for these "
+                   f"scenarios - a card referring to your own leader "
+                   f"cannot be resolved at all. No rule this tool encodes "
+                   f"forbids them; see `mc-jarvis rules search leader`."))
 
     if found:
         # `deck_limit` on a campaign card counts the copies the BOX holds

@@ -311,10 +311,11 @@ def caveats(scenario: Scenario, sets: list[str],
     # cannot infer, so it is stated rather than silently picked.
     if any(s_.endswith("_leader") for s_ in sets):
         out.append(
-            "this scenario is playable competitively or cooperatively, and "
-            "setup differs: the competitive side scheme is revealed in one "
-            "and the leader's own in the other, so one side scheme below is "
-            "not the one you will face")
+            "this scenario is played cooperatively by default and "
+            "competitively as an option, and setup differs between them: "
+            "one reveals the leader's own side scheme and the other a "
+            "competitive one, so a side scheme counted below is not the "
+            "one you will face")
     for code, entry in (config.get("adds_during_play") or {}).items():
         over = (entry or {}).get("overstates_opening_deck")
         if over and code in sets:

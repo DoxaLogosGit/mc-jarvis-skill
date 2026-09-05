@@ -2160,6 +2160,28 @@ to.
   a player **cannot use a hero sharing a title with the chosen leader** —
   which is the name-collision problem of §14.13 as a printed rule.
 
+#### Cooperative is the default mode, and the book says the leader IS the villain
+
+An earlier framing here treated these as competitive scenarios. They are
+not. The pack supports co-op at 1–4 players and presents it as the
+ordinary rules plus a short list of clarifications; competitive is the
+option, and it is the mode that gets its own chapter. Nothing should
+describe one of these scenarios as competitive-only.
+
+That clarification list also **closes the question §14.13 left open**.
+Asked whether it was enough to record that leaders act as the villain and
+are functionally equivalent, the answer is now sourced rather than
+inferred: in cooperative play the leader stands in for the villain for
+every rule and ability that names one. It is an equivalence by rule, not
+by analogy — and the measured caveat still holds, since a leader *set*
+carries four player cards where a villain set carries none.
+
+Two more clarifications follow from the same list: abilities aimed at an
+opposing team resolve under the grim rule, and an ability acting on a
+leader of your own has no effect in co-op, since you control none. That
+last one is why the four `basic` cards in a leader set are inert outside a
+competitive game, and it is now what `deck check` says about them.
+
 #### The corpus grew, and the policy checker caught the README
 
 Adding a source document is not free: `README.md` began failing the

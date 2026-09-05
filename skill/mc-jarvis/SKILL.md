@@ -214,6 +214,17 @@ the Synthezoid Smackdown rulebook, which `init` fetches alongside the
 Rules Reference. **Look them up there rather than reasoning from the
 cards**: `mc-jarvis rules search leader`.
 
+**These are cooperative scenarios first.** Co-op is supported at 1–4
+players and plays by the ordinary rules, with a short list of
+clarifications; competitive is the option and gets its own chapter. Do
+not describe one of these scenarios as competitive-only.
+
+The book also settles the equivalence rather than leaving it to analogy:
+in co-op the leader takes the villain's place for every rule and ability
+that names one. Two clarifications ride along — abilities aimed at the
+opposing team resolve under the grim rule, and an ability that acts on a
+leader of your own has no effect, since you control none.
+
 What the index can tell you without a lookup:
 
 - `mc-jarvis encounter <leader set>` prints **Leader stages**, the same
@@ -227,10 +238,12 @@ What the index can tell you without a lookup:
 Two traps worth knowing before you answer a question about them:
 
 - **A leader set is not a pure encounter set.** Each carries four `basic`
-  player cards, where a villain set carries none. They are not deckbuilt —
-  the rulebook says how they are earned during play, in competitive mode
-  only — so `deck check` reports them as a note rather than a failure, and
-  a deck listing them is legal by every rule this tool encodes.
+  player cards, where a villain set carries none. They are never
+  deckbuilt: they are set aside during competitive setup and two are
+  earned by defeating a side scheme. In cooperative play they cannot be
+  resolved at all. `deck check` reports them as a note rather than a
+  failure, and a deck listing them is legal by every rule this tool
+  encodes.
 - **Names collide in both directions.** A leader set is named after a
   hero, and a scenario box may reprint a hero's own cards as encounter
   cards under the same names. `card show` and `assess` key on codes and

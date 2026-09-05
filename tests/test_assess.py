@@ -683,6 +683,8 @@ def test_a_leader_scenario_states_that_setup_differs_by_mode():
         difficulty="standard", players=1, heroic=0, nemesis=[],
         modular_kind="open", pool=[], growth="", max_draws=None)
     got = assess.caveats(sc, ["registration", "iron_man_leader"], config={})
-    assert any("competitively or cooperatively" in c for c in got)
+    # Cooperative is the default mode and competitive the option, which is
+    # the order the rulebook presents them in.
+    assert any("cooperatively by default" in c for c in got)
     # A villain scenario says nothing about modes.
     assert assess.caveats(sc, ["zola", "under_attack"], config={}) == []
