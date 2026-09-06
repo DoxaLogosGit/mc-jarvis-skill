@@ -958,3 +958,35 @@ def test_permanent_attachments_stay_out_of_the_board_line(real_index):
     board = assess.profile(real_index, sc)["win_condition"].get(
         "permanent_board", [])
     assert "Flight" not in {c["name"] for c in board}
+
+
+def test_a_nemesis_set_is_not_a_modular(real_index):
+    """A nemesis set is at the table because of who is playing, not what
+    is being played (RR p.30). Accepting it as a modular reported it as
+    "recommended, not required" for a scenario that never sees it."""
+    from mc_jarvis import assess
+
+    with pytest.raises(assess.UnknownScenario) as err:
+        assess.resolve(real_index, "Rhino", modular=["phoenix_nemesis"])
+    assert "--nemesis" in str(err.value)
+
+
+def test_a_nemesis_loss_says_whose_problem_it_is(real_index):
+    """Consume the World belongs in the picture only when a Phoenix
+    player is at the table. Reported without that, it reads as part of
+    the scenario every group faces."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", nemesis=["phoenix_nemesis"])
+    loss, = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
+    assert loss["name"] == "Consume the World"
+    assert loss["from_nemesis"] is True
+    assert loss["permanent"] == {"how": "printed"}
+
+
+def test_a_scenario_loss_is_not_marked_as_a_nemesis_one(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "project_wideawake")
+    loss, = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
+    assert loss["from_nemesis"] is False

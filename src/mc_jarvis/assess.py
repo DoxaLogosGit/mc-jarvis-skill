@@ -191,6 +191,18 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
     suggested = [m for m in mapped if m["kind"] != "required"]
     kind = suggested[0]["kind"] if suggested else "required"
     if modular is not None:
+        # A nemesis set arrives with a hero, not with a scenario (RR
+        # p.30), so it is not a set the table can choose to face. The
+        # data types all 69 of them, so this needs no guesswork.
+        wrong = [m for m in modular if conn.execute(
+            "SELECT 1 FROM sets WHERE code = ? "
+            "AND card_set_type_code = 'nemesis'", (m,)).fetchone()]
+        if wrong:
+            raise UnknownScenario(
+                f"{', '.join(wrong)} - a nemesis set is not a modular. It "
+                f"comes with the player whose hero owns it rather than "
+                f"with the scenario, so it cannot be chosen for one. Pass "
+                f"it with --nemesis to say who is at the table.")
         # An explicit list REPLACES the suggestion (§6).
         modulars = required + [m for m in modular if m not in required]
     else:
@@ -618,6 +630,8 @@ def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
             out["scheme_win"].append(entry)
     population = _loss_population(conn, scenario)
     fixed = _permanence(conn, scenario, population)
+    nemesis_sets = {r["code"] for r in conn.execute(
+        "SELECT code FROM sets WHERE card_set_type_code = 'nemesis'")}
     for r in population:
         kind = _alternate_loss(r["text"] or "")
         if kind:
@@ -626,13 +640,18 @@ def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
                  "type": r["type_code"], "set": r["set_code"], "kind": kind,
                  # A losing condition on a card that can be cleared off
                  # the table is a different problem from one that cannot.
-                 "permanent": fixed.get(r["name"])})
+                 "permanent": fixed.get(r["name"]),
+                 # Whose problem this is. A nemesis set is at the table
+                 # because somebody chose that hero, so the condition is
+                 # not part of the scenario every group will face.
+                 "from_nemesis": r["set_code"] in nemesis_sets})
     # Side schemes and environments only. A permanent attachment on the
     # villain is how most keyword-granting modulars work, so listing
     # those would bury the handful of cards that hold a board space for
     # the whole game.
     out["permanent_board"] = [
-        {"name": r["name"], "type": r["type_code"], **fixed[r["name"]]}
+        {"name": r["name"], "type": r["type_code"],
+         "from_nemesis": r["set_code"] in nemesis_sets, **fixed[r["name"]]}
         for r in population
         if r["name"] in fixed
         and r["type_code"] in ("side_scheme", "environment")]
@@ -952,6 +971,7 @@ def _line(step: dict) -> None:
                   " - see " + ", ".join(sorted({c["name"]
                                                 for c in named})))
             for c in named:
+                _nemesis_line(c)
                 _permanence_line(c)
         for c in win.get("permanent_board", []):
             if any(x["name"] == c["name"]
@@ -961,6 +981,7 @@ def _line(step: dict) -> None:
                    else f"granted by {c['by']}")
             print(f"      {c['name']} holds a board space all game "
                   f"- permanent, {how}")
+            _nemesis_line(c)
     # Printed and conditional surge are never summed: the condition is the
     # whole point of a card that says "this card gains surge".
     sg = step["surge"]
@@ -1070,6 +1091,12 @@ def handle(args) -> int:
     print(f"{scenario.scenario_set} - {scenario.difficulty}, "
           f"{scenario.players} player(s)")
     print(f"  modular sets: {', '.join(scenario.modulars) or 'none'}{label}")
+    if scenario.nemesis:
+        # Printed separately from the modulars because it is not the same
+        # kind of choice: these sets are at the table because of who is
+        # playing, not because of what is being played.
+        print(f"  nemesis sets: {', '.join(scenario.nemesis)} "
+              f"(set aside by the player whose hero owns them)")
     if scenario.pool:
         print(f"  grows during play, drawing from: "
               f"{', '.join(scenario.pool)}")
@@ -1090,6 +1117,19 @@ def handle(args) -> int:
                       f"{scenario.players} players)")
             _crossref_line(step["crossref"])
     return 0
+
+
+def _nemesis_line(card: dict) -> None:
+    """Say when a finding belongs to a player rather than to the table.
+
+    A nemesis set is set aside by the player whose hero owns it (RR
+    p.30). It reaches the game because somebody picked that hero, so the
+    same scenario played by anyone else never sees the card at all.
+    """
+    if card.get("from_nemesis"):
+        print(f"        {card['name']} arrives with the hero whose nemesis "
+              f"set this is, not with the scenario - another table playing "
+              f"the same scenario never faces it")
 
 
 def _permanence_line(card: dict) -> None:

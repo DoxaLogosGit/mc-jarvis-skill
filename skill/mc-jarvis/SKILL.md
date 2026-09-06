@@ -344,6 +344,12 @@ Five things to carry into any answer:
   this scenario. Only Project Wideawake grants it — Operation Zero
   Tolerance is an ordinary side scheme in every other deck it appears
   in, so do not carry that scenario's difficulty over to the modular.
+- **A nemesis set is a player's, not the scenario's.** Every identity
+  comes with one and the player sets it aside; it reaches the game
+  because of who is at the table. Pass it with `--nemesis`, never
+  `--modular`, and when a finding is marked as coming from one, say
+  whose it is — Consume the World is only Phoenix's problem, and the
+  same scenario played by anyone else never sees it.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

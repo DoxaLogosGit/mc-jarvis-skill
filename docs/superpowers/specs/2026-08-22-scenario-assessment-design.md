@@ -1456,3 +1456,38 @@ would bury the seven side schemes that really do hold a space all game.
 **The test that proves the feature** runs the same modular twice — under
 Project Wideawake and under another scenario — and asserts the two
 different answers. A single-scenario test would have passed on a constant.
+
+### 14.17 A nemesis set belongs to a player, not to a scenario
+
+§14.16 reported Consume the World alongside the Executive Board
+attachments as though both were scenario facts. They are not the same
+kind of fact. `phoenix_nemesis` is a **nemesis** set: it is at the table
+because someone chose Phoenix, and another group playing the same
+scenario never sees the card.
+
+Two entries settle it. **Nemesis Encounter Set** (RR p.30): every
+identity comes with one, and each player sets their own aside, out of
+play, at the start of the game. **Obligation** (RR p.30): the obligation
+cards *are* shuffled into the encounter deck at setup — and 69 of the 72
+obligations live in **hero** sets rather than nemesis sets, so a nemesis
+set generally contributes nothing to the opening deck at all.
+
+**The data types this already.** `sets.card_set_type_code` marks all 69,
+so nothing here needed inferring from the `_nemesis` name suffix.
+
+**Two defects fixed:**
+
+1. `--modular <nemesis set>` was accepted and rendered as "recommended,
+   not required". `resolve` already refused a nemesis set passed as the
+   *villain* argument and already had `--nemesis` and `Scenario.nemesis`;
+   the modular argument simply never got the same check.
+2. Findings carried no source. A loss or a permanent card coming from a
+   nemesis set now says so, and `--nemesis` appears in the header, which
+   it previously did not — the sets were counted invisibly.
+
+**A third defect, found and not fixed.** All three `phoenix_nemesis`
+cards are counted in the opening deck, and RR p.30 sets all three aside.
+The overstatement is the same shape as `dreadpool`, which `caveats()`
+already handles through the `adds_during_play` config, so the fix is
+config rather than code. Left for a decision because it is a different
+question from the one this pass answers.
