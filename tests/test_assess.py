@@ -849,3 +849,57 @@ def test_a_variable_target_is_a_marker_not_a_number(real_index):
     ms = assess.profile(real_index, sc)["main_scheme"]
     assert ms["stages"][0]["variable"] is True
     assert ms["stages"][0]["target"] is None
+
+
+def test_the_ordinary_way_of_losing_is_not_a_finding(real_index):
+    """Every scenario ends if the main scheme deck runs out, so that is
+    the baseline. Reporting it would put a line on all 53 of them and
+    tell the reader nothing."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Crossbones", difficulty="expert")
+    assert "alternate_loss" not in assess.profile(real_index, sc)["win_condition"]
+
+
+def test_alternate_losses_are_found_across_the_whole_pool(real_index):
+    """Pinned as a count, because the failure mode here is a pattern that
+    quietly widens: an earlier draft matched 86 cards, nearly all of them
+    the ordinary clause it was written to exclude."""
+    from mc_jarvis import assess
+
+    found = {}
+    for row in real_index.execute("SELECT * FROM cards WHERE is_reprint = 0"):
+        kind = assess._alternate_loss(row["text"] or "")
+        if kind:
+            found[row["name"]] = kind
+    assert len(found) == 26
+    assert found["Operation Zero Tolerance"] == "counter"
+    assert found["Odin"] == "protect"
+    assert found["Upgrading Adaptoids"] == "depletion"
+    assert found["Lower Manhattan"] == "card_count"
+    # The stage that says the game ends when it completes, and nothing else.
+    assert "The Getaway" not in found
+
+
+def test_a_compound_condition_keeps_its_second_half(real_index):
+    """Two scenarios end either the ordinary way or because a group of
+    allies is gone. Stripping the ordinary clause has to leave the rest
+    of the sentence standing."""
+    from mc_jarvis import assess
+
+    for name in ("Extract Captives", "Mutant Massacre"):
+        row = real_index.execute(
+            "SELECT text FROM cards WHERE name = ? AND text LIKE '%lose the game%'",
+            (name,)).fetchone()
+        assert assess._alternate_loss(row["text"]) == "protect"
+
+
+def test_a_loss_printed_outside_the_encounter_deck_is_still_found(real_index):
+    """Project Wideawake states its second losing condition on a side
+    scheme that starts in play, from a modular the scenario requires
+    without the caller naming it."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "project_wideawake")
+    losses = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
+    assert [c["name"] for c in losses] == ["Operation Zero Tolerance"]

@@ -505,6 +505,35 @@ def _demands(conn, cards: list[dict], scenario: Scenario) -> dict:
 _UNDEFEATABLE = re.compile(r"cannot be defeated", re.I)
 _SCHEME_WIN = re.compile(r"players win", re.I)
 
+_LOSES = re.compile(r"lose the game", re.I)
+# The ordinary way a game is lost: the main scheme deck runs out. Every
+# scenario has this, so it is the baseline, not a finding. Stripping the
+# clause first is what lets a compound sentence keep its second half.
+_ORDINARY_LOSS = re.compile(
+    r"if this (?:stage|scheme) is completed"
+    r"|when the main scheme is completed", re.I)
+# Four things a player has to track, in the order they must be tested:
+# `set-aside` before the ally probe, because both say "there are no".
+_LOSS_KIND = (
+    ("depletion", re.compile(r"set[- ]aside|remaining", re.I)),
+    ("protect", re.compile(r"leaves play|there are no [^,]*all(?:y|ies)"
+                           r"|was not defeated", re.I)),
+    ("card_count", re.compile(r"in play|victory display", re.I)),
+    ("counter", re.compile(r".", re.S)),
+)
+# What is left once the ordinary clause is gone has to be a real
+# trigger, so words carrying no condition are cleared away first.
+# Without this a bare ability label would read as a finding.
+_LOSS_FILLER = re.compile(
+    r"\b(?:the players|then|or|and|if)\b"
+    r"|forced (?:interrupt|response)|when revealed|[^\w]", re.I)
+_LOSS_LABEL = {
+    "counter": "a counter building up on one named card",
+    "card_count": "a number of cards reaching a threshold",
+    "protect": "a character who has to stay in play",
+    "depletion": "a set-aside supply running out",
+}
+
 
 def _main_scheme(conn, scenario: Scenario) -> dict:
     """The threat clock: what each stage needs before the villain wins.
@@ -571,7 +600,8 @@ def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
         f"SELECT * FROM cards WHERE set_code IN ({marks}) "
         f"AND type_code = 'main_scheme' AND is_reprint = 0", sets)]
     rows = list(cards) + crossref.villain_rows(conn, sets) + schemes
-    out: dict[str, list] = {"undefeatable": [], "scheme_win": []}
+    out: dict[str, list] = {"undefeatable": [], "scheme_win": [],
+                            "alternate_loss": []}
     for r in rows:
         text = r["text"] or ""
         entry = {"code": r["code"], "name": r["name"]}
@@ -579,7 +609,53 @@ def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
             out["undefeatable"].append(entry)
         if r["type_code"] == "main_scheme" and _SCHEME_WIN.search(text):
             out["scheme_win"].append(entry)
+    for r in _loss_population(conn, scenario):
+        kind = _alternate_loss(r["text"] or "")
+        if kind:
+            out["alternate_loss"].append(
+                {"code": r["code"], "name": r["name"],
+                 "type": r["type_code"], "set": r["set_code"], "kind": kind})
     return {k: v for k, v in out.items() if v}
+
+
+def _loss_population(conn, scenario: Scenario) -> list[dict]:
+    """Every card the scenario brings, not just the ones that get shuffled.
+
+    A losing condition is most often printed on something that starts in
+    play or waits off to one side -- an environment, a setup side scheme,
+    an ally the encounter set hands you -- so the encounter deck is the
+    wrong place to look for it. Reading `deck_cards` alone finds none of
+    the seventeen that sit outside it.
+    """
+    sets = _sets(scenario)
+    marks = ",".join("?" * len(sets))
+    return [dict(r) for r in conn.execute(
+        f"SELECT * FROM cards WHERE set_code IN ({marks}) AND is_reprint = 0",
+        sets)]
+
+
+def _alternate_loss(text: str) -> str | None:
+    """Classify a way of losing that the threat clock does not describe.
+
+    Only the mechanism is named, never the number. Unlike the target
+    threat, which upstream carries as a payload field, these thresholds
+    exist only in prose, and they do not share a scaling rule: several
+    are per-hero, while one is the player count plus three. Naming the
+    card sends the reader to the one place the number is correct.
+    """
+    from . import crossref
+
+    for raw in re.split(r"(?<=[.\n])", crossref._plain(text)):
+        if not _LOSES.search(raw):
+            continue
+        trigger = _ORDINARY_LOSS.sub("", _LOSES.split(raw)[0])
+        trigger = _LOSS_FILLER.sub(" ", trigger)
+        if not trigger.strip():
+            continue
+        for kind, pattern in _LOSS_KIND:
+            if pattern.search(trigger):
+                return kind
+    return None
 
 
 def _opposition(conn, scenario: Scenario) -> dict:
@@ -813,6 +889,17 @@ def _line(step: dict) -> None:
         if win.get("scheme_win"):
             print("      a main scheme here states a win condition of its "
                   "own; this scenario may not be won by damage")
+        for kind in _LOSS_LABEL:
+            named = [c for c in win.get("alternate_loss", [])
+                     if c["kind"] == kind]
+            if not named:
+                continue
+            # Grouped by mechanism because that is what the player has to
+            # keep an eye on; the threshold itself is printed on the card
+            # and is not scaled the same way from one to the next.
+            print(f"      another way to lose - {_LOSS_LABEL[kind]}"
+                  " - see " + ", ".join(sorted({c["name"]
+                                                for c in named})))
     # Printed and conditional surge are never summed: the condition is the
     # whole point of a card that says "this card gains surge".
     sg = step["surge"]

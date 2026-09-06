@@ -327,6 +327,16 @@ Five things to carry into any answer:
   say it surges 86% of the time. Never add them together.
 - **Difficulty changes the numbers.** Omitting the difficulty set
   understates the boost curve; Expert's three cards average boost 2.3.
+- **"Another way to lose" is not a footnote.** Every scenario ends if the
+  main scheme deck runs out, so `assess` prints the threat clock for all
+  of them. Twenty-six cards state a *second* losing condition, and it is
+  usually the one that actually kills the table: Project Wideawake ends
+  on cards piling up under a side scheme, not on threat. The line names
+  the card and the kind of thing to watch — a counter, a count of cards,
+  a character who must stay alive, a supply running out — and stops
+  there, because the threshold is printed only on the card and the
+  scenarios do not scale it the same way. Tell the player to read that
+  card; do not invent the number.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

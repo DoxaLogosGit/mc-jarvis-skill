@@ -1369,3 +1369,49 @@ The user's own reading of Crossbones is what this exposes: three stages at
 **3, 6 and 5** at one player, each gaining 1 per villain phase, with the
 last stage named *The Getaway*. Against 5 acceleration icons that is a
 race, and no amount of villain hit points would have said so.
+
+### 14.15 The second losing condition, and why the number stays on the card
+
+Every scenario ends when the main scheme deck runs out, and §14.14 gave
+that clock a number. Twenty-six cards state a *different* way to lose,
+and until now `assess` said nothing about any of them.
+
+**Where they are printed.** Sixteen of the twenty-six sit outside the
+encounter deck: environments, allies the encounter set hands the
+players, side schemes revealed during setup. `deck_cards` finds none of
+those, so `_loss_population` reads every non-reprint card in the
+scenario's sets instead. This is the §10.5 population error again —
+neither villains nor main schemes are encounter-deck rows, and neither
+are these.
+
+**Four mechanisms, because four different things get tracked:**
+
+| kind | what the player watches |
+| --- | --- |
+| `counter` | a quantity building on one named card |
+| `card_count` | a number of cards reaching a threshold |
+| `protect` | a character who has to stay in play |
+| `depletion` | a set-aside supply running out |
+
+**The threshold is deliberately not extracted.** The target threat was a
+structured field upstream; these numbers exist only in prose, and they
+do not share a scaling rule. Several are per-hero. One is the player
+count plus three. A per-hero multiply would be silently wrong at every
+table size but one, so the output names the card and the mechanism and
+sends the reader to the only place the number is right.
+
+**The detection rule.** A sentence is ordinary if stripping "if this
+stage/scheme is completed" leaves no trigger behind; the strip runs
+before the test so a compound sentence keeps its second half. Two
+scenarios need that — Batroc's Extract Captives and Morlock Siege's
+Mutant Massacre both end either the ordinary way *or* because a group of
+allies is gone.
+
+An earlier draft of this matched 86 cards, nearly all of them the very
+clause it was written to exclude, because it tested whether the phrase
+survived the strip rather than whether a condition did. The count is
+pinned in a test for that reason — the same guard the Guard 61→60 miscount
+earned.
+
+**Not built, and why.** Setup text appears on nearly every main scheme,
+so flagging it would mark all 53 scenarios and separate nothing.
