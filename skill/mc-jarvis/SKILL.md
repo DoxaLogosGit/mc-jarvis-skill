@@ -337,6 +337,13 @@ Five things to carry into any answer:
   there, because the threshold is printed only on the card and the
   scenarios do not scale it the same way. Tell the player to read that
   card; do not invent the number.
+- **Ask whether the losing card can be got rid of.** A second losing
+  condition on a side scheme you can defeat is a chore; the same
+  condition on a **permanent** card is a clock. `assess` says which, and
+  distinguishes a card that prints the keyword from one granted it by
+  this scenario. Only Project Wideawake grants it — Operation Zero
+  Tolerance is an ordinary side scheme in every other deck it appears
+  in, so do not carry that scenario's difficulty over to the modular.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

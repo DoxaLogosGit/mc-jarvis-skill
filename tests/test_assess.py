@@ -903,3 +903,58 @@ def test_a_loss_printed_outside_the_encounter_deck_is_still_found(real_index):
     sc = assess.resolve(real_index, "project_wideawake")
     losses = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
     assert [c["name"] for c in losses] == ["Operation Zero Tolerance"]
+
+
+def test_the_same_modular_is_permanent_in_one_scenario_only(real_index):
+    """Operation Zero Tolerance is an ordinary side scheme that can be
+    thwarted down and defeated. Project Wideawake's main scheme grants it
+    permanent, and that grant is what turns its losing condition into a
+    clock nothing can stop. One card, two states, decided by the pairing."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "project_wideawake")
+    loss, = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
+    assert loss["name"] == "Operation Zero Tolerance"
+    assert loss["permanent"] == {"how": "granted",
+                                 "by": "Night of the Sentinels"}
+
+    elsewhere = assess.resolve(real_index, "Rhino", modular=["zero_tolerance"])
+    other, = assess.profile(real_index,
+                            elsewhere)["win_condition"]["alternate_loss"]
+    assert other["name"] == "Operation Zero Tolerance"
+    assert other["permanent"] is None
+
+
+def test_permanence_by_grant_is_a_single_card(real_index):
+    """Anchoring the pattern to a sentence start is what keeps it honest:
+    matching anywhere caught trailing fragments of the preceding clause on
+    most cards that say "gains" at all."""
+    from mc_jarvis import assess
+
+    granted = [r["name"] for r in real_index.execute(
+        "SELECT name, text FROM cards WHERE is_reprint = 0 AND text LIKE '%permanent%'")
+        if assess._GAINS_PERMANENT.findall(assess._plain(r["text"]))]
+    assert granted == ["Night of the Sentinels"]
+
+
+def test_a_printed_permanent_loss_card_is_marked_too(real_index):
+    """Project Wideawake is the only granted case, not the only fixed one.
+    The Executive Board's attachments print the keyword themselves."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino",
+                        modular=["s.h.i.e.l.d._executive_board"])
+    losses = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
+    assert {c["permanent"]["how"] for c in losses} == {"printed"}
+
+
+def test_permanent_attachments_stay_out_of_the_board_line(real_index):
+    """Flight, Telepathy and Super Strength are permanent attachments on
+    the villain -- that is how keyword modulars are built, so listing them
+    would bury the few cards that really do hold a board space."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", modular=["flight"])
+    board = assess.profile(real_index, sc)["win_condition"].get(
+        "permanent_board", [])
+    assert "Flight" not in {c["name"] for c in board}

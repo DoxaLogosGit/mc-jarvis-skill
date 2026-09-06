@@ -1415,3 +1415,44 @@ earned.
 
 **Not built, and why.** Setup text appears on nearly every main scheme,
 so flagging it would mark all 53 scenarios and separate nothing.
+
+### 14.16 A losing condition is only as bad as the card carrying it is hard to remove
+
+§14.15 named twenty-six second losing conditions and treated them alike.
+They are not alike. Operation Zero Tolerance is an ordinary side scheme:
+thwart it down, defeat it, the condition goes away with it. Project
+Wideawake's main scheme grants it **permanent**, and the same card
+becomes a clock nothing can stop.
+
+**Printed against granted, again.** `card_keywords` already carries the
+split, and it decides the answer here:
+
+- **printed** — the keyword travels with the set into every scenario that
+  uses it. Consume the World and the three Executive Board attachments
+  pair printed permanence with a losing condition.
+- **granted** — exactly one card in the pool grants permanence to another
+  by name, and it is Night of the Sentinels. So Project Wideawake is the
+  only scenario where the difficulty belongs to the *pairing* rather than
+  to the card.
+
+**The same-set exception was checked, not assumed.** Permanent (RR p.32)
+stops a card being defeated or removed *except* by abilities in its own
+set. `zero_tolerance` holds four cards and none of them can remove
+Operation Zero Tolerance; `phoenix_nemesis` holds three and none can
+remove Consume the World. The opening exists and is closed in both cases,
+which is why the output states the consequence rather than hedging it.
+
+**What permanence does not do.** It stops the card leaving play. It does
+not stop threat being taken off a permanent scheme, and the report does
+not claim otherwise — the counters differ from card to card (threat on
+Consume the World, facedown cards under Operation Zero Tolerance) and
+only the card says which.
+
+**The board line is restricted to side schemes and environments.** Most
+permanent encounter cards are attachments on the villain, which is simply
+how the keyword-granting modulars are built; listing Flight and Telepathy
+would bury the seven side schemes that really do hold a space all game.
+
+**The test that proves the feature** runs the same modular twice — under
+Project Wideawake and under another scenario — and asserts the two
+different answers. A single-scenario test would have passed on a constant.

@@ -527,6 +527,13 @@ _LOSS_KIND = (
 _LOSS_FILLER = re.compile(
     r"\b(?:the players|then|or|and|if)\b"
     r"|forced (?:interrupt|response)|when revealed|[^\w]", re.I)
+# One card in the whole pool grants permanent to another card by name,
+# and it is the reason this distinction is worth drawing at all. Anchored
+# to a sentence start: matching mid-sentence captured trailing fragments
+# of the previous clause on nearly every card that says "gains".
+_GAINS_PERMANENT = re.compile(
+    r"(?:^|(?<=[.\n]))\s*([A-Z][\w'\u2019.\-]*(?: [A-Z][\w'\u2019.\-]*)*)"
+    r" gains permanent", re.M)
 _LOSS_LABEL = {
     "counter": "a counter building up on one named card",
     "card_count": "a number of cards reaching a threshold",
@@ -609,13 +616,59 @@ def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
             out["undefeatable"].append(entry)
         if r["type_code"] == "main_scheme" and _SCHEME_WIN.search(text):
             out["scheme_win"].append(entry)
-    for r in _loss_population(conn, scenario):
+    population = _loss_population(conn, scenario)
+    fixed = _permanence(conn, scenario, population)
+    for r in population:
         kind = _alternate_loss(r["text"] or "")
         if kind:
             out["alternate_loss"].append(
                 {"code": r["code"], "name": r["name"],
-                 "type": r["type_code"], "set": r["set_code"], "kind": kind})
+                 "type": r["type_code"], "set": r["set_code"], "kind": kind,
+                 # A losing condition on a card that can be cleared off
+                 # the table is a different problem from one that cannot.
+                 "permanent": fixed.get(r["name"])})
+    # Side schemes and environments only. A permanent attachment on the
+    # villain is how most keyword-granting modulars work, so listing
+    # those would bury the handful of cards that hold a board space for
+    # the whole game.
+    out["permanent_board"] = [
+        {"name": r["name"], "type": r["type_code"], **fixed[r["name"]]}
+        for r in population
+        if r["name"] in fixed
+        and r["type_code"] in ("side_scheme", "environment")]
     return {k: v for k, v in out.items() if v}
+
+
+def _permanence(conn, scenario: Scenario, rows: list[dict]) -> dict:
+    """Which of the scenario's cards cannot be defeated or removed.
+
+    Two states, and the difference is the whole point. A card printing
+    the keyword carries it into every scenario that uses the set. A card
+    granted it by another card carries it only here -- exactly one card
+    in the pool does this, and the modular it targets is an ordinary
+    side scheme anywhere else, thwarted down and defeated like any other.
+
+    The Rules Reference (p.32) leaves an opening: abilities from the
+    card's own set can still remove it. Neither set that pairs permanence
+    with a losing condition holds such an ability, so the opening is
+    recorded here and not offered as an out.
+    """
+    printed = {r["code"] for r in conn.execute(
+        "SELECT code FROM card_keywords WHERE keyword = 'permanent' "
+        "AND printed = 1")}
+    out = {r["name"]: {"how": "printed"} for r in rows if r["code"] in printed}
+    by_name = {r["name"] for r in rows}
+    for r in rows:
+        for target in _GAINS_PERMANENT.findall(_plain(r["text"])):
+            if target in by_name and target not in out:
+                out[target] = {"how": "granted", "by": r["name"]}
+    return out
+
+
+def _plain(text: str | None) -> str:
+    from . import crossref
+
+    return crossref._plain(text)
 
 
 def _loss_population(conn, scenario: Scenario) -> list[dict]:
@@ -643,9 +696,7 @@ def _alternate_loss(text: str) -> str | None:
     are per-hero, while one is the player count plus three. Naming the
     card sends the reader to the one place the number is correct.
     """
-    from . import crossref
-
-    for raw in re.split(r"(?<=[.\n])", crossref._plain(text)):
+    for raw in re.split(r"(?<=[.\n])", _plain(text)):
         if not _LOSES.search(raw):
             continue
         trigger = _ORDINARY_LOSS.sub("", _LOSES.split(raw)[0])
@@ -900,6 +951,16 @@ def _line(step: dict) -> None:
             print(f"      another way to lose - {_LOSS_LABEL[kind]}"
                   " - see " + ", ".join(sorted({c["name"]
                                                 for c in named})))
+            for c in named:
+                _permanence_line(c)
+        for c in win.get("permanent_board", []):
+            if any(x["name"] == c["name"]
+                   for x in win.get("alternate_loss", [])):
+                continue
+            how = ("printed" if c["how"] == "printed"
+                   else f"granted by {c['by']}")
+            print(f"      {c['name']} holds a board space all game "
+                  f"- permanent, {how}")
     # Printed and conditional surge are never summed: the condition is the
     # whole point of a card that says "this card gains surge".
     sg = step["surge"]
@@ -1029,6 +1090,22 @@ def handle(args) -> int:
                       f"{scenario.players} players)")
             _crossref_line(step["crossref"])
     return 0
+
+
+def _permanence_line(card: dict) -> None:
+    """Say whether the losing condition can be cleared off the table.
+
+    A granted keyword is the interesting case: the same modular set is an
+    ordinary side scheme in every other scenario, so the difficulty
+    belongs to the pairing rather than to the card.
+    """
+    fixed = card.get("permanent")
+    if not fixed:
+        return
+    source = ("printed on the card" if fixed["how"] == "printed"
+              else f"granted by {fixed['by']}, not printed on the card")
+    print(f"        {card['name']} is permanent here ({source}), so it "
+          f"cannot be defeated or removed to end the condition")
 
 
 def _crossref_line(x: dict) -> None:
