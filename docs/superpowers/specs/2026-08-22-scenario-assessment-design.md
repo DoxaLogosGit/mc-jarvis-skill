@@ -1491,3 +1491,44 @@ The overstatement is the same shape as `dreadpool`, which `caveats()`
 already handles through the `adds_during_play` config, so the fix is
 config rather than code. Left for a decision because it is a different
 question from the one this pass answers.
+
+### 14.18 Whether a nemesis matters is a fact about the scenario, not the hero
+
+§14.17 left the opening-deck overstatement open. It is closed here, and
+the more useful half turned out to be the question underneath it.
+
+**The count.** A nemesis set is set aside out of play (RR p.30), so none
+of it belongs in the opening deck. `deck_cards` now drops the sets named
+by `--nemesis`, and `caveats` records what the plain count would hide:
+once something reveals a nemesis set, the rest of it is shuffled into the
+encounter deck and stays there.
+
+**The pull.** Twelve cards in the game can bring a nemesis set into play,
+and which of them are on the table decides whether a hero's nemesis is
+part of the game at all:
+
+| where | card | arrives |
+| --- | --- | --- |
+| `standard`, `standard_ii` | Shadow of the Past | only if drawn |
+| `standard_iii` | Pursued by the Past | on a pursuit-counter timer |
+| `standard_iii` | Evil Alliance | only if drawn, and feeds the timer |
+| `expert_ii` | Seek and Destroy | only if drawn |
+| `kang` | Kang's Wrath (stage 4B) | on reaching the stage |
+| `future_past`, `mts_campaign`, `whispers_of_paranoia` | four cards | only if drawn |
+
+**The split that matters is scheduled against drawn.** Standard I and II
+each carry a single treachery, so the nemesis is a possibility rather
+than a plan — it may never come up. Standard III starts a permanent card
+on the table and counts up to players + 3, which makes the same event
+routine. That difference is the whole reason the line is printed.
+
+**Detecting the pull is a mechanism test, not a word test.** All 69
+nemesis minions print a parenthetical naming themselves as one. Matching
+the word would have made every set pull itself; the pattern requires a
+verb that moves cards — reveal, search, find, put into play, shuffle in.
+
+**Two claims checked and reported as the data has them.** There is no
+Kingpin scenario in marvelsdb: Kingpin is Echo's nemesis minion, and it
+is *Echo's obligation* — a hero card, shuffled in at setup — that puts
+him into play. And the Kang pull is on `Kang's Wrath`, stage 4B, the
+final stage; stage 3 is one of four alternates.

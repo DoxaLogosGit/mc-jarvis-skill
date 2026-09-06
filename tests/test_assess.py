@@ -990,3 +990,70 @@ def test_a_scenario_loss_is_not_marked_as_a_nemesis_one(real_index):
     sc = assess.resolve(real_index, "project_wideawake")
     loss, = assess.profile(real_index, sc)["win_condition"]["alternate_loss"]
     assert loss["from_nemesis"] is False
+
+
+def test_a_nemesis_set_is_not_in_the_opening_deck(real_index):
+    """RR p.30 sets the whole nemesis set aside, out of play. Counting its
+    three cards made the opening deck three larger than the one dealt."""
+    from mc_jarvis import assess
+
+    plain = assess.resolve(real_index, "Rhino")
+    with_nem = assess.resolve(real_index, "Rhino",
+                              nemesis=["phoenix_nemesis"])
+    assert (len(assess.deck_cards(real_index, plain))
+            == len(assess.deck_cards(real_index, with_nem)))
+    assert any("set aside" in c for c in
+               assess.caveats(with_nem, assess._sets(with_nem)))
+
+
+def test_the_lower_difficulties_pull_a_nemesis_only_on_a_draw(real_index):
+    """Standard I and II carry a treachery that reveals the set, so the
+    nemesis may never appear at all -- it depends on the draw."""
+    from mc_jarvis import assess
+
+    for level in ("standard", "standard_ii"):
+        sc = assess.resolve(real_index, "Rhino", difficulty=level)
+        pull, = assess.nemesis_pull(real_index, sc)
+        assert pull["name"] == "Shadow of the Past"
+        assert pull["scheduled"] is False
+
+
+def test_standard_three_pulls_a_nemesis_on_a_timer(real_index):
+    """A permanent card that starts on the table works whether or not the
+    encounter deck cooperates, which is what makes the nemesis routine at
+    this difficulty rather than a possibility."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", difficulty="standard_iii")
+    pull = {c["name"]: c["scheduled"]
+            for c in assess.nemesis_pull(real_index, sc)}
+    assert pull == {"Pursued by the Past": True, "Evil Alliance": False}
+
+
+def test_a_scenario_can_pull_a_nemesis_from_its_own_ladder(real_index):
+    """Kang reaches for every player's nemesis minion from a main scheme
+    stage, so it arrives by reaching that stage rather than by a draw."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Kang")
+    scheduled = [c for c in assess.nemesis_pull(real_index, sc)
+                 if c["scheduled"]]
+    assert [c["name"] for c in scheduled] == ["Kang's Wrath"]
+
+
+def test_a_nemesis_minion_does_not_count_as_pulling_itself(real_index):
+    """Every nemesis minion prints "(X's nemesis minion.)". Matching the
+    word rather than a mechanism would have made all 69 sets self-pulling."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", nemesis=["phoenix_nemesis"])
+    assert not [c for c in assess.nemesis_pull(real_index, sc)
+                if c["set"] == "phoenix_nemesis"]
+
+
+def test_a_two_faced_permanent_is_reported_once(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", difficulty="standard_iii")
+    board = assess.profile(real_index, sc)["win_condition"]["permanent_board"]
+    assert [c["name"] for c in board] == ["Pursued by the Past"]

@@ -350,6 +350,13 @@ Five things to carry into any answer:
   `--modular`, and when a finding is marked as coming from one, say
   whose it is — Consume the World is only Phoenix's problem, and the
   same scenario played by anyone else never sees it.
+- **Ask whether anything can pull the nemesis in.** A nemesis set is set
+  aside and is not in the opening deck, so it only matters if a card on
+  the table can reveal it. `assess` names those cards and splits them:
+  Standard I and II carry a single treachery, so the nemesis may never
+  come up, while Standard III starts a permanent card that counts to
+  players + 3 and makes it routine. Do not recommend nemesis-proofing a
+  deck for a table where nothing pulls.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

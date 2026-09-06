@@ -278,7 +278,11 @@ def deck_cards(conn, scenario: Scenario, *, added: int = 0) -> list[dict]:
     `role`, so the opening deck can be reported apart from what the deck
     holds over a game.
     """
-    codes = _sets(scenario) + scenario.pool[:added]
+    # A nemesis set is set aside out of play at the start of the game (RR
+    # p.30), so none of it is in the opening deck. It is shuffled in only
+    # after a card reveals it, which the caveats record.
+    codes = [c for c in _sets(scenario) if c not in scenario.nemesis]
+    codes += scenario.pool[:added]
     marks = ",".join("?" * len(codes))
     rows = [dict(r) for r in conn.execute(
         f"SELECT c.*, e.role, e.returns_to_deck FROM cards c "
@@ -328,6 +332,15 @@ def caveats(scenario: Scenario, sets: list[str],
             "one reveals the leader's own side scheme and the other a "
             "competitive one, so a side scheme counted below is not the "
             "one you will face")
+    # RR p.30: a nemesis set is set aside out of play, so it is left out
+    # of the deck counted below. Saying only that would understate the
+    # game, because the set is shuffled in once something reveals it.
+    if scenario.nemesis:
+        out.append(
+            "the nemesis set(s) are set aside and so are not counted in "
+            "the deck below; a card that reveals one shuffles the rest of "
+            "it in, and the deck grows by that much for the rest of the "
+            "game")
     for code, entry in (config.get("adds_during_play") or {}).items():
         over = (entry or {}).get("overstates_opening_deck")
         if over and code in sets:
@@ -408,6 +421,7 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
         # Nine scenarios are not won by damaging the villain, so a hit
         # point ladder is not their difficulty.
         "win_condition": _win_condition(conn, scenario, cards),
+        "nemesis_pull": nemesis_pull(conn, scenario),
         "density": _density(cards, size),
         "minions": _minions(conn, cards),
         "treacheries": _treacheries(conn, cards),
@@ -649,12 +663,17 @@ def _win_condition(conn, scenario: Scenario, cards: list[dict]) -> dict:
     # villain is how most keyword-granting modulars work, so listing
     # those would bury the handful of cards that hold a board space for
     # the whole game.
-    out["permanent_board"] = [
-        {"name": r["name"], "type": r["type_code"],
-         "from_nemesis": r["set_code"] in nemesis_sets, **fixed[r["name"]]}
-        for r in population
-        if r["name"] in fixed
-        and r["type_code"] in ("side_scheme", "environment")]
+    board: dict[str, dict] = {}
+    for r in population:
+        # A double-sided card is two rows under one name; Pursued by the
+        # Past prints Permanent on both faces and was reported twice.
+        if (r["name"] not in fixed or r["name"] in board
+                or r["type_code"] not in ("side_scheme", "environment")):
+            continue
+        board[r["name"]] = {"name": r["name"], "type": r["type_code"],
+                            "from_nemesis": r["set_code"] in nemesis_sets,
+                            **fixed[r["name"]]}
+    out["permanent_board"] = list(board.values())
     return {k: v for k, v in out.items() if v}
 
 
@@ -688,6 +707,45 @@ def _plain(text: str | None) -> str:
     from . import crossref
 
     return crossref._plain(text)
+
+
+# Bringing a nemesis set in is always a search, a reveal, or a shuffle
+# back into the deck. The parenthetical "(X's nemesis minion.)" printed
+# on the minions themselves carries no verb, so it does not match.
+_NEMESIS_PULL = re.compile(
+    r"(?:reveals?|puts? [^.]{0,40}into play|searche?s?|finds?|shuffles?)"
+    r"[^.]{0,90}nemesis"
+    r"|nemesis[^.]{0,90}(?:into play|into the encounter deck)", re.I)
+# A card that begins the game on the table pulls on its own schedule. One
+# sitting in the encounter deck may never be drawn at all.
+_SCHEDULED = re.compile(r"^\s*(?:permanent|setup)\b", re.I)
+
+
+def nemesis_pull(conn, scenario: Scenario) -> list[dict]:
+    """Cards in this scenario that can bring a nemesis set into play.
+
+    A nemesis set is set aside and contributes nothing until something
+    reveals it, so whether a hero's nemesis matters at a given table is a
+    property of the scenario's own cards rather than of the hero. The
+    split is between a card that starts on the table and works to a
+    schedule and one that has to be drawn first -- at the lower
+    difficulties the pull sits in the encounter deck, so it may never
+    come up at all.
+    """
+    sets = [c for c in _sets(scenario) if c not in scenario.nemesis]
+    marks = ",".join("?" * len(sets))
+    out = []
+    for r in conn.execute(
+            f"SELECT * FROM cards WHERE set_code IN ({marks}) "
+            f"AND is_reprint = 0 AND text LIKE '%nemesis%'", sets):
+        text = _plain(r["text"])
+        if not _NEMESIS_PULL.search(text):
+            continue
+        out.append({"name": r["name"], "set": r["set_code"],
+                    "type": r["type_code"],
+                    "scheduled": bool(_SCHEDULED.match(text))
+                    or r["type_code"] == "main_scheme"})
+    return out
 
 
 def _loss_population(conn, scenario: Scenario) -> list[dict]:
@@ -982,6 +1040,18 @@ def _line(step: dict) -> None:
             print(f"      {c['name']} holds a board space all game "
                   f"- permanent, {how}")
             _nemesis_line(c)
+    pull = step.get("nemesis_pull") or []
+    if pull:
+        print(f"    nemesis sets can be pulled in by {len(pull)} card(s):")
+        for on_time in (True, False):
+            named = sorted(f"{c['name']} ({c['set']})"
+                           for c in pull if c["scheduled"] is on_time)
+            if named:
+                # The distinction the player acts on: a card already on
+                # the table pulls whether or not the deck cooperates.
+                how = ("on a schedule, from the table"
+                       if on_time else "only if it is drawn")
+                print(f"      {how} - " + ", ".join(named))
     # Printed and conditional surge are never summed: the condition is the
     # whole point of a card that says "this card gains surge".
     sg = step["surge"]
