@@ -357,6 +357,12 @@ Five things to carry into any answer:
   come up, while Standard III starts a permanent card that counts to
   players + 3 and makes it routine. Do not recommend nemesis-proofing a
   deck for a table where nothing pulls.
+- **The deck reshuffling is a second acceleration source.** An empty
+  encounter deck is reshuffled and an acceleration token placed, so every
+  pass through the deck adds a permanent +1 threat per villain phase on
+  top of any icons. A small deck therefore accelerates sooner. `assess`
+  states the deck size and the mechanism and does not predict the turn —
+  cards drawn per round moves with encounters dealt, surge and boost.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

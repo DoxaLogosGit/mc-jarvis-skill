@@ -1532,3 +1532,45 @@ Kingpin scenario in marvelsdb: Kingpin is Echo's nemesis minion, and it
 is *Echo's obligation* — a hero card, shuffled in at setup — that puts
 him into play. And the Kang pull is on `Kang's Wrath`, stage 4B, the
 final stage; stage 3 is one of four alternates.
+
+### 14.19 Deck exhaustion is a rule, not a scenario wrinkle
+
+Offered as the last candidate on the wrinkle list and then measured
+rather than built. Twenty-five cards touch the encounter discard pile;
+exactly **one** changes what happens when the deck runs out — Mojo's
+`Wheel of Genres`, which is already reported as a `depletion` loss. There
+is no per-scenario exhaustion behaviour to detect.
+
+**What the measurement did turn up.** RR p.17: an empty encounter deck is
+immediately reshuffled, *and an acceleration token is placed*. That is a
+permanent +1 threat per villain phase from a source no card carries, and
+the output never mentioned it — the acceleration line counted icons only.
+It is now stated alongside the deck size.
+
+**The rate is deliberately not computed.** How fast a pass burns moves
+with encounters dealt, surge and boost. A modelled reset turn would be an
+invented quantity of exactly the kind refused for the losing thresholds
+in §14.15.
+
+### 14.20 "Not in the card data" was said of names that are in the card data
+
+`assess kingpin` answered *"'kingpin' is not in the card data"* while
+`card search kingpin` returned six cards. The message was written for a
+name matching no **set** and stated a much wider claim, sending a reader
+to look for a coverage gap that did not exist.
+
+It now distinguishes the two. A name that matches cards but no scenario
+says which sets hold them and notes that marvelsdb may not have published
+that scenario's encounter half yet; a name matching nothing keeps the
+original coverage answer.
+
+**The case that exposed it.** The `fne` (Fear No Evil) pack is indexed —
+68 cards, both heroes, both nemesis sets, the sense deck — and carries
+**no villain and no main scheme**. So marvelsdb has published the box's
+player half and not its encounter half. Kingpin exists in the index only
+as Echo's nemesis minion.
+
+**No partially-indexed-box detector was built.** Forty-five packs have
+heroes and no scenario, which is simply the shape of a hero pack; `fne`
+having two heroes is indistinguishable from Ant-Man or Wasp. Inferring
+"this box ought to have scenarios" from card counts would be guessing.

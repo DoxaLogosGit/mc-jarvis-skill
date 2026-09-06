@@ -107,6 +107,21 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             + ", ".join(r["code"] for r in rows if r["schemes"])
             + ". Pass the one you mean by its code.")
     if row is None:
+        # "Not in the card data" was said of every name that failed to
+        # match a SET, which is a different claim. `kingpin` names six
+        # cards and no scenario, and the flat denial sent a reader
+        # looking for a coverage gap that was not there.
+        elsewhere = [r["set_code"] for r in conn.execute(
+            "SELECT DISTINCT set_code FROM cards "
+            "WHERE lower(name) LIKE ? AND set_code IS NOT NULL "
+            "ORDER BY set_code", (f"%{villain.lower()}%",))]
+        if elsewhere:
+            raise UnknownScenario(
+                f"{villain!r} names no scenario, though it does name cards "
+                f"in: {', '.join(elsewhere)}. If you are expecting a "
+                f"scenario by this name, marvelcdb has not published its "
+                f"encounter cards - `mc-jarvis update` will pick them up "
+                f"once it does.")
         raise UnknownScenario(
             f"{villain!r} is not in the card data. mc-jarvis indexes "
             f"marvelcdb, which does not carry every scenario that is "
@@ -1087,6 +1102,14 @@ def _line(step: dict) -> None:
         print(f"    acceleration icons in the deck: "
               f"{sp['acceleration_icons']}  (extra threat every villain "
               f"phase while in play)")
+    # A second source of the same thing, and one no card carries: RR p.17
+    # puts an acceleration token down every time the deck runs out and is
+    # reshuffled. How often that happens is a property of deck size, so
+    # the size is given and the rate is not invented - cards drawn per
+    # round moves with encounters dealt, surge and boost.
+    print(f"    every time these {step['deck_size']} cards run out and reshuffle, "
+          f"the scenario gains another permanent +1 threat per villain "
+          f"phase")
     dem = step.get("demands") or {}
     if dem:
         parts = []

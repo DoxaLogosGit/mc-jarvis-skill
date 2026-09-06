@@ -1057,3 +1057,24 @@ def test_a_two_faced_permanent_is_reported_once(real_index):
     sc = assess.resolve(real_index, "Rhino", difficulty="standard_iii")
     board = assess.profile(real_index, sc)["win_condition"]["permanent_board"]
     assert [c["name"] for c in board] == ["Pursued by the Past"]
+
+
+def test_a_name_that_is_cards_but_no_scenario_says_so(real_index):
+    """"Not in the card data" was said of any name that matched no set.
+    Kingpin names six cards; the flat denial sent a reader looking for a
+    coverage gap that was not there."""
+    from mc_jarvis import assess
+
+    with pytest.raises(assess.UnknownScenario) as err:
+        assess.resolve(real_index, "kingpin")
+    message = str(err.value)
+    assert "echo_nemesis" in message
+    assert "is not in the card data" not in message
+
+
+def test_a_name_that_is_nothing_keeps_the_coverage_answer(real_index):
+    from mc_jarvis import assess
+
+    with pytest.raises(assess.UnknownScenario) as err:
+        assess.resolve(real_index, "zzqqxx")
+    assert "is not in the card data" in str(err.value)
