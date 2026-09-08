@@ -1243,6 +1243,16 @@ def handle(args) -> int:
             cards = deck_cards(conn, scenario, added=step["added"])
             step["crossref"] = crossref.pairings(
                 conn, cards, deck, sets=sets)
+        if deck.unknown:
+            # The cross-reference counts what the deck holds, so a card
+            # that did not resolve is silently absent from every answer
+            # below. `deck check` already degrades on this; nothing here
+            # did, which is where a partial deck really does mislead.
+            print(f"  NOTE: {sum(deck.unknown.values())} card(s) in this "
+                  f"deck did not resolve, so every count below is a "
+                  f"floor:")
+            for name, count in sorted(deck.unknown.items()):
+                print(f"    {count}x {name}")
 
     if args.json:
         emit({"scenario": scenario.scenario_set, "pool": scenario.pool,

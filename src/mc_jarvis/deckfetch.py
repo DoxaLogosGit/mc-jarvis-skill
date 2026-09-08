@@ -154,13 +154,42 @@ def fetch(conn, ref: str) -> Deck:
     if identifier is not None:
         return normalise(conn, _get(f"{API}/decklist/{identifier}"),
                          source=f"marvelcdb:{identifier}")
+    if ref == "-":
+        # The paste case: somebody has a decklist in front of them and no
+        # file, which is the whole reason the text format exists.
+        import sys as _sys
+        from . import decktext
+        raw = _sys.stdin.read()
+        try:
+            return normalise(conn, decktext.to_payload(
+                conn, raw, source="stdin"), source="stdin")
+        except decktext.DeckTextError as exc:
+            raise DeckError(f"stdin: {exc}") from exc
     path = Path(ref)
     if not path.is_file():
         raise DeckError(
             f"{ref!r} is neither a marvelcdb deck id, a marvelcdb URL, nor a "
             f"file that exists.")
-    return normalise(conn, json.loads(path.read_text(encoding="utf-8")),
-                     source=str(path))
+    raw = path.read_text(encoding="utf-8")
+    # Sniffed on the content, not tried and caught. Letting the JSON
+    # branch fall through on error would read a malformed export as a
+    # list of cards and report the parse failure as a naming problem.
+    if raw.lstrip()[:1] in "{[":
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise DeckError(
+                f"{path} starts like JSON but does not parse as JSON: "
+                f"{exc}") from exc
+        return normalise(conn, payload, source=str(path))
+    from . import decktext
+    try:
+        payload = decktext.to_payload(
+            conn, raw, is_csv=path.suffix.lower() in (".csv", ".tsv"),
+            source=str(path))
+    except decktext.DeckTextError as exc:
+        raise DeckError(f"{path}: {exc}") from exc
+    return normalise(conn, payload, source=str(path))
 
 
 def corpus_path():

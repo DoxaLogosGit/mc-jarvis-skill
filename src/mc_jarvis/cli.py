@@ -132,7 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
                         ("stats", "curves, mixes and densities")):
         leaf = _leaf(deck_sub, verb, help_)
         leaf.add_argument(
-            "deck", help="a marvelcdb id, a marvelcdb URL, or a JSON file")
+            "deck", help="a marvelcdb id or URL, a JSON/text/CSV file, "
+                         "or - to read a written decklist from stdin")
 
     col = _leaf(sub, "collection", "packs you own")
     col.add_argument("collection_cmd", choices=["set", "show"])

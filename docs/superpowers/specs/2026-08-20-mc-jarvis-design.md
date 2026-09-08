@@ -2194,3 +2194,71 @@ most rulebooks, so it is now stripped from **both** sides before windows
 are taken. Only the exact title: text either side of it is still compared,
 so the exemption cannot become a hiding place. Every future rulebook would
 have reproduced this collision.
+
+## 10.17 Decks people write by hand
+
+marvelcdb hands out JSON keyed by card code. The case this serves is the
+other one: somebody has a decklist and no marvelcdb entry, or no wish to
+touch JSON, and wants it evaluated. `deck check`, `deck stats` and
+`assess --deck` now take a written list, a spreadsheet, or `-` for a
+paste on stdin.
+
+```
+Hero: Peter Parker          # an alter-ego or a card code also works
+Aspect: Justice
+3x Tackle                   # also "3 Tackle", "Tackle x3", bare means 1
+2x Safe House #221          # `#` only starts a comment at line start
+1x Spider-Man (protection)  # a bracketed hint settles an ambiguous name
+```
+
+**Names do not resolve cleanly, and the ladder is measured.** 93 of the
+1,641 player cards share a name with another. Dropping encounter-side
+printings takes that to 82; dropping other heroes' signature cards to 38;
+dropping the back half of a double-sided card to 27. The declared aspect
+settles all but ten.
+
+**The format is sniffed, not attempted.** A file starting `{` or `[` is
+JSON and a parse failure says so; anything else is read as a list.
+Letting JSON fall through to the text reader would report a malformed
+export as a naming problem.
+
+**Unresolved names are reported, not refused.** An earlier draft raised
+on the first ambiguity, which for a pasted deck means the other
+forty-eight cards go unexamined. They now ride into `Deck.unknown`, where
+`deck check` already degrades the size finding — and `assess --deck`,
+which did not, now says its counts are a floor. An ambiguous *hero* is
+still refused: `Black Panther` names T'Challa and Shuri, who carry
+different signature cards.
+
+**Three bugs the corpus round-trip found**, by rendering every published
+deck as `3x <name>` lines and reading it back:
+
+1. The aspect filter dropped a signature card of the hero being played,
+   so Rogue's own Gambit silently became the generic ally in six decks.
+2. `_hero_set` took the first row, resolving a T'Challa deck against
+   Shuri's set, which then reported T'Challa's own cards as unmatched.
+3. `#` was a comment anywhere on a line, turning `Safe House #221` into
+   `Safe House`, which matches nothing.
+
+**The aspect line is decisive on purpose.** Conservative narrowing —
+never discarding a real aspect card — round-trips 105 of 400 corpus decks
+with nothing wrong; decisive narrowing round-trips 200 with one wrong,
+and that one declares an aspect its own cards contradict, which `deck
+check` already reports as a note. For a deck someone writes out, the
+aspect line is their own statement about their deck.
+
+## 10.18 Ripgrep would not help, and the numbers say why
+
+Measured rather than assumed. A regex over the entire 4,028-card pool is
+**18ms**; a full `assess.profile` is **25ms**; every CLI command is
+50-100ms; the worst-case distribution-policy scan is **0.25s** across 84
+tracked files. There is no regex bottleneck to remove.
+
+The deeper reason is that ripgrep searches *files* and this corpus lives
+in SQLite. The one place that does read files — the policy checker — does
+n-gram set intersection rather than pattern matching, which is not work
+ripgrep can do. Adding it would mean two regex engines with different
+semantics to keep in agreement, for no measurable gain.
+
+The slow things here are `init` (network fetch and PDF extraction) and
+the integration tier, and neither is regex.

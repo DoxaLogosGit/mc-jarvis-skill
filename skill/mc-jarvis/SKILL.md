@@ -382,6 +382,25 @@ into "cut a Tackle" is your job, not the command's.
 
 ## Decks
 
+**A decklist does not have to be JSON.** When someone gives you a list of
+cards rather than a marvelcdb link, write it to a file or pipe it in with
+`mc-jarvis deck check -` and let the tool resolve it:
+
+```
+Hero: Peter Parker          # or an alter-ego, or a card code
+Aspect: Justice
+3x Tackle                   # also "3 Tackle", "Tackle x3", bare means 1
+1x Spider-Man (protection)  # a hint in brackets settles an ambiguous name
+```
+
+A spreadsheet with a name column and a count column works too. Names that
+match several cards, or none, are **reported rather than guessed** — they
+come back in `unknown` with their candidate codes, and every count that
+depends on a complete deck says it is a floor. Pass those back to the
+player and ask which one they meant; do not pick for them. An ambiguous
+**hero** is refused outright, because two heroes named `Black Panther`
+carry different signature cards.
+
 `deck check` reports rule by rule and names the Rules Reference entry
 behind each failure. Run `mc-jarvis rules show <entry>` for the wording —
 it comes from the player's own rulebook, not from this tool.
