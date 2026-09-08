@@ -148,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--players", type=_players, default=1)
     asr.add_argument("--difficulty", default="standard",
                      choices=_difficulties())
-    asr.add_argument("--heroic", type=int, default=0,
+    asr.add_argument("--heroic", type=_positive, default=0,
                      help="recorded, but does not change the numbers yet")
     asr.add_argument("--nemesis", action="append")
     asr.add_argument("--deck",

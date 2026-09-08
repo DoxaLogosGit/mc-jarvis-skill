@@ -1574,3 +1574,41 @@ as Echo's nemesis minion.
 heroes and no scenario, which is simply the shape of a hero pack; `fne`
 having two heroes is indistinguishable from Ant-Man or Wasp. Inferring
 "this box ought to have scenarios" from card counts would be guessing.
+
+### 14.21 Pre-integration pass: three silent wrong answers
+
+The earlier sweep predated `deck_cards`, `resolve`, `profile` and the
+renderer all changing, so it was re-run and widened. It found nothing —
+520 combinations (57 scenarios × 5 difficulties × 2 table sizes), zero
+crashes, zero empty renders, and strict `json.dumps` on every one. All 69
+nemesis sets leave the opening deck at 20 and serialise cleanly.
+
+The defects were on the **input** side, where nothing had been swept:
+
+1. **`--modular` and `--nemesis` accepted any string.** An unknown code
+   joined no cards, so `--modular not_a_real_set` printed it in the
+   header as a set on the table and assessed it as nothing. That is
+   exactly the partial deck this command refuses everywhere else, and it
+   is the shape of mistake an agent driving the CLI makes constantly. Now
+   refused, with near misses offered.
+2. **`--heroic` took any int**, negative included. Bound with the
+   existing `_positive` validator.
+3. **`timing "when revealed"` was refused** for a trigger the chart names
+   at rung 3, with 959 cards carrying it. `classify` is case-sensitive on
+   purpose — it reads printed bold prefixes, where case is evidence and a
+   mismatch is a misprint the index-time gate should report. The lookup
+   for a *typed* query had simply inherited that strictness. `recase`
+   now spells a typed trigger the way the chart spells it, longest run
+   first so `Forced Response` does not collapse onto `Response`, and
+   `classify` stays strict for indexing.
+
+**How the third was found:** running every command line `SKILL.md` shows
+a reader, with the placeholders filled in. The skill file is what the
+host model actually follows, and it had been edited four times in this
+pass — a flag that no longer works there fails silently at integration
+time and no unit test covers it. Twenty-one commands, all flags parse.
+
+**Observed, not fixed.** `--trait shield` finds nothing because the trait
+is `S.H.I.E.L.D.`; an unknown trait returns "no matches" rather than a
+wrong answer, so it misleads nobody, but it offers no near miss the way
+the set validator now does.

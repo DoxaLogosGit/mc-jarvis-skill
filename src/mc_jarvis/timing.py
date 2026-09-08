@@ -376,8 +376,34 @@ def is_known_non_trigger(prefix: str) -> bool:
 
 # --- explain ---------------------------------------------------------
 
+def recase(query: str, config: dict | None = None) -> str:
+    """Spell a typed trigger the way the chart spells it.
+
+    `classify` is deliberately case-sensitive: it reads printed bold
+    prefixes, where the printed case is evidence and a mismatch is a
+    misprint the index-time gate should report. A person at a terminal
+    types `when revealed`, and refusing that for a trigger the chart names
+    at rung 3 is a lookup failure dressed as an answer.
+    """
+    config = config if config is not None else load_config()
+    known = (list(config["triggers"]) + list(config["outside_chart"])
+             + list(config["aliases"]) + list(config["qualifiers"]))
+    by_lower = {k.lower(): k for k in known}
+    words = _norm(query).split()
+    out = []
+    for i in range(len(words)):
+        # Longest run first, so `Forced Response` beats `Response` alone.
+        for j in range(len(words), i, -1):
+            run = " ".join(words[i:j]).lower()
+            if run in by_lower and len(out) <= i:
+                out.append(by_lower[run])
+                words[i:j] = [by_lower[run]]
+                break
+    return " ".join(words)
+
+
 def explain(conn, trigger: str) -> dict:
-    t = classify(trigger)
+    t = classify(trigger) or classify(recase(trigger))
     if t is None:
         return {"query": trigger, "canonical": None,
                 "message": f"{trigger!r} is not a timing trigger this "

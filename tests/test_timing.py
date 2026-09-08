@@ -636,3 +636,39 @@ def test_the_seven_tie_breaks_point_at_seven_distinct_sentences(real_index):
     four paragraphs twice; they must resolve to different sentences."""
     seen = [e["text"] for e in timing.tie_breaks(real_index)]
     assert len(set(seen)) == len(seen), seen
+
+
+def test_a_trigger_typed_in_lower_case_is_found():
+    """`classify` is case-sensitive on purpose -- it reads printed bold
+    prefixes, where case is evidence. A person types `when revealed`, and
+    refusing that for a trigger the chart names at rung 3 is a lookup
+    failure dressed as an answer."""
+    from mc_jarvis import timing
+
+    for typed in ("when revealed", "WHEN REVEALED", "When revealed"):
+        found = timing.classify(timing.recase(typed))
+        assert found is not None and found.canonical == "When Revealed"
+
+
+def test_lower_case_resolves_every_charted_trigger():
+    from mc_jarvis import timing
+
+    config = timing.load_config()
+    for name in list(config["triggers"]) + list(config["outside_chart"]):
+        found = timing.classify(timing.recase(name.lower()))
+        assert found is not None, name
+        assert found.canonical == name
+
+
+def test_recasing_does_not_invent_a_trigger():
+    from mc_jarvis import timing
+
+    assert timing.classify(timing.recase("nonsense here")) is None
+
+
+def test_printed_case_is_still_read_strictly():
+    """The index-time gate reads printed prefixes, where a case mismatch
+    is a misprint worth reporting rather than one to paper over."""
+    from mc_jarvis import timing
+
+    assert timing.classify("when revealed") is None

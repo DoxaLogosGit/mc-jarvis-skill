@@ -51,6 +51,26 @@ class Scenario:
     modular_kind: str = "none"
 
 
+def _known_sets(conn, codes: list[str]) -> None:
+    """Refuse a set code the data does not hold.
+
+    `--modular` and `--nemesis` took any string. An unknown code joined
+    no cards, so the set was named in the header and contributed nothing,
+    which is the partial deck this command refuses everywhere else.
+    """
+    unknown = [c for c in codes if not conn.execute(
+        "SELECT 1 FROM sets WHERE code = ?", (c,)).fetchone()]
+    if not unknown:
+        return
+    near = [r["code"] for r in conn.execute(
+        "SELECT code FROM sets WHERE code LIKE ? ORDER BY code LIMIT 5",
+        (f"%{unknown[0]}%",))]
+    raise UnknownScenario(
+        f"no set named {', '.join(unknown)}. An unknown set adds no cards, "
+        f"so assessing it would report a deck you never face."
+        + (f" Did you mean: {', '.join(near)}?" if near else ""))
+
+
 def _host_scenarios(conn, code: str) -> list[str]:
     """Scenarios a component set belongs to.
 
@@ -205,6 +225,10 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
                 if m["kind"] == "required" and m["modular_set"]]
     suggested = [m for m in mapped if m["kind"] != "required"]
     kind = suggested[0]["kind"] if suggested else "required"
+    # An unknown set contributes no cards, so a typo used to be reported
+    # as a set on the table and silently assessed as nothing. That is the
+    # partial deck this command exists to refuse.
+    _known_sets(conn, list(modular or ()) + list(nemesis or ()))
     if modular is not None:
         # A nemesis set arrives with a hero, not with a scenario (RR
         # p.30), so it is not a set the table can choose to face. The

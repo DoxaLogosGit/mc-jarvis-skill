@@ -1078,3 +1078,22 @@ def test_a_name_that_is_nothing_keeps_the_coverage_answer(real_index):
     with pytest.raises(assess.UnknownScenario) as err:
         assess.resolve(real_index, "zzqqxx")
     assert "is not in the card data" in str(err.value)
+
+
+def test_an_unknown_set_is_refused_rather_than_assessed(real_index):
+    """--modular and --nemesis took any string. An unknown code joined no
+    cards, so the set was named in the header and contributed nothing --
+    the partial deck this command refuses everywhere else."""
+    from mc_jarvis import assess
+
+    for flag in ("modular", "nemesis"):
+        with pytest.raises(assess.UnknownScenario) as err:
+            assess.resolve(real_index, "Rhino", **{flag: ["not_a_real_set"]})
+        assert "no set named not_a_real_set" in str(err.value)
+
+
+def test_a_real_set_still_resolves(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", modular=["bomb_scare"])
+    assert sc.modulars == ["bomb_scare"]
