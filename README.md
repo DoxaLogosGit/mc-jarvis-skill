@@ -160,7 +160,14 @@ uv sync
 uv run pytest -q -m "not integration"   # unit tests, no network or index
 uv run pytest -q                        # adds real-data gates
 uv run python -m mc_jarvis.policy       # ships no card or rules text
+uv run pytest -q tests/test_preflight.py  # the pre-live battery
 ```
+
+`tests/test_preflight.py` is the gate to run before handing the tool to a
+live agent. It is the combinatorial and contract surface no single unit
+test owns: every scenario at every difficulty and table size, all 69
+nemesis sets, every command line `SKILL.md` shows a reader, and the input
+a caller gets wrong. It needs a built index, so CI does not run it.
 
 CI (`.github/workflows/checks.yml`) runs the unit suite, the packaging
 checks, and the distribution-rule check on every push and pull request.

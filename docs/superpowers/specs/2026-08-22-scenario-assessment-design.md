@@ -1612,3 +1612,43 @@ time and no unit test covers it. Twenty-one commands, all flags parse.
 is `S.H.I.E.L.D.`; an unknown trait returns "no matches" rather than a
 wrong answer, so it misleads nobody, but it offers no near miss the way
 the set validator now does.
+
+### 14.22 The pre-live battery, and the two ways it was vacuous first
+
+`tests/test_preflight.py` is the gate before a live agent session. It
+covers only what no single unit test owns — the combinatorial and
+contract surface — and names the files that already cover packaging,
+policy, skill install, index staleness and doctor, so the battery does
+not drift into duplicating them.
+
+**What it asserts.** Every scenario at five difficulties and two table
+sizes renders without crashing and non-empty; every one survives strict
+`json.dumps` with no `default=` fallback; all 69 nemesis sets leave the
+opening deck size unchanged and none is reported as pulling itself; every
+command line `SKILL.md` shows a reader parses; every charted timing
+trigger answers to lower case; and the five inputs a caller gets wrong
+are refused with a non-zero exit.
+
+**It passed for the wrong reason twice, and both are worth recording.**
+
+1. The subprocess calls ran `python -m mc_jarvis`, and the package has no
+   `__main__`. Every invocation died on an import error that matched none
+   of the failure patterns, so twenty-odd assertions passed without
+   testing anything — the whole file finished in 0.37s. It now runs the
+   console script, which is what a host model invokes anyway.
+2. The first harness treated a non-zero exit or empty stdout as failure.
+   That flagged `card search` with an over-constrained query and `rulings
+   guard` alongside the one real bug. "No matches" is a correct answer;
+   a suite asserting otherwise goes red the day someone adds a card. It
+   now asserts only that the arguments parse.
+
+**The command list is read out of `SKILL.md`, not hardcoded**, because a
+hardcoded list silently stops covering the file it exists to check. A
+placeholder with no value fails the test rather than being skipped, so a
+new one shows up as a gap. `init`, `update` and `collection set` are
+excluded by name: running them would rebuild the index under the suite or
+rewrite the collection of whoever ran it.
+
+**Proven by mutation.** Adding `--notaflag` to a command line in
+`SKILL.md` fails the test; removing it passes. A gate that cannot fail is
+not a gate.
