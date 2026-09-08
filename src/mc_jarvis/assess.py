@@ -844,7 +844,13 @@ def _opposition(conn, scenario: Scenario) -> dict:
     """
     from . import crossref
 
-    rows = crossref.villain_rows(conn, _sets(scenario))
+    plan = (load_config().get("opposition") or {}).get(
+        scenario.scenario_set) or {}
+    # Wrecking Crew keeps only its main scheme; each of its four villains
+    # is a set of its own, so reading `_sets` alone reported no
+    # opposition at all for it (§10.5 population error, fourth shape).
+    rows = crossref.villain_rows(
+        conn, _sets(scenario) + list(plan.get("villain_sets") or ()))
     seen: dict[tuple, dict] = {}
     alternates = 0
     for r in rows:
@@ -866,12 +872,37 @@ def _opposition(conn, scenario: Scenario) -> dict:
                      # say what it costs you each turn it lasts.
                      "attack": r["attack"], "scheme": r["scheme"]}
     stages = sorted(seen.values(), key=lambda x: (x["name"], x["stage"] or ""))
-    names = {x["name"] for x in stages}
-    return {"stages": stages,
-            # More than one villain named in a set means alternates to
-            # choose between, not a longer fight.
-            "branching": len(names) > 1 or bool(alternates),
-            "collapsed_duplicates": alternates}
+    names = sorted({x["name"] for x in stages})
+    out = {"stages": stages, "villains": names,
+           "collapsed_duplicates": alternates,
+           "mode": plan.get("mode"), "stage_kind": plan.get("stages"),
+           "faced": plan.get("faced"), "note": plan.get("note")}
+    if plan.get("in_play") == "players_plus_1":
+        # Sinister Six starts with one villain more than there are
+        # players, so the opposition on the table grows with the group
+        # while the roster it is drawn from does not.
+        out["in_play"] = min(scenario.players + 1, len(names))
+    elif plan.get("mode") == "together":
+        out["in_play"] = len(names)
+    # Summing only where the scenario has been read and every villain is
+    # faced. A total over alternates is the error that once made Loki 100
+    # hit points at one player.
+    one_stage_each = len(stages) == len(names)
+    if plan.get("faced") == "all" and plan.get("stages") == "ladder":
+        # Only when each villain is a single card. A ladder of I/II/III is
+        # not all fought - "most scenarios play two of these" - so adding
+        # the rungs would overstate Tower Defense by a whole third stage.
+        if one_stage_each:
+            out["total_health"] = sum(x["health"] for x in stages)
+    elif plan.get("faced") == "all":
+        # A/B are one set of stages per difficulty, not a ladder, so only
+        # the faces for the difficulty in play are added.
+        want = "B" if scenario.difficulty.startswith("expert") else "A"
+        chosen = [x for x in stages if (x["stage"] or "") == want]
+        if chosen:
+            out["total_health"] = sum(x["health"] for x in chosen)
+            out["counted_stage"] = want
+    return out
 
 
 def _density(cards: list[dict], size: int) -> dict:
@@ -953,6 +984,36 @@ GROWTH_RE = re.compile(
     r"in(?:to)?\s+the\s+encounter\s+deck", re.I)
 
 
+def opposition_gate(conn, config: dict | None = None) -> list[str]:
+    """Scenarios naming more than one villain that nobody has classified.
+
+    A name count cannot tell a roster from a list of alternates, and the
+    default reading was alternates -- which told a Four Horsemen player
+    they faced one of four. Anything new landing here is being described
+    by a guess, so it is reported rather than assumed.
+    """
+    config = config if config is not None else load_config()
+    known = set(config.get("opposition") or {})
+    problems = []
+    for row in conn.execute(
+            "SELECT c.set_code, COUNT(DISTINCT c.name) AS n FROM cards c "
+            "WHERE c.type_code = 'villain' AND c.is_reprint = 0 "
+            "GROUP BY c.set_code HAVING n > 1 ORDER BY c.set_code"):
+        if row["set_code"] in known:
+            continue
+        # A set with no main scheme is a component; the scenario that
+        # hosts it is what gets assessed, and that is classified there.
+        if not conn.execute(
+                "SELECT 1 FROM cards WHERE set_code = ? "
+                "AND type_code = 'main_scheme'", (row["set_code"],)).fetchone():
+            continue
+        problems.append(
+            f"{row['set_code']}: names {row['n']} villains and has no "
+            f"`opposition` entry, so it is reported as if they were "
+            f"alternates. Read its Contents and Setup blocks.")
+    return problems
+
+
 def growth_gate(conn, config: dict | None = None) -> list[str]:
     """Scenarios that grow during play and are not yet examined.
 
@@ -1030,23 +1091,20 @@ def _line(step: dict) -> None:
             f"{k.replace('_', ' ')} {v['pct']}%" for k, v in den.items()))
     opp = step.get("opposition") or {}
     if opp.get("stages"):
-        ladder = "   ".join(
-            f"{x['stage'] or '-'}: {x['health']} HP"
-            + (f" ATK {x['attack']}" if x["attack"] is not None else "")
-            + (f" SCH {x['scheme']}" if x["scheme"] is not None else "")
-            for x in opp["stages"])
-        print(f"    by stage - {ladder}"
-              + ("   (HP per hero, scaled to this table)"
-                 if any(x["per_hero"] for x in opp["stages"]) else ""))
-        # Not summed on purpose: a scenario plays a subset of its printed
-        # stages, and the set may hold alternates rather than a longer
-        # fight.
-        note = "most scenarios play two of these; some three"
-        if opp["branching"]:
-            note += (f", and this set holds alternates "
-                     f"({opp['collapsed_duplicates']} duplicate stage "
-                     f"card(s) collapsed) - you face one, not all")
-        print(f"      {note}")
+        per_hero = ("   (HP per hero, scaled to this table)"
+                    if any(x["per_hero"] for x in opp["stages"]) else "")
+        # One line per villain. A single run of eight unlabelled numbers
+        # said nothing about which villain any of them belonged to.
+        for villain in opp["villains"]:
+            rungs = "   ".join(
+                f"{x['stage'] or '-'}: {x['health']} HP"
+                + (f" ATK {x['attack']}" if x["attack"] is not None else "")
+                + (f" SCH {x['scheme']}" if x["scheme"] is not None else "")
+                for x in opp["stages"] if x["name"] == villain)
+            label = villain if len(opp["villains"]) > 1 else "by stage"
+            print(f"    {label} - {rungs}{per_hero}")
+            per_hero = ""
+        _opposition_note(opp)
     win = step.get("win_condition") or {}
     if win:
         if win.get("undefeatable"):
@@ -1234,6 +1292,46 @@ def handle(args) -> int:
                       f"{scenario.players} players)")
             _crossref_line(step["crossref"])
     return 0
+
+
+_MODE_NOTE = {
+    "together": "all {n} are in play at once",
+    "scaling": "{n} of them are in play at once, one more than the table",
+    "sequence": "they form a deck and only its top card is in play",
+    "alternates": "one is chosen at random and the rest set aside",
+    "two_faces": "these are two faces of one villain, not two villains",
+}
+
+
+def _opposition_note(opp: dict) -> None:
+    """Say how the villains relate, or admit the ladder is not a total.
+
+    Reading a name count as alternates told a Four Horsemen player they
+    faced one of four when they face all four. The relationship is read
+    from each scenario's own Contents and Setup blocks and recorded in
+    config, because no count can tell a roster from a list.
+    """
+    mode = opp.get("mode")
+    if mode is None:
+        note = "most scenarios play two of these; some three"
+        if len(opp["villains"]) > 1 or opp["collapsed_duplicates"]:
+            note += ("; this set names more than one villain, so read the "
+                     "main scheme for which of them you face")
+        print(f"      {note}")
+        return
+    print("      " + _MODE_NOTE[mode].format(n=opp.get("in_play", ""))
+          + (f" - {opp['note']}" if opp.get("note") else ""))
+    if opp.get("total_health"):
+        which = (f" at their ({opp['counted_stage']}) sides"
+                 if opp.get("counted_stage") else "")
+        scaled = (", scaled to this table"
+                  if any(x["per_hero"] for x in opp["stages"]) else
+                  ", the same at any table size")
+        print(f"      {opp['total_health']} hit points of villain in total"
+              f"{which}{scaled}")
+    elif opp.get("faced") == "all":
+        print("      every one of them is faced, but a ladder is not all "
+              "fought - most scenarios play two stages of each")
 
 
 def _nemesis_line(card: dict) -> None:

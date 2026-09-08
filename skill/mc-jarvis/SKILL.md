@@ -363,6 +363,15 @@ Five things to carry into any answer:
   top of any icons. A small deck therefore accelerates sooner. `assess`
   states the deck size and the mechanism and does not predict the turn —
   cards drawn per round moves with encounters dealt, surge and boost.
+- **Several scenarios field more than one villain, in five different
+  ways.** `assess` prints one line per villain and says which way this
+  one works: all in play at once (Four Horsemen, Wrecking Crew, Tower
+  Defense), a number that scales with the table (Sinister Six puts one
+  more into play than there are players), a deck whose top card is in
+  play (Mansion Attack), one chosen at random with the rest set aside
+  (God of Lies, Kang's second stage), or two faces of a single villain
+  (Risky Business). A total hit point figure appears only where every
+  villain is faced and the stages are unambiguous — never assume one.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

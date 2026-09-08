@@ -728,7 +728,11 @@ def test_alternate_villain_stages_are_collapsed_not_summed(real_index):
     opp = assess.profile(real_index, sc)["opposition"]
     assert [x["stage"] for x in opp["stages"]] == ["I", "II", "III"]
     assert opp["collapsed_duplicates"] == 6
-    assert opp["branching"] is True
+    # `branching` used to carry this, but it also fired on any set naming
+    # more than one villain -- which reported Four Horsemen as alternates
+    # when all four are fought. Duplicate stage cards are the alternates;
+    # a roster of names is not.
+    assert opp["villains"] == ["Apocalypse"]
 
 
 def test_villain_hit_points_scale_with_the_table(real_index):
@@ -1097,3 +1101,82 @@ def test_a_real_set_still_resolves(real_index):
 
     sc = assess.resolve(real_index, "Rhino", modular=["bomb_scare"])
     assert sc.modulars == ["bomb_scare"]
+
+
+def test_wrecking_crew_has_an_opposition_at_all(real_index):
+    """Its four villains are four separate sets and the scenario set holds
+    only the main scheme, so reading `_sets` reported no villain -- the
+    §10.5 population error in a fourth shape, and silent."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "wrecking_crew")
+    opp = assess._opposition(real_index, sc)
+    assert opp["villains"] == ["Bulldozer", "Piledriver", "Thunderball",
+                               "Wrecker"]
+
+
+def test_villains_faced_together_are_totalled(real_index):
+    """All four Horsemen are in play at once and all four are fought, so
+    the total is the fight. A/B are one set of stages per difficulty
+    rather than a ladder, so only the difficulty in play is added."""
+    from mc_jarvis import assess
+
+    std = assess._opposition(
+        real_index, assess.resolve(real_index, "four_horsemen"))
+    assert std["mode"] == "together" and std["in_play"] == 4
+    assert std["total_health"] == 36 and std["counted_stage"] == "A"
+    exp = assess._opposition(real_index, assess.resolve(
+        real_index, "four_horsemen", difficulty="expert"))
+    assert exp["total_health"] == 48 and exp["counted_stage"] == "B"
+
+
+def test_the_sinister_six_roster_grows_with_the_table(real_index):
+    """Setup puts one more villain into play than there are players, so
+    the opposition on the table scales while the roster does not."""
+    from mc_jarvis import assess
+
+    for players, in_play in ((1, 2), (2, 3), (4, 5)):
+        opp = assess._opposition(real_index, assess.resolve(
+            real_index, "sinister_six", players=players))
+        assert opp["in_play"] == in_play
+        # Flat hit points, so the total is the same at every table size.
+        assert opp["total_health"] == 51
+
+
+def test_two_faces_of_one_villain_are_not_two_villains(real_index):
+    """Green Goblin and Norman Osborn share a hit point total at every
+    stage because they are one card. The Contents block names only one."""
+    from mc_jarvis import assess
+
+    opp = assess._opposition(
+        real_index, assess.resolve(real_index, "risky_business"))
+    assert opp["mode"] == "two_faces" and opp["faced"] == "one"
+    assert "total_health" not in opp
+
+
+def test_a_ladder_faced_in_full_is_still_not_totalled(real_index):
+    """Tower Defense fights both villains, but each has a three-rung
+    ladder and a scenario plays two of them. Adding all six rungs would
+    overstate it by a whole stage apiece."""
+    from mc_jarvis import assess
+
+    opp = assess._opposition(
+        real_index, assess.resolve(real_index, "tower_defense"))
+    assert opp["mode"] == "together" and opp["faced"] == "all"
+    assert "total_health" not in opp
+
+
+def test_a_single_villain_scenario_is_unchanged(real_index):
+    from mc_jarvis import assess
+
+    opp = assess._opposition(real_index, assess.resolve(real_index, "Rhino"))
+    assert opp["mode"] is None and opp["villains"] == ["Rhino"]
+
+
+def test_every_multi_villain_scenario_is_classified(real_index):
+    """A name count cannot tell a roster from a list of alternates, and
+    the default reading was alternates. Anything new here is described by
+    a guess."""
+    from mc_jarvis import assess
+
+    assert assess.opposition_gate(real_index) == []

@@ -1652,3 +1652,45 @@ rewrite the collection of whoever ran it.
 **Proven by mutation.** Adding `--notaflag` to a command line in
 `SKILL.md` fails the test; removing it passes. A gate that cannot fail is
 not a gate.
+
+### 14.23 A roster is not a list of alternates
+
+`_opposition` set `branching = len(names) > 1`, so any set naming more
+than one villain was reported as *"this set holds alternates - you face
+one, not all"*. For Four Horsemen that told a player they faced one of
+four when they face all four, and the eight stage rows were printed as a
+single unlabelled run of numbers with no villain names attached.
+
+**Five relationships, read from each scenario's own Contents and Setup
+blocks and recorded in config.** No count can tell them apart:
+
+| mode | scenarios | in play |
+| --- | --- | --- |
+| `together` | Four Horsemen, Wrecking Crew, Tower Defense | all of them |
+| `scaling` | Sinister Six | players + 1, the rest ambush in |
+| `sequence` | Mansion Attack | the top card of a villain deck |
+| `alternates` | God of Lies, Kang (stage II) | one, the rest set aside |
+| `two_faces` | Risky Business | one villain printed as two identities |
+
+**Two things the data alone got wrong.** Risky Business looks like two
+villains — Green Goblin with ATK and no SCH, Norman Osborn with SCH and
+no ATK — but they share a hit point total at every stage and the Contents
+block names only Norman Osborn. And A/B stage labels are **one set of
+stages per difficulty**, not a ladder: Four Horsemen at standard is the
+(A) sides only, so listing both doubled the apparent opposition.
+
+**Wrecking Crew reported no villain at all.** Its scenario set holds only
+the main scheme; each of the four villains is a set of its own. That is
+the §10.5 population error in a fourth shape, and the only one that was
+silent rather than wrong. The config names the four sets.
+
+**Totals are emitted only where they are unambiguous** — every villain
+faced, and either one stage each or a difficulty that picks the face.
+Four Horsemen totals 36 at standard and 48 at expert; Sinister Six totals
+51 at any table size, its hit points being flat. Tower Defense gets no
+total: both villains are faced, but each has a three-rung ladder and a
+scenario plays two of them.
+
+**A gate keeps this honest.** `opposition_gate` reports any scenario
+naming more than one villain with no config entry, because the default
+reading is the one that was wrong.

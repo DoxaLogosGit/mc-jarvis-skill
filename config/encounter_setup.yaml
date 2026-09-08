@@ -313,3 +313,61 @@ adds_during_play:
       Not growth. The chosen modular sets are shuffled in AT SETUP, minus
       their Elite minions, so they are already in the opening deck. Named
       here only so the growth gate does not report it as unexamined.
+
+# How a scenario's villains relate to each other, hand-verified from each
+# scenario's own Contents and Setup blocks. Not derived: a name count
+# cannot tell a roster from a list of alternates, and reading it as
+# alternates reported "you face one, not all" for scenarios where you
+# fight every one of them.
+#
+#   mode      together   all in play at once
+#             scaling    a number in play that depends on the table
+#             sequence   a villain deck, the top card in play
+#             alternates one chosen at random, the rest unused
+#             two_faces  one villain printed as two identities
+#   stages    ladder     stages fought in order
+#             variant    one set of stages per difficulty, not a ladder
+#   faced     all | some | one
+opposition:
+  four_horsemen:
+    mode: together
+    stages: variant
+    faced: all
+    note: shuffled into a row, the active counter moving on after each activation
+  wrecking_crew:
+    mode: together
+    stages: variant
+    faced: all
+    # The scenario set holds only the main scheme; each villain is a set.
+    villain_sets: [wrecker, thunderball, piledriver, bulldozer]
+    note: the active counter moves to whichever villain's side scheme holds the most threat
+  tower_defense:
+    mode: together
+    stages: ladder
+    faced: all
+    note: setup puts two main schemes and two villains into play
+  sinister_six:
+    mode: scaling
+    stages: ladder
+    faced: all
+    in_play: players_plus_1
+    note: the rest are set aside and ambush in when no villain is in play
+  mansion_attack:
+    mode: sequence
+    stages: variant
+    faced: some
+  god_of_lies:
+    mode: alternates
+    stages: ladder
+    faced: one
+    note: one Avatar of Loki is put into play at random and the others set aside
+  kang:
+    mode: alternates
+    stages: ladder
+    faced: one
+    note: stage II is one of four; stages I and III are fixed
+  risky_business:
+    mode: two_faces
+    stages: ladder
+    faced: one
+    note: the Contents block names only Norman Osborn
