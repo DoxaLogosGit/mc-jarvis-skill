@@ -44,8 +44,17 @@ reports what is indexed, which Rules Reference version, and how stale it is.
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
 | the game round | `mc-jarvis timing --round` |
 | rulings the rulebook lacks | `mc-jarvis rulings [<text>]` |
+| what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty --nemesis]` |
+| the same, against your deck | `mc-jarvis assess <scenario> --deck <id-url-or-file>` |
+| import a deck | `mc-jarvis deck fetch <id-url-or-file>` |
+| is it legal | `mc-jarvis deck check <id-url-or-file>` |
+| what the deck is made of | `mc-jarvis deck stats <id-url-or-file>` |
+| what you own | `mc-jarvis collection set <pack>...` / `collection show` |
 
-Every command takes `--json`.
+Every command takes `--json`. A deck is a marvelcdb id or URL, a JSON
+export, a written list, a spreadsheet, or `-` to paste one on stdin.
+`--owned` restricts results to packs in your collection on `card search`,
+`card show`, `identity`, `encounter` and `rules show`.
 
 ## Why it exists
 
@@ -186,12 +195,20 @@ than once, and the notes are what stopped it happening a third time.
 
 ## Status
 
-Card lookup, identity grouping, encounter sets, rules lookup and search,
-the timing reference, designer rulings, and the skill installer all work.
+Everything in the table above works: card lookup, identity grouping,
+encounter sets, rules lookup and search, the timing reference, designer
+rulings, the skill installer, collection tracking, the deck pipeline
+(import, legality, statistics) and scenario assessment including the
+cross-reference against a deck.
 
-Deck import, legality validation, deck statistics and collection tracking
-are specified but not built. `--owned` parses everywhere and is rejected at
-dispatch until the collection lands.
+Not built: heroic-level modifiers (`--heroic` is bounded and recorded, and
+changes no number), campaign mode, and a coverage check that compares a
+pack's declared size against the cards actually published upstream — see
+`docs/superpowers/specs/2026-08-25-card-data-sources.md`.
+
+The plan directory records what was built and when;
+`docs/superpowers/plans/2026-09-09-scenario-depth-and-written-decks.md`
+covers the most recent pass and lists the eight corrections it made.
 
 ## Licence
 

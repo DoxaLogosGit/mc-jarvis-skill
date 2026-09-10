@@ -110,6 +110,20 @@ Three things, none of which require importing a single card:
 Even the cheapest of these — a declared-`size` check against cards present
 — needs no second source at all, and should be built regardless.
 
+**Status, 2026-09-09: not built.** The `packs` table carries `code` and
+`name` only, so the declared size is not indexed and the check cannot be
+written yet. `assess` did get the weaker half of point 1: a name matching
+cards but no scenario now names the sets those cards live in and says
+marvelcdb may not have published the encounter half, instead of claiming
+the name is absent entirely (assess §14.20). It still cannot say *"68 of
+a declared 276"*, which is the sentence that makes the difference plain.
+
+The gap was re-derived from scratch during a later session — Kingpin
+rather than Bullseye, the same box, the same conclusion — because nothing
+in `assess` pointed at this document. That is the cost of leaving it
+unbuilt: the finding has to be rediscovered by hand each time somebody
+asks about a scenario in a half-published box.
+
 ## If a second source is ever imported
 
 Not planned. Recorded because the constraint is easy to forget:

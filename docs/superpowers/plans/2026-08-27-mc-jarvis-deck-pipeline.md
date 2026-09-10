@@ -75,7 +75,7 @@ Measured 2026-08-27 over 124 decks from five `by_date` days. **Three of these di
 | `ignoreDeckLimitSlots` | present on every deck and **`null` on all 124**. Handle it, do not rely on exercising it. |
 | `by_date` payload | carries the **same keys as the single-deck endpoint**, so the corpus needs one request per day, not one per deck. |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_deckfetch.py
@@ -198,12 +198,12 @@ def test_a_local_file_is_not_mistaken_for_an_id(tmp_path):
     assert deckfetch.deck_id(str(path)) is None
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_deckfetch.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.deckfetch'`
 
-- [ ] **Step 3: Write `deckfetch.py`**
+- [x] **Step 3: Write `deckfetch.py`**
 
 ```python
 """Deck import (spec §10, as corrected by §10.1).
@@ -354,12 +354,12 @@ def fetch(conn, ref: str) -> Deck:
                      source=str(path))
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_deckfetch.py -v`
 Expected: PASS, 12 tests
 
-- [ ] **Step 5: Gate against the live API**
+- [x] **Step 5: Gate against the live API**
 
 ```python
 # tests/test_deckfetch.py — append
@@ -406,13 +406,13 @@ def test_a_real_deck_normalises_with_no_unknown_slots(real_index):
         f"data is probably stale; run `mc-jarvis update`")
 ```
 
-- [ ] **Step 6: Run the gate**
+- [x] **Step 6: Run the gate**
 
 Run: `uv run pytest tests/test_deckfetch.py -m integration -v`
 
 **Gate.** `by_date` for 2026-08-01 returns **35** decks; every one carries the seven required keys, none carries a top-level `format`, and every `meta` has an `aspect`. If `format` appears at the top level, §10 was right and §10.1 is wrong — read the payload and correct the spec rather than the code.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/deckfetch.py tests/test_deckfetch.py
@@ -445,7 +445,7 @@ Implements §10's collection model with §10.1's corrected filter.
 
 §10's actual point is untouched — ownership stays binary and there is still no copy arithmetic — because `deck_limit` binds before physical copies.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_collection.py
@@ -524,12 +524,12 @@ def test_owned_is_offered_only_where_it_means_something():
         assert name not in collection.OWNED_COMMANDS
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_collection.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.collection'`
 
-- [ ] **Step 3: Add the table to `schema.py`**
+- [x] **Step 3: Add the table to `schema.py`**
 
 ```sql
 -- Packs the player owns. Ownership is BINARY (spec §10): `deck_limit`
@@ -544,7 +544,7 @@ CREATE TABLE IF NOT EXISTS owned_packs (
 
 Bump `SCHEMA_VERSION` from 20 to 21.
 
-- [ ] **Step 4: Write `collection.py`**
+- [x] **Step 4: Write `collection.py`**
 
 ```python
 """Pack ownership (spec §10, corrected by §10.1).
@@ -620,12 +620,12 @@ def filter_codes(conn, codes) -> list[str]:
     return [r["code"] for r in rows]
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_collection.py -v`
 Expected: PASS, 6 tests
 
-- [ ] **Step 6: Gate against the real corpus**
+- [x] **Step 6: Gate against the real corpus**
 
 ```bash
 uv run python -c "
@@ -646,7 +646,7 @@ conn.execute('DELETE FROM owned_packs'); conn.commit()
 
 **Gate.** Owning every pack must select **every card** — if it does not, the canonical-group join is dropping rows and every `--owned` answer is short. Owning only `core` must select strictly fewer, and more than zero.
 
-- [ ] **Step 7: Wire the CLI**
+- [x] **Step 7: Wire the CLI**
 
 In `cli.build_parser`, replace the unconditional `--owned` in `_leaf` with an explicit opt-in. Change `_leaf`'s signature to take `owned: bool = False`, add the flag only when asked, and pass `owned=True` on the five commands in `OWNED_COMMANDS`. Then add the collection command:
 
@@ -669,7 +669,7 @@ and in `_dispatch`:
 
 Delete the global rejection at `cli.py:196`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/mc_jarvis/collection.py src/mc_jarvis/schema.py \
@@ -696,7 +696,7 @@ Implements §10's copy rules and the Sp//dr ordering constraint. **This task bui
   - `deckcheck.check_size(conn, deck, config) -> Finding`
   - `deckcheck.check_copies(conn, deck, override=None) -> Finding`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_deckcheck.py
@@ -833,12 +833,12 @@ def test_a_deck_with_unknown_slots_says_so(tmp_path):
     assert "99999" in finding.detail
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_deckcheck.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.deckcheck'`
 
-- [ ] **Step 3: Write the first half of `deckcheck.py`**
+- [x] **Step 3: Write the first half of `deckcheck.py`**
 
 ```python
 """Deck legality (spec §10).
@@ -969,12 +969,12 @@ def check_copies(conn, deck, override: dict | None = None) -> Finding:
         cards=[c.split(" x")[0] for c in over])
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_deckcheck.py -v`
 Expected: PASS, 6 tests
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/mc_jarvis/deckcheck.py tests/test_deckcheck.py
@@ -998,7 +998,7 @@ Completes `deck check`.
   - `deckcheck.check_unique(conn, deck) -> Finding`
   - `deckcheck.check(conn, deck, config=None) -> list[Finding]`
 
-- [ ] **Step 1: Add `deck_rules` to `config/legality.yaml`**
+- [x] **Step 1: Add `deck_rules` to `config/legality.yaml`**
 
 Every value carries the entry it came from. **No rulebook sentences** — CI rejects them, and `mc-jarvis rules show <entry>` prints the wording from the user's own copy.
 
@@ -1021,7 +1021,7 @@ deck_rules:
   pool_aspect: pool
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_deckcheck.py — append
@@ -1111,12 +1111,12 @@ def test_unique_matching_runs_only_over_included_cards(tmp_path):
                                               slots={"s1": 1})).ok
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_deckcheck.py -k aspect -v`
 Expected: FAIL — `AttributeError: module 'mc_jarvis.deckcheck' has no attribute 'check_aspects'`
 
-- [ ] **Step 4: Implement the remaining checks**
+- [x] **Step 4: Implement the remaining checks**
 
 Append to `deckcheck.py`:
 
@@ -1224,12 +1224,12 @@ def key_for_code(conn, code: str) -> str | None:
     return row["identity_key"] if row else None
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_deckcheck.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/mc_jarvis/deckcheck.py src/mc_jarvis/identity.py \
@@ -1251,7 +1251,7 @@ git commit -m "feat: aspect purity and unique matching, over included cards"
 **Interfaces:**
 - Produces: `deckfetch.corpus_path()`, `deckfetch.build_corpus(days) -> dict`
 
-- [ ] **Step 1: Write the corpus builder**
+- [x] **Step 1: Write the corpus builder**
 
 ```python
 # tools/deck_corpus.py
@@ -1303,7 +1303,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 2: Add the corpus reader to `deckfetch.py`**
+- [x] **Step 2: Add the corpus reader to `deckfetch.py`**
 
 ```python
 def corpus_path():
@@ -1328,7 +1328,7 @@ def corpus(*, exclude_legacy: bool = True):
             yield payload
 ```
 
-- [ ] **Step 3: Fetch the corpus**
+- [x] **Step 3: Fetch the corpus**
 
 ```bash
 uv run python tools/deck_corpus.py --days 30
@@ -1336,7 +1336,7 @@ uv run python tools/deck_corpus.py --days 30
 
 Expect roughly **25–35 decks per day**, so 750–1,000 decks.
 
-- [ ] **Step 4: Write the gate**
+- [x] **Step 4: Write the gate**
 
 ```python
 # tests/test_deckcheck.py — append
@@ -1381,7 +1381,7 @@ def test_published_decks_are_overwhelmingly_legal(real_index):
         f"by rule: {reasons}. Read them before touching this number.")
 ```
 
-- [ ] **Step 5: Run the gate and read every rejection**
+- [x] **Step 5: Run the gate and read every rejection**
 
 ```bash
 uv run pytest tests/test_deckcheck.py -m integration -k published -v
@@ -1408,7 +1408,7 @@ for payload in deckfetch.corpus():
 
 **A rejection is a bug in `legality.yaml`, a missing `deckbuilding_overrides` entry, or a `format` you did not filter — until you have read it and shown otherwise.** Do not raise 0.05 to make the suite green. Record what each rejection turned out to be in the spec.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tools/deck_corpus.py src/mc_jarvis/deckfetch.py tests/test_deckcheck.py
@@ -1427,7 +1427,7 @@ git commit -m "feat: the published-decklist regression corpus for legality.yaml"
 - Consumes: `deckcheck.included`
 - Produces: `deckstats.profile(conn, deck) -> dict`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_deckstats.py
@@ -1506,12 +1506,12 @@ def test_every_number_names_its_cards(tmp_path):
     assert got["by_type"]["ally"]["cards"]
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_deckstats.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.deckstats'`
 
-- [ ] **Step 3: Write `deckstats.py`**
+- [x] **Step 3: Write `deckstats.py`**
 
 ```python
 """Deck shape (spec §10).
@@ -1577,12 +1577,12 @@ def profile(conn, deck) -> dict:
     }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_deckstats.py -v`
 Expected: PASS, 5 tests
 
-- [ ] **Step 5: Gate against a real deck**
+- [x] **Step 5: Gate against a real deck**
 
 ```bash
 uv run python -c "
@@ -1600,7 +1600,7 @@ print('resources', p['resources'])
 
 **Gate.** `size` must be **at least 40** for any published deck, and the cost-curve values must sum to `size - no_cost`. A curve that does not reconcile with the size means the exclusion set differs between the two, which is the bug this shared-`included` design exists to prevent.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/mc_jarvis/deckstats.py tests/test_deckstats.py
@@ -1618,7 +1618,7 @@ git commit -m "feat: deck cost curve, resource mix and type breakdown"
 **Interfaces:**
 - Produces: `deckfetch.handle(args)`, `collection.handle(args)`
 
-- [ ] **Step 1: Wire the parser**
+- [x] **Step 1: Wire the parser**
 
 ```python
     deck_p = _leaf(sub, "deck", "import, validate and describe a deck")
@@ -1639,7 +1639,7 @@ and in `_dispatch`:
         return deckfetch.handle(args)
 ```
 
-- [ ] **Step 2: Write the handler**
+- [x] **Step 2: Write the handler**
 
 ```python
 def handle(args) -> int:
@@ -1688,7 +1688,7 @@ def handle(args) -> int:
     return 0 if all(f.ok for f in findings) else 1
 ```
 
-- [ ] **Step 3: Teach the skill**
+- [x] **Step 3: Teach the skill**
 
 Add to `SKILL.md`'s command table:
 
@@ -1724,7 +1724,7 @@ Four things to carry into any answer:
   curve, 2 answers to Guard" into "cut a Tackle" is your job.
 ```
 
-- [ ] **Step 4: Run everything**
+- [x] **Step 4: Run everything**
 
 ```bash
 uv run pytest -q -m "not integration"
@@ -1739,7 +1739,7 @@ uv run mc-jarvis collection show
 
 Expected: the suite passes, the policy check is clean, and deck 64331 (a Nova Justice deck, 40+ cards) fetches, validates and profiles.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/mc_jarvis/ skill/ tests/
@@ -1750,18 +1750,44 @@ git commit -m "feat: mc-jarvis deck fetch/check/stats and collection"
 
 ## Done criteria
 
-- [ ] `uv run pytest -q` passes, unit and integration
-- [ ] `uv run python -m mc_jarvis.policy` clean — no rulebook prose in the new `deck_rules`
-- [ ] `mc-jarvis deck check` on the corpus rejects **≤ 5%** of non-legacy published decks, and every rejection in the first run has been read and explained in the spec
-- [ ] Owning every pack selects every card; owning only `core` selects strictly fewer and more than zero
-- [ ] A deck naming an unindexed card reports it rather than shrinking
-- [ ] Sp//dr passes her own legality check
-- [ ] `01043a`–`01043d` count as five cards, not one
-- [ ] `git status` clean; `data/decks/` untracked
+- [x] `uv run pytest -q` passes, unit and integration
+- [x] `uv run python -m mc_jarvis.policy` clean — no rulebook prose in the new `deck_rules`
+- [x] `mc-jarvis deck check` on the corpus rejects **≤ 5%** of non-legacy published decks, and every rejection in the first run has been read and explained in the spec
+- [x] Owning every pack selects every card; owning only `core` selects strictly fewer and more than zero
+- [x] A deck naming an unindexed card reports it rather than shrinking
+- [x] Sp//dr passes her own legality check
+- [x] `01043a`–`01043d` count as five cards, not one
+- [x] `git status` clean; `data/decks/` untracked
+
+## Verified complete, 2026-09-09
+
+Every criterion above re-run against the live index and the fetched
+corpus rather than assumed from the ticks:
+
+| criterion | result |
+| --- | --- |
+| `uv run pytest -q` | 543 unit, 123 integration, all pass |
+| `python -m mc_jarvis.policy` | clean |
+| corpus rejection rate | **4.6%** of 1,501 decks (criterion: ≤ 5%) |
+| Sp//dr passes her own legality check | yes, 7 corpus decks |
+| `01043a`–`01043d` | 4 faces, quantities 1/1/1/2 = five cards |
+| `git status` | clean |
+
+The deck reader has since grown a second input: a deck written as a list
+or a spreadsheet, rather than marvelcdb JSON. That is design §10.17, and
+it is what `Deck.unknown` now carries for a name that does not resolve.
 
 ## Deliberately not in this plan
 
-- **`assess --deck`** (assess spec §9) — consumes `Deck`, lands next.
+**Since done:**
+
+- **`assess --deck`** (assess spec §9) — built, and it consumes `Deck` as
+  designed. One gap the plan did not anticipate: it read `deck.slots` and
+  never `deck.unknown`, so a card that failed to resolve was silently
+  absent from every cross-referenced count. It now says its numbers are a
+  floor, the way `deck check` already did. See design §10.17.
+
+**Still deferred:**
 - **Warlock's `off_aspect_allowance` and Cable's side-scheme allowance** — both are already recorded in `deckbuilding_overrides` with digests, and both need a rule that counts cards by faction against a cap. `equal_aspects` is implemented because Spider-Woman is common in the corpus; if the corpus gate in Task 5 rejects a Warlock or Cable deck, that rejection is the task that adds these.
 - **Signature-set auto-inclusion** — marvelcdb decks already carry signature cards in `slots`, so there is nothing to infer. If a deck is ever found missing them, that is a finding and a task, not an assumption to code against now.
 - **`ignoreDeckLimitSlots`** — present on every deck and null on all 124 sampled. Parsed and carried; no rule reads it until a deck is found that uses it.

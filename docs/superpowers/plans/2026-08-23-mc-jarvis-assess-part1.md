@@ -54,7 +54,7 @@ Implements §4.1 and §4.3, with §14.3's correction.
 - Produces: `cards.boost`, `cards.boost_star`, `cards.base_threat`, `cards.base_threat_fixed`, `cards.escalation_threat`, `cards.escalation_threat_fixed`, `cards.scheme_acceleration`, `cards.scheme_amplify`, `cards.scheme_crisis`, `cards.scheme_hazard`, `cards.hidden`, `cards.attack_star`, `cards.scheme_star` — all nullable INTEGER except the `_star` family, which is INTEGER 0/1.
 - Produces: `index.assert_boost_invariant(rows: list[dict]) -> None`, raising `index.InvariantError`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_index.py — append
@@ -82,12 +82,12 @@ def test_boost_invariant_accepts_absent_and_one_to_four():
     ])
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_index.py -k boost_invariant -v`
 Expected: FAIL — `AttributeError: module 'mc_jarvis.index' has no attribute 'assert_boost_invariant'`
 
-- [ ] **Step 3: Add the columns to `schema.py`**
+- [x] **Step 3: Add the columns to `schema.py`**
 
 In the `CREATE TABLE IF NOT EXISTS cards (…)` block, after `scheme`:
 
@@ -116,7 +116,7 @@ In the `CREATE TABLE IF NOT EXISTS cards (…)` block, after `scheme`:
     scheme_star             INTEGER,
 ```
 
-- [ ] **Step 4: Add the columns to `index.COLUMNS`**
+- [x] **Step 4: Add the columns to `index.COLUMNS`**
 
 ```python
 COLUMNS = (
@@ -131,7 +131,7 @@ COLUMNS = (
 ).split()
 ```
 
-- [ ] **Step 5: Write the invariant and call it**
+- [x] **Step 5: Write the invariant and call it**
 
 In `index.py`, beside `_assert_copy_invariant`:
 
@@ -161,12 +161,12 @@ In `load_cards`, immediately after `_assert_copy_invariant(rows)`:
 
 Bump `SCHEMA_VERSION` from 14 to 15.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `uv run pytest tests/test_index.py -v`
 Expected: PASS
 
-- [ ] **Step 7: Rebuild and gate against the real corpus**
+- [x] **Step 7: Rebuild and gate against the real corpus**
 
 ```bash
 uv run mc-jarvis update
@@ -184,7 +184,7 @@ print('both boost and star:', conn.execute('SELECT COUNT(*) FROM cards WHERE boo
 
 **Gate.** Measured 2026-08-23: **1,244** cards carry `boost` — 2:560, 1:353, 3:312, 4:19 — and **419** carry `boost_star`, of which **134** carry both. If the distribution has moved, find out why before continuing; it is the denominator of the headline statistic.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/mc_jarvis/schema.py src/mc_jarvis/index.py tests/test_index.py
@@ -214,7 +214,7 @@ Implements §5.2 **as corrected by §14.5, §14.6, §14.7 and §14.8**. This is 
 
 §14.2 first concluded no signal existed, then §14.5 and §14.7 found three. Both wrong conclusions came from searching one spelling. The rules below are in **decreasing confidence**, and each names the measurement behind it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_encounterdeck.py
@@ -369,12 +369,12 @@ def test_the_nemesis_set_aside_area_is_not_a_card_group():
     assert ed.set_aside_groups(rows) == {}
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_encounterdeck.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.encounterdeck'`
 
-- [ ] **Step 3: Add the table to `schema.py`**
+- [x] **Step 3: Add the table to `schema.py`**
 
 ```sql
 -- Whether a card is in the encounter deck at all, and whether a card
@@ -393,7 +393,7 @@ CREATE TABLE IF NOT EXISTS encounter_role (
 CREATE INDEX IF NOT EXISTS idx_encounter_role ON encounter_role(role);
 ```
 
-- [ ] **Step 4: Write `encounterdeck.py`**
+- [x] **Step 4: Write `encounterdeck.py`**
 
 ```python
 """Encounter-deck membership (spec §5.2, as corrected by §14.5-§14.8).
@@ -533,12 +533,12 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
     return dict(counts)
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_encounterdeck.py -v`
 Expected: PASS, 11 tests
 
-- [ ] **Step 6: Gate against the real corpus**
+- [x] **Step 6: Gate against the real corpus**
 
 ```bash
 uv run python -c "
@@ -561,7 +561,7 @@ print('returns_to_deck:', conn.execute('SELECT COUNT(*) FROM encounter_role WHER
 
 If `returns_to_deck = 1` is not 3, the §14.6 rule has drifted; read the cards before changing the threshold.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/encounterdeck.py src/mc_jarvis/schema.py tests/test_encounterdeck.py
@@ -587,7 +587,7 @@ Implements §5.1's three-step structure with its first step replaced (§14.7): a
   - `encounterdeck.audit(conn) -> list[str]` — problems, empty when clean
   - `encounterdeck.AuditError`
 
-- [ ] **Step 1: Write `config/encounter_setup.yaml`**
+- [x] **Step 1: Write `config/encounter_setup.yaml`**
 
 ```yaml
 # Cards a scenario sets aside that the card text does not name.
@@ -615,7 +615,7 @@ acknowledged: {}
 unresolved: {}
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```python
 # tests/test_encounterdeck.py — append
@@ -662,12 +662,12 @@ def test_audit_names_a_flagged_set_that_nothing_covers(tmp_path):
     assert "myst" in problems[0]
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_encounterdeck.py -k audit -v`
 Expected: FAIL — `AttributeError: module 'mc_jarvis.encounterdeck' has no attribute 'audit'`
 
-- [ ] **Step 4: Implement the audit**
+- [x] **Step 4: Implement the audit**
 
 Append to `encounterdeck.py`:
 
@@ -735,7 +735,7 @@ def audit(conn, config: dict | None = None) -> list[str]:
     return problems
 ```
 
-- [ ] **Step 5: Link the config and run the tests**
+- [x] **Step 5: Link the config and run the tests**
 
 ```bash
 ln -sfn ../../../config/encounter_setup.yaml src/mc_jarvis/_bundled/encounter_setup.yaml
@@ -750,7 +750,7 @@ Add to the `force-include` block in `pyproject.toml`:
 Run: `uv run pytest tests/test_encounterdeck.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Run the audit against the real corpus and fill the config**
+- [x] **Step 6: Run the audit against the real corpus and fill the config**
 
 ```bash
 uv run python -c "
@@ -766,7 +766,7 @@ for p in problems: print('  ', p[:150])
 
 Measured 2026-08-23: **33 of 56** villain sets carry a flagged `Setup` block, and the text rule covers those referenced by `[[Prelate]]`, `[[Adaptoid]]`, `[[Captive]]`, `[[Morlock]]`, `[[Thunderbolt]]`, `Rescued Captive` and `Orbital Decay`. Expect roughly **20** to need an entry.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add config/encounter_setup.yaml src/mc_jarvis/encounterdeck.py \
@@ -791,7 +791,7 @@ Implements §7 **as corrected by §14.1**: parsed from the main scheme, not hand
   - `encounterdeck.build_scenarios(conn) -> dict[str, int]`
   - `encounterdeck.scenario_gate(conn) -> list[str]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_encounterdeck.py — append
@@ -854,12 +854,12 @@ def test_no_contents_block_at_all():
         == "none"
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_encounterdeck.py -k contents -v`
 Expected: FAIL — `AttributeError: … has no attribute 'parse_contents'`
 
-- [ ] **Step 3: Add the table to `schema.py`**
+- [x] **Step 3: Add the table to `schema.py`**
 
 ```sql
 -- Which modular sets a scenario prescribes, parsed from its own main
@@ -886,7 +886,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_scenario_modulars
     ON scenario_modulars(villain_set, COALESCE(modular_set, ''));
 ```
 
-- [ ] **Step 4: Implement the parse**
+- [x] **Step 4: Implement the parse**
 
 Append to `encounterdeck.py`:
 
@@ -1028,12 +1028,12 @@ modular_aliases:
 no_contents_block: []
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `uv run pytest tests/test_encounterdeck.py -v`
 Expected: PASS
 
-- [ ] **Step 6: Gate against the real corpus**
+- [x] **Step 6: Gate against the real corpus**
 
 ```bash
 uv run python -c "
@@ -1046,7 +1046,7 @@ for p in ed.scenario_gate(conn): print('  GATE', p[:130])
 
 **Gate**, measured 2026-08-23 across 56 villain sets: **35 prescribed with every name resolved, 7 named but unresolved, 7 with no `Contents` block, 6 player-chosen, 1 random.** The 7 unresolved are formatting variance plus one upstream typo — Step 4's `modular_aliases` covers two of them, and stripping inner markup covers five. **Expect the unresolved count to reach 0**; every remaining one is a decision.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add config/scenarios.yaml src/mc_jarvis/encounterdeck.py \
@@ -1108,7 +1108,7 @@ Turns a villain plus options into the multiset of cards a player faces.
   - `assess.deck_cards(conn, scenario: Scenario, *, added: int = 0) -> list[dict]`
   - `assess.UnknownScenario`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_assess.py
@@ -1183,12 +1183,12 @@ def test_a_villain_missing_from_marvelcdb_says_so(conn):
         assess.resolve(conn, "bullseye")
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_assess.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'mc_jarvis.assess'`
 
-- [ ] **Step 3: Write the assembly half of `assess.py`**
+- [x] **Step 3: Write the assembly half of `assess.py`**
 
 ```python
 """Scenario threat profile (spec §1-§8, Part 1).
@@ -1279,12 +1279,12 @@ def deck_cards(conn, scenario: Scenario, *, added: int = 0) -> list[dict]:
         f"ORDER BY c.set_code, c.code", codes)]
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_assess.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/mc_jarvis/assess.py tests/test_assess.py
@@ -1340,7 +1340,7 @@ Implements §8. The gate is §12's: a scenario worked out by hand and compared a
 **Interfaces:**
 - Produces: `assess.profile(conn, scenario: Scenario, *, added: int = 0) -> dict`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_assess.py — append
@@ -1398,12 +1398,12 @@ def test_the_denominator_is_reported_with_the_mean(conn):
     assert got["boost"]["over"] == got["deck_size"]
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_assess.py -k boost -v`
 Expected: FAIL — `AttributeError: module 'mc_jarvis.assess' has no attribute 'profile'`
 
-- [ ] **Step 3: Implement `profile`**
+- [x] **Step 3: Implement `profile`**
 
 ```python
 def _weighted(cards: list[dict], field_: str) -> tuple[int, int]:
@@ -1460,12 +1460,12 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
     }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_assess.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Write the hand-computed real-data gate**
+- [x] **Step 5: Write the hand-computed real-data gate**
 
 ```python
 # tests/test_assess.py — append
@@ -1509,13 +1509,13 @@ def test_rhino_standard_one_player_matches_a_hand_count(real_index):
     assert round(got["boost"]["mean"], 2) == round(19 / 22, 2)
 ```
 
-- [ ] **Step 6: Run the gate**
+- [x] **Step 6: Run the gate**
 
 Run: `uv run pytest tests/test_assess.py -m integration -v`
 
 **This gate is the point of the task.** If it fails, do **not** adjust the expected numbers to match the output. Re-read the `rhino` set from the index and work the arithmetic again by hand; `Armored Rhino Suit`'s membership is the one genuinely uncertain card, and §14.5 records that nothing in the data excludes it. If the discrepancy is exactly that card, the finding is that it *is* in the deck — record it in the spec rather than special-casing it.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/mc_jarvis/assess.py tests/test_assess.py
@@ -1532,7 +1532,7 @@ git commit -m "feat: quantity-weighted composition and boost curve, gated by han
 > The plan re-implements keyword matching in `assess.py` with
 > `\b{word}\b` over card text. `card_keywords` already exists and does
 > exactly that - and it is what made the defect visible: **261
-> encounter-deck cards mention `surge` and only 80 print it.** Rhino's
+> encounter-deck cards mention `surge` and only 79 print it.** Rhino's
 > entire treachery suite reads *"this card gains surge"* - a conditional
 > whose condition is the point of the card - so the naive count reports
 > **12 of 14 copies surging** for a deck whose printed surge rate is
@@ -1582,7 +1582,7 @@ The rest of §8. Each number carries the cards behind it.
 **Interfaces:**
 - Produces: `profile()` gains `minions`, `treacheries`, `side_schemes`, `scheme_pressure`, `keywords`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_assess.py — append
@@ -1650,12 +1650,12 @@ def test_surge_rate_is_reported_over_treachery_copies(conn):
     assert t["surge_rate"] == pytest.approx(2 / t["copies"])
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_assess.py -k minion -v`
 Expected: FAIL — `KeyError: 'minions'`
 
-- [ ] **Step 3: Implement the sections**
+- [x] **Step 3: Implement the sections**
 
 Add to `assess.py`, and call them from `profile`:
 
@@ -1758,12 +1758,12 @@ and add to the returned dict:
         "keywords": _keyword_counts(cards, MINION_KEYWORDS + ("surge",)),
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `uv run pytest tests/test_assess.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Gate against the real corpus**
+- [x] **Step 5: Gate against the real corpus**
 
 ```bash
 uv run python -c "
@@ -1778,7 +1778,7 @@ print(json.dumps({k: p[k] for k in ('deck_size','boost','minions','treacheries',
 
 **Gate.** Rhino at 2 players, Standard, no modulars: deck size **22**, minions **4 copies** (Hydra Mercenary ×2, Sandman, Shocker), treacheries **12 copies**, side schemes **2**. `guard` must be **2** (Hydra Mercenary ×2) and `toughness` **1**. Work any mismatch out by hand from the set list in §5 before touching the code.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/mc_jarvis/assess.py tests/test_assess.py
@@ -1798,7 +1798,7 @@ Implements §14.9 and §6, and teaches the model about them.
 **Interfaces:**
 - Produces: `assess.trajectory(conn, scenario) -> list[dict]`, `assess.handle(args) -> int`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_assess.py — append
@@ -1826,12 +1826,12 @@ def test_a_fixed_scenario_reports_one_step(conn):
     assert steps[0]["added"] == 0
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_assess.py -k trajectory -v`
 Expected: FAIL — `AttributeError: … has no attribute 'trajectory'`
 
-- [ ] **Step 3: Implement the trajectory and the CLI handler**
+- [x] **Step 3: Implement the trajectory and the CLI handler**
 
 ```python
 def trajectory(conn, scenario: Scenario) -> list[dict]:
@@ -1896,7 +1896,7 @@ def handle(args) -> int:
     return 0
 ```
 
-- [ ] **Step 4: Wire the CLI**
+- [x] **Step 4: Wire the CLI**
 
 In `cli.build_parser`, after the `rulings` block:
 
@@ -1928,7 +1928,7 @@ and in `_dispatch`:
         return assess.handle(args)
 ```
 
-- [ ] **Step 5: Wire the build**
+- [x] **Step 5: Wire the build**
 
 In `init.rebuild_index`, after `counts["timing_triggers"] = timing.build(conn)`:
 
@@ -1949,7 +1949,7 @@ In `init.rebuild_index`, after `counts["timing_triggers"] = timing.build(conn)`:
 
 Add `"scenarios_incomplete": json.dumps(problems)` to the `build_meta` rows, and surface it in `update.status` beside `timing_broken`.
 
-- [ ] **Step 6: Teach the skill**
+- [x] **Step 6: Teach the skill**
 
 Add to `SKILL.md`'s command table:
 
@@ -1984,7 +1984,7 @@ Three things to carry into any answer:
   similar villain.
 ```
 
-- [ ] **Step 7: Run everything**
+- [x] **Step 7: Run everything**
 
 Run: `uv run pytest -q`
 Expected: PASS, including `test_the_skill_names_every_command_a_player_would_ask_for`, which fails if `assess` is missing from `SKILL.md`.
@@ -1998,7 +1998,7 @@ uv run mc-jarvis assess the_hood
 
 Expected: `rhino` prints one deck; `dark_beast` prints an opening and a grown deck; `the_hood` refuses and asks for `--modular`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/mc_jarvis/assess.py src/mc_jarvis/cli.py src/mc_jarvis/init.py \
@@ -2010,20 +2010,60 @@ git commit -m "feat: mc-jarvis assess, with growing-deck trajectories"
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/ -v` passes, unit and integration, except the two network-bound tests in `tests/test_manifest.py` (`fetch_from_wayback` and the FFG CDN resolve check), which make live requests and fail without the archive reachable
-- [ ] `assess.profile(conn, assess.resolve(conn, 'rhino', modular=[], players=2))` matches the corrected hand count: **24** cards, boost total **23** (the original 22/19 was the plan's own arithmetic error — see the Task 6 correction)
-- [ ] all five gates return empty — `encounterdeck.audit`, `encounterdeck.scenario_gate`, `encounterdeck.aside_gate`, `assess.back_face_gate`, `assess.growth_gate` — or every remaining entry is acknowledged in config with the sentence that justifies it
-- [ ] `starts_in_play` with `returns_to_deck = 1` is exactly 3 — the `[[Setting]]` environments
-- [ ] `other_deck` is **6**. The plan said "at least 15"; that came from a regex counting every *mention* of `[[X]] deck` rather than membership, and 15 included cards that merely name the infinity stone deck
-- [ ] printed surge on encounter-deck cards is **80**, against 261 mentions
-- [ ] `mc-jarvis assess the_hood` refuses and names `--modular`
-- [ ] `mc-jarvis assess bullseye` says the scenario is not in the card data
-- [ ] `git status` clean; no fetched artifact tracked
+- [x] `uv run pytest tests/ -v` passes, unit and integration, except the two network-bound tests in `tests/test_manifest.py` (`fetch_from_wayback` and the FFG CDN resolve check), which make live requests and fail without the archive reachable
+- [x] `assess.profile(conn, assess.resolve(conn, 'rhino', modular=[], players=2))` matches the corrected hand count: **24** cards, boost total **23** (the original 22/19 was the plan's own arithmetic error — see the Task 6 correction)
+- [x] all five gates return empty — `encounterdeck.audit`, `encounterdeck.scenario_gate`, `encounterdeck.aside_gate`, `assess.back_face_gate`, `assess.growth_gate` — or every remaining entry is acknowledged in config with the sentence that justifies it
+- [x] `starts_in_play` with `returns_to_deck = 1` is exactly 3 — the `[[Setting]]` environments
+- [x] `other_deck` is **6**. The plan said "at least 15"; that came from a regex counting every *mention* of `[[X]] deck` rather than membership, and 15 included cards that merely name the infinity stone deck
+- [x] printed surge on encounter-deck cards is **79**, against 261 mentions
+      (the plan said 80; `Hide!` in `morlock_siege` is `set_aside`, not a
+      deck member, because that scenario's main scheme shuffles it in from
+      the discard during play. The correction post-dates the plan.)
+- [x] `mc-jarvis assess the_hood` refuses and names `--modular`
+- [x] `mc-jarvis assess bullseye` says the scenario is not in the card data
+- [x] `git status` clean; no fetched artifact tracked
+
+## Verified complete, 2026-09-09
+
+Every criterion above re-run against the live index (`built_at`
+2026-09-05, 4,379 cards) rather than assumed from the ticks:
+
+| criterion | result |
+| --- | --- |
+| `assess.profile(resolve('rhino', modular=[], players=2))` | 24 cards, boost 23 |
+| `encounterdeck.audit` / `scenario_gate` / `aside_gate` | 0, 0, 0 |
+| `assess.back_face_gate` / `growth_gate` | 0, 0 |
+| `starts_in_play` with `returns_to_deck = 1` | 3 |
+| `other_deck` | 6 |
+| printed surge on encounter-deck cards | 79 (see the correction above) |
+| `assess the_hood` | refuses, names `--modular` |
+| `assess bullseye` | refuses, and now names the sets its cards live in |
+| `git status` | clean |
+
+A sixth gate, `assess.opposition_gate`, has since been added and also
+returns empty; it is described in scenario-assessment §14.23.
+
+`assess bullseye` no longer says "not in the card data". That message was
+told of any name matching no *set*, which was a wider claim than the data
+supported — Bullseye names six cards. See §14.20.
 
 ## Deliberately not in this plan
 
-- **Part 2** (§9) — needs `deck fetch` / `deck check`.
-- **Heroic levels** (§10) — the modifier is prose in a rules insert and has not been read. `--heroic` is accepted and recorded, and changes nothing until it is.
+**Since done, and where each landed:**
+
+- **Part 2** (§9) — built. `crossref.py` holds the four pairings, reached
+  by `assess --deck`. The four cross-references in the original §9 were
+  all derived from keyword names rather than mechanisms and the section
+  was rewritten before implementation; see scenario-assessment §9.0.
+- **Nemesis arrival rate** — the timer is verified, and it is Standard
+  III's `Pursued by the Past`: permanent, on the table from setup,
+  counting to players + 3. Standard I and II carry a single treachery
+  instead, so the nemesis may never appear at all. `assess.nemesis_pull`
+  reports which of the two a table has. See §14.18, which also corrects
+  the deck count: a nemesis set is set aside and was being counted as
+  though it were dealt.
+
+**Still deferred:**
+- **Heroic levels** (§10) — the modifier is prose in a rules insert and has not been read. `--heroic` is accepted and recorded, and changes nothing until it is. It is now bounded to a non-negative integer, which is validation rather than modelling.
 - **Campaign mode** (§10) — scope undetermined; may not belong in this spec.
-- **Nemesis arrival rate** (§10) — `--nemesis` folds the set in without modelling how often it arrives, because the Standard III timer mechanism is unverified.
 - **The three `Chief … Officer` environments** (§14.6) — treated as `starts_in_play`, `returns_to_deck = 0`. Unverified; the user is checking whether anything discards them.
