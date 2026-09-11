@@ -28,6 +28,12 @@ mc-jarvis install-skill   # places the skill for every harness
 Then open an agent in that folder and ask a Marvel Champions question
 without naming a command. If the skill is working, it runs one.
 
+**The skill is scoped to that folder and is invisible everywhere else.** A
+global skill loads its name and description into every agent session on the
+machine, so a hobby tool would announce itself in the middle of unrelated
+work. `install-skill` refuses a home-directory install outright for that
+reason; `--global` exists, is opt-in, and is never inferred.
+
 `mc-jarvis doctor` diagnoses a broken environment. `mc-jarvis status`
 reports what is indexed, which Rules Reference version, and how stale it is.
 

@@ -230,8 +230,9 @@ missing prerequisite is diagnosed rather than guessed at.
 
 ## 7. Agent integration
 
-**The skill file is the single source of truth**, and it installs *globally* — not into a
-project. `skill/mc-jarvis/SKILL.md` carries the Jarvis persona, the command surface,
+**The skill file is the single source of truth**, and it installs into a **workspace the
+player chooses** — never globally, and never into a project by default.
+`skill/mc-jarvis/SKILL.md` carries the Jarvis persona, the command surface,
 worked examples, and the browser-fetch recipe for `init --from-html` (§11), which is
 load-bearing: without it `init` is broken by default on precisely the non-Claude agents
 this design exists to serve.
@@ -245,8 +246,19 @@ wins. A player asking "is my Spider-Man deck legal?" is sitting in their home di
 not inside a checkout of this repository, so a repo-root `AGENTS.md` would never load in
 the exact situation the tool exists for. It names a file that cannot reach its reader.
 
-Skills, by contrast, are discovered from user-global directories regardless of cwd. That
-is the right mechanism for a tool used from anywhere.
+Skills, by contrast, are discovered from *directories* rather than by walking up from the
+repository root, and each harness reads several — some project-scoped, some user-global.
+That is the right **mechanism**; it does not follow that the right **scope** is global,
+and an earlier draft of this section drew exactly that conclusion. See "Install scope"
+below, which supersedes it: the skill goes in a folder the player deliberately works in.
+
+> **Correction.** This paragraph read "discovered from user-global directories regardless
+> of cwd. That is the right mechanism for a tool used from anywhere", and the section
+> opened by saying the skill "installs globally". Both survived the decision recorded
+> below and contradicted it for three weeks. A global install puts a Marvel Champions
+> assistant's name and description into every agent session on the machine — including
+> work unrelated to it — which is a cost this project never agreed to pay. The code never
+> did this: `skill_install.check_workspace` refuses a `$HOME` install outright.
 
 `AGENTS.md` stays in the repo, demoted to what it is actually good at: instructions for
 someone working *on* mc-jarvis.
