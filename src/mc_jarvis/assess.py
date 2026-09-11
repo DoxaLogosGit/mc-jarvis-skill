@@ -432,8 +432,11 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
             "over": size,
             "histogram": dict(sorted(histogram.items())),
             # Counted, never averaged (§4.4).
-            "star_copies": sum(c["quantity"] for c in cards
-                               if c.get("boost_star")),
+            "star_copies": (star := sum(c["quantity"] for c in cards
+                                        if c.get("boost_star"))),
+            # A count alone does not say how often it happens; 6 stars in
+            # 18 cards is a different scenario from 6 in 55.
+            "star_rate": (star / size) if size else 0.0,
         },
         "caveats": caveats(scenario, _sets(scenario)
                            + scenario.pool[:added]),
@@ -536,8 +539,37 @@ def _minions(conn, cards: list[dict]) -> dict:
         "scales_per_hero": sum(1 for c in rows if c.get("health_per_hero")),
         "keywords": _keyword_copies(conn, rows, printed=True),
         "granted_keywords": _keyword_copies(conn, rows, printed=False),
+        "teamwork": _teamwork(conn, rows),
         "cards": _named(rows),
     }
+
+
+def _teamwork(conn, rows: list[dict]) -> list[dict]:
+    """Teamwork, with the trait that decides whether it can ever fire.
+
+    RR p.43: a minion with teamwork activates the moment it enters play
+    and engages, *if another minion sharing the named trait is already
+    there*. So the count that matters is not how many minions carry the
+    keyword but how many carry the trait - a lone Teamwork (ACOLYTE)
+    minion in a deck with no other ACOLYTE never triggers, and five of
+    them means every one after the first attacks on arrival.
+    """
+    carriers: dict[str, int] = {}
+    for row in rows:
+        for found in conn.execute(
+                "SELECT parameter FROM card_keywords WHERE code = ? "
+                "AND keyword = 'teamwork' AND printed = 1", (row["code"],)):
+            trait = found["parameter"]
+            if trait:
+                carriers[trait] = carriers.get(trait, 0) + row["quantity"]
+    out = []
+    for trait, copies in sorted(carriers.items(), key=lambda x: -x[1]):
+        sharing = sum(
+            r["quantity"] for r in rows if conn.execute(
+                "SELECT 1 FROM card_traits WHERE code = ? AND trait = ?",
+                (r["code"], trait)).fetchone())
+        out.append({"trait": trait, "copies": copies, "sharing": sharing})
+    return out
 
 
 # The keywords a deck can be built to answer. Each is a printed property
@@ -1076,8 +1108,14 @@ def _line(step: dict) -> None:
           + (f" ({step['opening_deck_size']} at the start, "
              f"{len(step['cycles_in'])} cycle in later)"
              if step["cycles_in"] else ""))
+    # Named a boost star, not "a star icon". The RR (p.40) puts the same
+    # icon in three places - the boost field, an enemy's ATK, and an
+    # attachment's ATK or SCH - and only the boost one fires when the
+    # card is dealt face down as boost. The rate is what says how often
+    # a villain activation comes with a surprise attached.
     print(f"    boost: mean {b['mean']:.2f} over {b['over']} cards, "
-          f"{b['star_copies']} with a star icon")
+          f"{b['star_copies']} boost stars ({b['star_rate']:.0%} of the "
+          f"deck - a mandatory ability when dealt as a boost card)")
     print("    histogram: " + "  ".join(
         f"{k}:{v}" for k, v in b["histogram"].items()))
     print(f"    minions {m['copies']}, treacheries {t['copies']}, "
@@ -1157,6 +1195,15 @@ def _line(step: dict) -> None:
     print(f"    surge: {sg['printed_copies']} printed "
           f"({sg['rate']:.0%} of the deck), "
           f"{sg['conditional_copies']} conditional{spread}")
+    for tw in m.get("teamwork") or []:
+        # The trait count is the whole point: teamwork does nothing until
+        # a second minion sharing the trait is on the table.
+        after = tw["sharing"] - 1
+        print(f"    teamwork ({tw['trait']}): {tw['copies']} minion(s), "
+              f"{tw['sharing']} sharing that trait"
+              + (f" - each of the {after} after the first activates the "
+                 f"moment it arrives" if after > 0 else
+                 " - nothing else shares it, so it never fires"))
     if m["keywords"]:
         print("    minion keywords: " + ", ".join(
             f"{k} {v}" for k, v in sorted(m["keywords"].items())))

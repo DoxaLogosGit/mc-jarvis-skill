@@ -25,6 +25,7 @@ expected:
   - guard
   - hinder
   - incite
+  - linked
   - overkill
   - patrol
   - peril
@@ -32,6 +33,7 @@ expected:
   - piercing
   - quickstrike
   - ranged
+  - requirement
   - restricted
   - retaliate
   - setup
@@ -39,8 +41,10 @@ expected:
   - steady
   - surge
   - team-up
+  - teamwork
   - temporary
   - toughness
+  - uses
   - victory
   - villainous
   - vulnerable

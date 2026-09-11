@@ -394,11 +394,19 @@ def test_an_unindexed_rules_reference_yields_nothing_not_a_wrong_list(
 
 @pytest.mark.integration
 def test_the_real_rules_reference_yields_the_expected_keywords(real_index):
-    """25 keywords, of which `vulnerable` is found only by its own entry
+    """29 keywords, of which `vulnerable` is found only by its own entry
     and `form` only by the enumeration. Both asymmetries are why the
-    derivation is a union rather than either source alone."""
+    derivation is a union rather than either source alone.
+
+    It was 25 until the four parameterised keywords were found missing:
+    `teamwork`, `linked`, `requirement` and `uses`. Each is bulleted in
+    the RR's own `Keywords` entry, and both paths rejected them - the
+    bullet pattern required a colon straight after the word, and the
+    entry path skipped any term containing a bracket on the recorded but
+    wrong belief that a bracket meant card anatomy."""
     derived = {k: s for k, s, _ in cardtext.derive_keywords(real_index)}
-    assert len(derived) == 25
+    assert len(derived) == 29
+    assert {"teamwork", "linked", "requirement", "uses"} <= set(derived)
     assert derived["vulnerable"] == "entry"
     assert derived["form"] == "enumerated"
     assert "uppercut" not in derived
@@ -425,3 +433,51 @@ def test_vulnerable_is_now_visible_on_encounter_cards(real_index):
         "WHERE k.keyword = 'vulnerable' AND e.role = 'deck' "
         "AND k.printed = 1").fetchone()[0]
     assert rows == 8
+
+
+def test_a_parenthesised_keyword_is_still_a_keyword(real_index):
+    """`Teamwork (Trait)`, `Linked (Card Title)`, `Requirement (Resources)`
+    and `Uses (X "type")` are all bulleted in the Rules Reference's own
+    `Keywords` entry. Both derivation paths rejected them - the bullet
+    pattern wanted a colon straight after the word, and the entry path
+    skipped any term containing a bracket - so four keywords were
+    invisible and `teamwork` was indexed on nothing."""
+    from mc_jarvis import cardtext
+
+    derived = {k for k, _, _ in cardtext.derive_keywords(real_index)}
+    assert {"teamwork", "linked", "requirement", "uses"} <= derived
+
+
+def test_the_keyword_gate_is_clean(real_index):
+    from mc_jarvis import cardtext
+
+    assert cardtext.keyword_gate(real_index) == []
+
+
+def test_a_disambiguating_bracket_is_not_a_keyword(real_index):
+    """`Attack (Enemy Activation)` and `Scheme (Card Type)` share a term
+    with another entry; the bracket separates them rather than giving the
+    keyword a value. The discriminator is the RR's own bullet list."""
+    from mc_jarvis import cardtext
+
+    derived = {k for k, _, _ in cardtext.derive_keywords(real_index)}
+    assert "attack" not in derived and "scheme" not in derived
+
+
+def test_a_keyword_parameter_is_captured():
+    from mc_jarvis import cardtext
+
+    assert cardtext.keyword_parameters(
+        "Retaliate 1. Teamwork (NASTY BOY).") == {"teamwork": "NASTY BOY"}
+    assert cardtext.keyword_parameters("Guard. Patrol.") == {}
+
+
+def test_a_parameter_does_not_make_the_keyword_look_granted(real_index):
+    """Stripping the keyword left `(ACOLYTE)` behind, and leftover text is
+    how this parser tells a granted keyword from a printed one. All 31
+    teamwork minions read as granting it."""
+    from mc_jarvis import cardtext
+
+    words = cardtext.active_keywords(real_index)
+    assert "teamwork" in cardtext.parse_printed_keywords(
+        "Teamwork (ACOLYTE). Villainous.", words)

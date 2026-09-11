@@ -1694,3 +1694,62 @@ scenario plays two of them.
 **A gate keeps this honest.** `opposition_gate` reports any scenario
 naming more than one villain with no config entry, because the default
 reading is the one that was wrong.
+
+### 14.24 Four keywords were invisible, and one of them shapes a scenario
+
+`card_keywords` held no `teamwork` row, on any card, ever. Thirty-one
+minions print it.
+
+**Both derivation paths rejected the same shape.** The RR bullets its
+keywords as `• • Name: explanation`, and four take a parameter:
+`Teamwork (Trait)`, `Linked (Card Title)`, `Requirement (Resources)`,
+`Uses (X "type")`. `KEYWORD_BULLET_RE` required the colon straight after
+the word, so the bracket broke it; and the entry path skipped any term
+containing a bracket at all. The skip carried a comment justifying
+itself — *"A term with a parenthetical qualifier is card anatomy, not a
+keyword… none of them is a keyword"* — which was wrong about all four it
+named. The RR's derived list is **29**, not 25.
+
+**The discriminator is the RR's own bullet list**, because a bracket does
+two different jobs. It can carry a parameter (`Teamwork (Trait)`) or
+separate two entries sharing a term (`Setup (Keyword)` against `Setup
+(Triggered Ability)`, `Attack (Enemy Activation)` against `Attack (Player
+Ability Type)`). A term the RR enumerates is a keyword whatever follows
+it; one it does not is anatomy.
+
+**A correction inside the correction.** The first fix kept `uses` out, on
+the belief that the RR does not enumerate it. It does — `• • Uses (X
+"type"):` — and the bullet had been missed because its curly quotes fell
+outside the character class of the survey regex used to look. The same
+"searched wrong, concluded wrong" shape recorded in §14.7.
+
+**The parameter had to be indexed, not just the keyword.** `card_keywords`
+gains a `parameter` column (schema 23 → 24). Teamwork fires only when
+another minion sharing the named trait is already in play, so `teamwork
+5` says nothing on its own: five Teamwork (ACOLYTE) minions in a deck of
+five ACOLYTEs means every one after the first activates on arrival, while
+a lone one never triggers at all. `assess` reports the trait, the copies
+and how many share it.
+
+Note that `retaliate X` still drops its value; this change gives it a
+column to use when something needs it.
+
+**And it made every teamwork minion look like it granted the keyword.**
+`parse_printed_keywords` decides `printed` by stripping the keyword and
+its filler and asking whether anything is left — leftover text means the
+keyword is being granted. `(ACOLYTE)` was leftover text, so all 31 read
+as granted. A parameter is part of what the card prints.
+
+### 14.25 Boost stars, as a rate
+
+The star was counted and never expressed as a frequency. A star in the
+boost field is a mandatory ability that fires when the card is dealt face
+down during an activation — the curveball a player cannot plan around —
+so how often it happens is the number that matters. Mojo's opening deck
+is 33% boost stars; Crossbones at expert is 19%.
+
+The label now says *boost star*. The RR (p.40) puts the same icon in
+three fields — the boost field, an enemy's ATK or SCH, and an
+attachment's — and only the boost one behaves this way. `cards` has
+carried `boost_star`, `attack_star` and `scheme_star` separately all
+along; the output said "star icon" for one of the three.

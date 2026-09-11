@@ -372,6 +372,18 @@ Five things to carry into any answer:
   (God of Lies, Kang's second stage), or two faces of a single villain
   (Risky Business). A total hit point figure appears only where every
   villain is faced and the stages are unambiguous — never assume one.
+- **Boost stars are the curveballs.** A star in the boost field means a
+  mandatory ability fires when that card is dealt face down during a
+  villain activation. `assess` gives the count and the rate, because six
+  in eighteen cards is a different game from six in fifty-five. The same
+  icon also appears in an enemy's ATK and SCH fields (RR p.40) and those
+  are not boost stars — only the boost one is counted.
+- **Teamwork is about the trait, not the count.** A teamwork minion
+  activates the moment it arrives *only if another minion sharing the
+  named trait is already in play*. `assess` prints the trait and how many
+  minions carry it: five ACOLYTE minions all printing Teamwork (ACOLYTE)
+  means every one after the first attacks on arrival. One alone never
+  fires. Never report teamwork without the trait.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

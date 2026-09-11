@@ -82,7 +82,12 @@ KEYWORD_ALT_RE = re.compile(
     rf"(?<![A-Za-z])({'|'.join(KEYWORDS)})\b", re.I)
 # What may share a printed keyword's sentence without disqualifying it:
 # its numeric value, a per-hero or resource icon, and `X`.
-KEYWORD_FILLER_RE = re.compile(r"\[[^\]]*\]|\d+|\bX\b|[.,]")
+# A parenthetical directly after a keyword is that keyword's parameter -
+# `Teamwork (ACOLYTE)` - and is part of what the card prints, not a
+# separate clause. Without it every one of the 31 teamwork minions read
+# as granting the keyword rather than carrying it.
+KEYWORD_FILLER_RE = re.compile(
+    r"\([^)]{1,60}\)|\[[^\]]*\]|\d+|\bX\b|[.,]")
 # Reminder text is the publisher explaining a keyword, never a second one.
 REMINDER_RE = re.compile(r"<i>.*?</i>", re.S)
 BLOCK_SPLIT_RE = re.compile(r"\n|<hr\s*/?>")
@@ -148,7 +153,8 @@ def parse_keywords(text: str | None, keywords=None) -> list[str]:
 # The RR enumerates its keywords as bullets inside one entry, each
 # `• • Name: explanation`. `Hinder X` and friends carry their value in the
 # name.
-KEYWORD_BULLET_RE = re.compile(r"•\s*•\s*([A-Z][A-Za-z-]*)(?:\s+X)?:")
+KEYWORD_BULLET_RE = re.compile(
+    r"•\s*•\s*([A-Z][A-Za-z-]*)(?:\s+X)?(?:\s*\([^)]*\))?:")
 # An entry that describes ITSELF as a keyword. Catches `vulnerable`, which
 # the enumeration omits.
 KEYWORD_SELF_RE = "|".join([
@@ -156,11 +162,43 @@ KEYWORD_SELF_RE = "|".join([
     r"\ba\s+card\s+with\s+(?:the\s+)?{k}\b",
     r"\ba\s+character\s+with\s+{k}\b",
 ])
-# A term with a parenthetical qualifier is card anatomy, not a keyword:
-# `Linked (Card Title)`, `Requirement (Resources)`, `Teamwork (Trait)`,
-# `Uses (X "Type")`. All four match the self-describing pattern and none
-# of them is a keyword.
+# A parenthetical after a term is one of two different things, and
+# reading them alike lost three keywords.
+#
+# It can be a PARAMETER the keyword takes - `Teamwork (Trait)`,
+# `Linked (Card Title)`, `Requirement (Resources)`, `Uses (X "type")`.
+# All four are bulleted in the RR's own `Keywords` entry, so all four
+# are keywords.
+#
+# Or it can be a DISAMBIGUATOR between entries sharing a term -
+# `Setup (Keyword)` against `Setup (Triggered Ability)`,
+# `Attack (Enemy Activation)` against `Attack (Player Ability Type)`.
+# Those are card anatomy.
+#
+# The discriminator is the bullet list: a term whose bare form the RR
+# enumerates is a keyword whatever follows it in brackets. This comment
+# previously asserted the opposite - "none of them is a keyword" - and
+# was wrong about all four it named. The first attempt at this
+# correction kept `Uses` out on the belief that the RR does not
+# enumerate it; it does, in a bullet whose curly quotes hid it from a
+# looser survey regex.
 QUALIFIED_TERM_RE = re.compile(r"\(")
+
+
+# `Teamwork (ACOLYTE)` as a card prints it. The trait is the whole
+# condition: the keyword does nothing until another minion sharing it is
+# already in play, so a count without the trait cannot say whether the
+# ability can ever fire.
+PARAMETERISED_RE = re.compile(
+    r"\b(teamwork|linked|requirement|uses)\s*\(([^)]{1,60})\)", re.I)
+
+
+def keyword_parameters(text: str | None) -> dict[str, str]:
+    """The value each parameterised keyword takes on this card."""
+    out: dict[str, str] = {}
+    for found in PARAMETERISED_RE.finditer(render(text)):
+        out.setdefault(found.group(1).lower(), found.group(2).strip())
+    return out
 
 
 def derive_keywords(conn) -> list[tuple[str, str, str | None]]:
@@ -187,9 +225,11 @@ def derive_keywords(conn) -> list[tuple[str, str, str | None]]:
     for entry in conn.execute(
             "SELECT term, body FROM rules_entries WHERE body IS NOT NULL"):
         term = (entry["term"] or "").strip()
-        if not term or QUALIFIED_TERM_RE.search(term):
+        if not term:
             continue
-        bare = re.sub(r"\s+X$", "", term)
+        bare = re.sub(r"\s+X$", "", re.sub(r"\s*\([^)]*\)\s*$", "", term))
+        if QUALIFIED_TERM_RE.search(term) and bare.lower() not in enumerated:
+            continue
         pattern = "|".join(
             part.format(k=re.escape(bare.lower())) for part in
             KEYWORD_SELF_RE.split("|"))
@@ -395,7 +435,8 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
         code, text = row["code"], row["text"]
         traits.extend((code, t) for t in parse_traits(text))
         printed = set(parse_printed_keywords(text, words))
-        keywords.extend((code, k, int(k in printed))
+        values = keyword_parameters(text)
+        keywords.extend((code, k, int(k in printed), values.get(k))
                         for k in parse_keywords(text, words))
         clauses.extend(
             (code, c.ordinal, c.ability_type, c.qualifier, c.timing,
@@ -406,8 +447,8 @@ def build(conn: sqlite3.Connection) -> dict[str, int]:
         "INSERT OR IGNORE INTO card_traits (code, trait) VALUES (?, ?)",
         traits)
     conn.executemany(
-        "INSERT OR IGNORE INTO card_keywords (code, keyword, printed) "
-        "VALUES (?, ?, ?)", keywords)
+        "INSERT OR IGNORE INTO card_keywords "
+        "(code, keyword, printed, parameter) VALUES (?, ?, ?, ?)", keywords)
     conn.executemany(
         "INSERT OR REPLACE INTO cost_clauses "
         "(code, ordinal, ability_type, qualifier, timing, cost, effect, "

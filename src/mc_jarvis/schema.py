@@ -167,6 +167,13 @@ CREATE TABLE IF NOT EXISTS card_keywords (
     -- cards mention `surge`; 80 print it. Consumers that ignore this
     -- column report a card's abilities as its own properties.
     printed INTEGER NOT NULL DEFAULT 0,
+    -- The value a parameterised keyword takes. The RR bullets four:
+    -- Teamwork (Trait), Linked (Card Title), Requirement (Resources)
+    -- and Uses (X "type"). Teamwork is the one that decides a scenario's
+    -- shape - it fires only when another minion sharing the named trait
+    -- is already in play, so `teamwork` without its trait says nothing
+    -- about whether it can ever trigger. NULL for the rest.
+    parameter TEXT,
     PRIMARY KEY (code, keyword)
 );
 

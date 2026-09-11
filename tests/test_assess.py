@@ -1180,3 +1180,34 @@ def test_every_multi_villain_scenario_is_classified(real_index):
     from mc_jarvis import assess
 
     assert assess.opposition_gate(real_index) == []
+
+
+def test_the_boost_star_rate_is_reported_not_just_the_count(real_index):
+    """Six stars in 18 cards is a different scenario from six in 55. The
+    RR (p.40) puts the same icon in three fields and only the boost one
+    fires when the card is dealt face down, so the label says which."""
+    from mc_jarvis import assess
+
+    prof = assess.profile(real_index, assess.resolve(real_index, "mojo"))
+    boost = prof["boost"]
+    assert boost["star_copies"] > 0
+    assert boost["star_rate"] == pytest.approx(
+        boost["star_copies"] / boost["over"])
+
+
+def test_teamwork_reports_the_trait_that_decides_whether_it_fires(real_index):
+    """RR p.43: a teamwork minion activates on arrival only if another
+    minion sharing the named trait is already in play. The count that
+    matters is how many share the trait, not how many carry the keyword."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino", modular=["acolytes"])
+    entry, = assess.profile(real_index, sc)["minions"]["teamwork"]
+    assert entry == {"trait": "ACOLYTE", "copies": 5, "sharing": 5}
+
+
+def test_a_scenario_with_no_teamwork_reports_none(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "Rhino")
+    assert assess.profile(real_index, sc)["minions"]["teamwork"] == []
