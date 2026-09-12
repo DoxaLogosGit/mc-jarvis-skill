@@ -1753,3 +1753,88 @@ three fields — the boost field, an enemy's ATK or SCH, and an
 attachment's — and only the boost one behaves this way. `cards` has
 carried `boost_star`, `attack_star` and `scheme_star` separately all
 along; the output said "star icon" for one of the three.
+
+
+### 14.26 The complete keyword audit
+
+Prompted by §14.24, where four keywords turned out to be invisible. This
+is every keyword the Rules Reference yields, what it is indexed as, and
+whether `assess` says anything about it.
+
+| keyword | RR source | printed | granted | value kept | reported by `assess` |
+| --- | --- | --- | --- | --- | --- |
+| `alliance` | both | 14 | 0 | — | — |
+| `assault` | both | 3 | 8 | — | — |
+| `form` | enumerated | 0 | 0 | — | — |
+| `guard` | both | 65 | 24 | — | demand |
+| `hinder` | both | 97 | 11 | 108 | — |
+| `incite` | both | 24 | 9 | 33 | — |
+| `linked` | both | 14 | 0 | 14 | — |
+| `overkill` | both | 0 | 97 | — | — |
+| `patrol` | both | 21 | 18 | — | demand |
+| `peril` | both | 13 | 1 | — | — |
+| `permanent` | both | 105 | 8 | — | own line |
+| `piercing` | both | 0 | 103 | — | — |
+| `quickstrike` | both | 48 | 7 | — | demand |
+| `ranged` | both | 0 | 48 | — | — |
+| `requirement` | both | 13 | 0 | 13 | — |
+| `restricted` | both | 37 | 7 | — | — |
+| `retaliate` | both | 55 | 74 | 124 | demand |
+| `setup` | both | 0 | 0 | — | — |
+| `stalwart` | both | 21 | 36 | — | demand |
+| `steady` | both | 34 | 22 | — | demand |
+| `surge` | both | 80 | 187 | — | own line |
+| `team-up` | both | 34 | 2 | — | — |
+| `teamwork` | both | 31 | 0 | 31 | with its trait |
+| `temporary` | both | 6 | 1 | — | — |
+| `toughness` | both | 136 | 9 | — | demand |
+| `uses` | both | 74 | 26 | 74 | — |
+| `victory` | both | 126 | 41 | 132 | own line |
+| `villainous` | both | 50 | 3 | — | — |
+| `vulnerable` | entry | 8 | 0 | — | opportunity |
+
+`form` and `setup` are the two documented `excluded` entries in
+`keywords.yaml` and hold no card rows by design; the reasons there still
+stand.
+
+**Four findings.**
+
+**1. Three keywords are never printed, and that is correct.** `piercing`,
+`ranged` and `overkill` have zero printed rows and hundreds of granted
+ones. Each RR entry opens with *"An attack with the … keyword"* - these
+belong to an attack, not to a card, so they are always conferred by an
+ability. Pinned in a test, because a reader treating `printed = 0` as
+"absent from this pool" would be wrong about 103 piercing cards.
+
+**2. Four keywords take a number and were dropping it.** `retaliate`,
+`hinder`, `incite` and `victory`. The value is now kept in the
+`parameter` column added in §14.24, as printed - `[per_hero]` included,
+which matters: 96 of the 97 printed hinders carry it, so `Hinder
+4[per_hero]` is four threat per player and a bare `4` would understate
+every one of them at a full table. `Victory 0` is a real printed value on
+41 player side schemes, not an absence. Retaliate 1 against Retaliate 2
+is now a distinction the index can make.
+
+**3. `DEMAND_KEYWORDS` was five hand-picked names against a list of 29,
+and two were missing.** Both defeat a status-card plan outright:
+
+- **`stalwart`** (RR p.40) - cannot be stunned or confused at all.
+- **`steady`** (RR p.41) - needs *two* stunned or confused cards rather
+  than one, so it doubles the cost rather than removing the option.
+
+Twenty-two and thirty-four copies respectively, and `assess` said nothing
+about either. They are the only printed keywords above ten copies that a
+deck can be built to answer and were not reported.
+
+**4. `vulnerable` is the mirror image and was reported as neither.** Stun
+or confuse a vulnerable character and it is **discarded outright** (RR
+p.48), so a single status card removes the card. That is an opening, not
+an obstacle, and printing it in the same run of numbers as the demands
+would read as another threat. It gets its own line. Batroc holds six.
+
+**Why the audit was worth doing separately.** Each of these is invisible
+to the gate that already exists: `keyword_gate` compares the RR's list
+against config and was clean throughout. It cannot see a keyword indexed
+without its value, a keyword whose `printed` flag means something
+different from the rest, or a keyword nothing reports. Those need a
+reader, and the table above is what the next reader should regenerate.

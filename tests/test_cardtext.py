@@ -467,8 +467,12 @@ def test_a_disambiguating_bracket_is_not_a_keyword(real_index):
 def test_a_keyword_parameter_is_captured():
     from mc_jarvis import cardtext
 
+    # Retaliate's value is captured too, since the audit in §14.26; this
+    # assertion named only the trait when teamwork was the sole
+    # parameterised keyword being read.
     assert cardtext.keyword_parameters(
-        "Retaliate 1. Teamwork (NASTY BOY).") == {"teamwork": "NASTY BOY"}
+        "Retaliate 1. Teamwork (NASTY BOY).") == {"teamwork": "NASTY BOY",
+                                                  "retaliate": "1"}
     assert cardtext.keyword_parameters("Guard. Patrol.") == {}
 
 
@@ -481,3 +485,41 @@ def test_a_parameter_does_not_make_the_keyword_look_granted(real_index):
     words = cardtext.active_keywords(real_index)
     assert "teamwork" in cardtext.parse_printed_keywords(
         "Teamwork (ACOLYTE). Villainous.", words)
+
+
+def test_a_numeric_keyword_keeps_its_value_and_its_scaling():
+    """`Hinder 4[per_hero]` is four threat per player, and 96 of the 97
+    printed hinders carry that suffix - storing a bare 4 would understate
+    every one of them at a full table."""
+    from mc_jarvis import cardtext
+
+    assert cardtext.keyword_parameters(
+        "Hinder 4[per_hero]. Victory 1.") == {"hinder": "4[per_hero]",
+                                              "victory": "1"}
+    assert cardtext.keyword_parameters("Retaliate 2.") == {"retaliate": "2"}
+    assert cardtext.keyword_parameters("Hinder 10.") == {"hinder": "10"}
+
+
+def test_victory_zero_is_a_value_not_an_absence():
+    """41 player side schemes print `Victory 0`, which is not the same as
+    printing no Victory at all."""
+    from mc_jarvis import cardtext
+
+    assert cardtext.keyword_parameters("Victory 0.") == {"victory": "0"}
+
+
+@pytest.mark.integration
+def test_the_attack_keywords_are_never_printed_on_a_card(real_index):
+    """Piercing, ranged and overkill belong to an ATTACK, not a card - the
+    RR says so in each entry's first sentence - so every row is granted.
+    Pinned because a reader seeing `printed = 0` would conclude they are
+    absent from the pool, and piercing appears on 103 cards."""
+    for keyword in ("piercing", "ranged", "overkill"):
+        printed = real_index.execute(
+            "SELECT COUNT(*) FROM card_keywords WHERE keyword = ? "
+            "AND printed = 1", (keyword,)).fetchone()[0]
+        granted = real_index.execute(
+            "SELECT COUNT(*) FROM card_keywords WHERE keyword = ? "
+            "AND printed = 0", (keyword,)).fetchone()[0]
+        assert printed == 0, keyword
+        assert granted > 40, (keyword, granted)

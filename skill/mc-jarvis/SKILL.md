@@ -384,6 +384,15 @@ Five things to carry into any answer:
   minions carry it: five ACOLYTE minions all printing Teamwork (ACOLYTE)
   means every one after the first attacks on arrival. One alone never
   fires. Never report teamwork without the trait.
+- **Stalwart and steady beat a status deck; vulnerable loses to one.**
+  Stalwart cannot be stunned or confused at all; steady needs two of each
+  rather than one, doubling the cost. `assess` lists both among what the
+  scenario demands. Vulnerable is the opposite - a stun or confuse
+  discards the character outright - so it is printed on its own line as
+  something in the player's favour. Do not read it as another threat.
+- **A keyword's number is part of it.** Retaliate 2 is twice Retaliate 1,
+  and `Hinder 4[per_hero]` is four threat *per player*. The index keeps
+  these values; quote them rather than the bare keyword.
 - **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
   in the card data, that is the honest answer — it may be perfectly
   playable and simply absent upstream. Do not substitute a similar

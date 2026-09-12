@@ -574,7 +574,19 @@ def _teamwork(conn, rows: list[dict]) -> list[dict]:
 
 # The keywords a deck can be built to answer. Each is a printed property
 # of the scenario, not an opinion about a deck (§3).
-DEMAND_KEYWORDS = ("toughness", "guard", "patrol", "retaliate", "quickstrike")
+# Audited against what encounter cards actually print (§14.26), not
+# chosen by feel. `stalwart` and `steady` were missing and both defeat a
+# status-card plan outright: stalwart cannot be stunned or confused at all
+# (RR p.40), and steady needs two of each rather than one (p.41), which
+# doubles the cost rather than removing the option. They are the two
+# printed keywords above ten copies that a deck can be built to answer
+# and were not reported.
+DEMAND_KEYWORDS = ("toughness", "guard", "patrol", "retaliate",
+                   "quickstrike", "stalwart", "steady")
+# The mirror image, and the reason it is not a demand: stun or confuse a
+# vulnerable character and it is discarded outright (RR p.48). One status
+# card removes the card, so this is an opening rather than an obstacle.
+OPPORTUNITY_KEYWORDS = ("vulnerable",)
 
 
 def _demands(conn, cards: list[dict], scenario: Scenario) -> dict:
@@ -588,9 +600,10 @@ def _demands(conn, cards: list[dict], scenario: Scenario) -> dict:
 
     rows = list(cards) + crossref.villain_rows(conn, _sets(scenario))
     out = {}
-    for kw in DEMAND_KEYWORDS:
+    for kw in DEMAND_KEYWORDS + OPPORTUNITY_KEYWORDS:
         got = crossref.scenario_keyword(conn, rows, kw)
         if got["total"] or got["global_grants"]:
+            got["opportunity"] = kw in OPPORTUNITY_KEYWORDS
             out[kw] = got
     return out
 
@@ -1241,7 +1254,7 @@ def _line(step: dict) -> None:
           f"phase")
     dem = step.get("demands") or {}
     if dem:
-        parts = []
+        parts, gifts = [], []
         for kw, v in dem.items():
             if not v["total"]:
                 # Batroc prints no toughness at all and hands it to every
@@ -1252,9 +1265,15 @@ def _line(step: dict) -> None:
             bit = f"{kw} {v['total']}"
             if v["villain"]:
                 bit += f" ({v['villain']} on the villain)"
-            parts.append(bit)
+            (gifts if v.get("opportunity") else parts).append(bit)
         if parts:
             print("    printed across the whole scenario: " + ", ".join(parts))
+        if gifts:
+            # Listed apart from the demands because it is the opposite
+            # kind of fact. Printing it in the same run of numbers reads
+            # as another obstacle when it is a way through.
+            print("    in your favour: " + ", ".join(gifts)
+                  + " - a stun or a confuse discards it outright")
         for kw, v in dem.items():
             for g in v["global_grants"]:
                 print(f"      {g['name']} grants {kw} to every minion"

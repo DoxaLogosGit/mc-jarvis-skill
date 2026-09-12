@@ -191,13 +191,24 @@ QUALIFIED_TERM_RE = re.compile(r"\(")
 # ability can ever fire.
 PARAMETERISED_RE = re.compile(
     r"\b(teamwork|linked|requirement|uses)\s*\(([^)]{1,60})\)", re.I)
+# Four more take a number rather than a bracket. The value is kept as
+# printed, `[per_hero]` included: `Hinder 4[per_hero]` is four threat per
+# player and 96 of the 97 printed hinders carry that suffix, so storing a
+# bare 4 would understate every one of them at a full table. `Victory 0`
+# is a real printed value on 41 player side schemes, not an absence.
+NUMBERED_RE = re.compile(
+    r"\b(retaliate|hinder|incite|victory)\s+(-?\d+|X)(\[per_hero\])?", re.I)
 
 
 def keyword_parameters(text: str | None) -> dict[str, str]:
     """The value each parameterised keyword takes on this card."""
     out: dict[str, str] = {}
-    for found in PARAMETERISED_RE.finditer(render(text)):
+    plain = render(text)
+    for found in PARAMETERISED_RE.finditer(plain):
         out.setdefault(found.group(1).lower(), found.group(2).strip())
+    for found in NUMBERED_RE.finditer(plain):
+        out.setdefault(found.group(1).lower(),
+                       found.group(2) + (found.group(3) or ""))
     return out
 
 

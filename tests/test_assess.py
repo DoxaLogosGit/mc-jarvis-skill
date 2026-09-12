@@ -1211,3 +1211,27 @@ def test_a_scenario_with_no_teamwork_reports_none(real_index):
 
     sc = assess.resolve(real_index, "Rhino")
     assert assess.profile(real_index, sc)["minions"]["teamwork"] == []
+
+
+def test_the_status_immunity_keywords_are_demanded(real_index):
+    """Stalwart cannot be stunned or confused at all (RR p.40); steady
+    needs two of each rather than one (p.41). Both defeat a status-card
+    plan, and neither was reported - the tuple was five hand-picked
+    keywords against a list of 29."""
+    from mc_jarvis import assess
+
+    assert "stalwart" in assess.DEMAND_KEYWORDS
+    assert "steady" in assess.DEMAND_KEYWORDS
+
+
+def test_vulnerable_is_reported_as_an_opening_not_an_obstacle(real_index):
+    """Stun or confuse a vulnerable character and it is discarded outright
+    (RR p.48), so one status card removes the card. Listing it beside the
+    demands would read as another threat."""
+    from mc_jarvis import assess
+
+    assert "vulnerable" in assess.OPPORTUNITY_KEYWORDS
+    assert "vulnerable" not in assess.DEMAND_KEYWORDS
+    prof = assess.profile(real_index, assess.resolve(real_index, "batroc"))
+    assert prof["demands"]["vulnerable"]["opportunity"] is True
+    assert prof["demands"]["patrol"]["opportunity"] is False
