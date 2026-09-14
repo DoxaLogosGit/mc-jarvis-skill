@@ -86,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
                          help="symlink instead of copy (developer use)")
     skill_p.add_argument("--global", dest="global_", action="store_true",
                          help="install to user-global paths")
+    skill_p.add_argument("--yes", action="store_true",
+                         help="install even where the folder looks like "
+                              "another project")
 
     # `card` takes an explicit verb: a bare positional would make
     # `card show Vision` parse `show` as the query (spec §5.1).

@@ -44,6 +44,100 @@ def test_a_plain_directory_is_accepted(tmp_path):
     si.check_workspace(ws)
 
 
+# --- somebody else's project -----------------------------------------
+
+def _git_commit(path):
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "-c", "user.name=t",
+                    "-c", "user.email=t@t", "commit", "-q", "--allow-empty",
+                    "-m", "x"], check=True)
+
+
+def test_a_project_marker_asks_before_installing(tmp_path):
+    ws = tmp_path / "work"
+    ws.mkdir()
+    (ws / "pyproject.toml").write_text("")
+    with pytest.raises(si.UnexpectedWorkspace, match="pyproject.toml"):
+        si.install(ws)
+    assert not (ws / ".claude").exists()
+    assert not (ws / ".git").exists()
+
+
+def test_a_repository_with_history_asks_before_installing(tmp_path):
+    ws = tmp_path / "work"
+    ws.mkdir()
+    _git_commit(ws)
+    with pytest.raises(si.UnexpectedWorkspace, match="history"):
+        si.install(ws)
+
+
+def test_a_folder_of_repositories_asks_before_installing(tmp_path):
+    """`~/projects`: not a repository itself, and not home, but a skill
+    here is one `cd ..` away from every project under it."""
+    ws = tmp_path / "projects"
+    (ws / "day-job").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(ws / "day-job")], check=True)
+    with pytest.raises(si.UnexpectedWorkspace, match="day-job"):
+        si.install(ws)
+
+
+def test_a_fresh_or_empty_repository_does_not_ask(tmp_path):
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    subprocess.run(["git", "init", "-q", str(ws)], check=True)
+    assert si.unexpected_workspace(ws) is None
+
+
+def test_yes_installs_anyway(tmp_path):
+    ws = tmp_path / "work"
+    ws.mkdir()
+    (ws / "package.json").write_text("{}")
+    assert si.install(ws, yes=True)
+
+
+def test_a_reinstall_does_not_ask_again(tmp_path):
+    """The deck folder gains history once the player commits to it. The
+    question was answered at the first install."""
+    ws = tmp_path / "marvel"
+    ws.mkdir()
+    si.install(ws)
+    _git_commit(ws)
+    assert si.unexpected_workspace(ws) is None
+
+
+class _Args:
+    link = False
+    global_ = False
+    yes = False
+    json = False
+
+
+def test_run_without_a_terminal_stops_and_writes_nothing(
+        tmp_path, monkeypatch, capsys):
+    """An agent running the command cannot answer a prompt, and a warning
+    printed after the fact arrives with the files already written."""
+    ws = tmp_path / "work"
+    ws.mkdir()
+    (ws / "Cargo.toml").write_text("")
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    assert si.run(_Args()) == 1
+    assert "--yes" in capsys.readouterr().out
+    assert not (ws / ".claude").exists()
+
+
+@pytest.mark.parametrize("answer, code", [("y", 0), ("", 1), ("n", 1)])
+def test_run_at_a_terminal_asks(tmp_path, monkeypatch, answer, code):
+    ws = tmp_path / "work"
+    ws.mkdir()
+    (ws / "go.mod").write_text("")
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt: answer)
+    assert si.run(_Args()) == code
+    assert (ws / ".claude").exists() == (code == 0)
+
+
 # --- placement -------------------------------------------------------
 
 def test_install_places_the_skill_for_every_harness(tmp_path):

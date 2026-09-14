@@ -130,7 +130,7 @@ ambiguous in argparse, parsing `show` as the query.
 |---|---|---|
 | `mc-jarvis init [--from-html F \| --browser]` | Bootstrap summary | 1 |
 | `mc-jarvis update` | What changed, what was revised upstream | 1 |
-| `mc-jarvis install-skill [--link] [--global]` | Places the skill in the workspace (or globally) | 1 |
+| `mc-jarvis install-skill [--link] [--global] [--yes]` | Places the skill in the workspace (or globally) | 1 |
 | `mc-jarvis doctor` | Prerequisite and environment check; non-zero on hard failure | 1 |
 | `mc-jarvis status` | Index age, card/rules counts, staleness warning | 1 |
 | `mc-jarvis card search <query> [--aspect --type --cost --trait --text --limit]` | Matching cards | 1 |
@@ -336,6 +336,15 @@ Three operational notes, each a way this silently fails if ignored:
   `install-skill` therefore refuses `$HOME`, refuses a directory inside another
   repository, and runs `git init` on the workspace so the boundary is well-defined. That
   is worth doing on its own merits — a player's deck collection benefits from history.
+- **A placement can load perfectly and still be wrong.** The two refusals above catch
+  installs that silently fail to load; the opposite failure is an install at the root of
+  a work repository, or in `~/projects` above several, which loads in every session
+  opened there. Nothing about it is broken, so it cannot be refused - but it is
+  almost never intended. `install-skill` therefore asks first when the folder has a
+  project manifest, is a repository with history, or holds other repositories, and never
+  asks again once the skill is installed there. Without a terminal - an agent running
+  the command - it stops and names `--yes` instead, because a warning printed after
+  the fact arrives with the files already written.
 - **Symlinks are supported and deduplicated.** Claude Code follows a symlinked skill
   directory and, when the same target is reachable from several locations, loads it once.
   That makes `--link` safe rather than merely convenient, and means the three workspace

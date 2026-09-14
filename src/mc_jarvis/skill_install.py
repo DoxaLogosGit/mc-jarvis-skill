@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from . import paths
@@ -36,6 +37,20 @@ NEEDS_TRUST = {"pi, opencode"}
 
 class WorkspaceError(RuntimeError):
     pass
+
+
+class UnexpectedWorkspace(WorkspaceError):
+    """Nothing here would fail, but the folder looks like it already
+    belongs to something else - and a skill there announces itself in
+    every session opened on that project."""
+
+# Files a software project has and a folder of decks does not. Their
+# presence is the signal, not proof, so it asks rather than refuses.
+PROJECT_MARKERS = (
+    "pyproject.toml", "setup.py", "package.json", "Cargo.toml", "go.mod",
+    "pom.xml", "build.gradle", "Gemfile", "composer.json", "CMakeLists.txt",
+    "Makefile", "AGENTS.md", "CLAUDE.md",
+)
 
 
 @dataclass
@@ -76,6 +91,44 @@ def check_workspace(path: Path) -> None:
             f"here. Choose a workspace outside it.")
 
 
+def _installed_here(path: Path) -> bool:
+    return any((path / d / SKILL_NAME).is_symlink()
+               or (path / d / SKILL_NAME).exists()
+               for dirs in HARNESS_DIRS.values() for d in dirs)
+
+
+def unexpected_workspace(path: Path) -> str | None:
+    """Why `path` looks like somebody else's project, or None.
+
+    `check_workspace` catches the placements that silently fail to load.
+    This catches the opposite: one that loads fine, in a place the user
+    never meant - the root of a work repository, or a folder of them."""
+    path = path.resolve()
+    if _installed_here(path):
+        return None  # a reinstall; the question was answered the first time
+    for marker in PROJECT_MARKERS:
+        if (path / marker).exists():
+            return f"it has a {marker}, so it looks like a software project"
+    if (path / ".git").exists():
+        try:
+            head = subprocess.run(
+                ["git", "-C", str(path), "rev-parse", "--verify", "-q",
+                 "HEAD"], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            head = None
+        if head is not None and head.returncode == 0:
+            return "it is a git repository with existing history"
+    try:
+        repos = sorted(c.name for c in path.iterdir()
+                       if c.is_dir() and (c / ".git").exists())
+    except OSError:
+        repos = []
+    if repos:
+        shown = ", ".join(repos[:3]) + (", ..." if len(repos) > 3 else "")
+        return f"it contains other repositories ({shown})"
+    return None
+
+
 def _replace(dest: Path) -> None:
     """Clear whatever is there. A symlinked directory needs `unlink` and a
     real one needs `rmtree`, and each raises on the other - so a reinstall
@@ -86,8 +139,8 @@ def _replace(dest: Path) -> None:
         shutil.rmtree(dest)
 
 
-def install(workspace: Path, *, link: bool = False,
-            global_: bool = False) -> list[Placement]:
+def install(workspace: Path, *, link: bool = False, global_: bool = False,
+            yes: bool = False) -> list[Placement]:
     if not SKILL_SOURCE.is_dir():
         raise WorkspaceError(f"bundled skill not found at {SKILL_SOURCE}")
 
@@ -97,6 +150,9 @@ def install(workspace: Path, *, link: bool = False,
     else:
         workspace = workspace.resolve()
         check_workspace(workspace)
+        reason = None if yes else unexpected_workspace(workspace)
+        if reason:
+            raise UnexpectedWorkspace(reason)
         # Without a repository root the upward walk has no boundary, and
         # which directory the harness treats as "the project" becomes a
         # function of wherever the user happened to `cd` from.
@@ -127,9 +183,28 @@ def run(args) -> int:
     from .cli import emit
 
     workspace = Path.cwd()
+    options = dict(link=getattr(args, "link", False),
+                   global_=getattr(args, "global_", False))
     try:
-        placements = install(workspace, link=getattr(args, "link", False),
-                             global_=getattr(args, "global_", False))
+        try:
+            placements = install(workspace, yes=getattr(args, "yes", False),
+                                 **options)
+        except UnexpectedWorkspace as exc:
+            warning = (f"mc-jarvis install-skill: {workspace} may not be "
+                       f"where you meant to install - {exc}. The skill "
+                       f"would load in every agent session opened here.")
+            # A warning that scrolls past an agent is no warning at all,
+            # and by then the files are written. So: ask, or stop.
+            if not sys.stdin.isatty():
+                print(f"{warning}\nRun it from your deck folder, or pass "
+                      f"--yes if this is the right place.")
+                return 1
+            print(warning)
+            if input("Install here anyway? [y/N] ").strip().lower() \
+                    not in ("y", "yes"):
+                print("Nothing installed.")
+                return 1
+            placements = install(workspace, yes=True, **options)
     except WorkspaceError as exc:
         print(f"mc-jarvis install-skill: {exc}")
         return 1

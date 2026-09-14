@@ -32,7 +32,10 @@ without naming a command. If the skill is working, it runs one.
 global skill loads its name and description into every agent session on the
 machine, so a hobby tool would announce itself in the middle of unrelated
 work. `install-skill` refuses a home-directory install outright for that
-reason; `--global` exists, is opt-in, and is never inferred.
+reason, and asks before installing into a folder that looks like another
+project (a `pyproject.toml` or `package.json`, a repository with history, a
+folder of repositories); `--yes` answers for scripts. `--global` exists, is
+opt-in, and is never inferred.
 
 `mc-jarvis doctor` diagnoses a broken environment. `mc-jarvis status`
 reports what is indexed, which Rules Reference version, and how stale it is.
