@@ -108,3 +108,91 @@ def test_a_leader_has_stages_like_a_villain(tmp_path):
     got = cards.encounter(conn, "iron_man_leader")
     assert [v["stage"] for v in got["villain"]] == ["I", "II"]
     assert got["villain"][0]["health"] == 12
+
+
+# --- main scheme stages ----------------------------------------------
+
+SCHEMES = [
+    fx.card("enc10a", "Big Plan", type_code="main_scheme",
+            faction_code="encounter", set_code="collector", quantity=1,
+            deck_limit=None, back_link="enc10b", stage="1A",
+            text="Setup: Advance to stage 1B."),
+    fx.card("enc10b", "Big Plan", type_code="main_scheme",
+            faction_code="encounter", set_code="collector", quantity=1,
+            deck_limit=None, stage="1B", base_threat=1,
+            escalation_threat=1, threat=6),
+    fx.card("enc11", "Heist", type_code="side_scheme",
+            faction_code="encounter", set_code="collector", quantity=1,
+            deck_limit=None, base_threat=3, base_threat_fixed=True,
+            scheme_hazard=1, boost=2),
+]
+
+
+@pytest.fixture
+def schemed(tmp_path):
+    root = tmp_path / "marvelsdb"
+    (root / "pack").mkdir(parents=True)
+    (root / "pack" / "tst.json").write_text(
+        json.dumps(fx.PACK + ENCOUNTER + SCHEMES))
+    (root / "packs.json").write_text("[]")
+    (root / "sets.json").write_text(json.dumps(
+        [{"code": "collector", "name": "The Collector",
+          "card_set_type_code": "villain"}]))
+    c = index.connect(tmp_path / "mc.sqlite")
+    index.load_cards(c, root)
+    index.build_fts(c)
+    return c
+
+
+def test_main_scheme_stages_carry_their_threat(schemed):
+    """An agent asked about The Hood read `encounter`, saw villain stages
+    and no scheme numbers, and told the player the index did not have
+    them. It did; nothing printed them."""
+    stages = cards.encounter(schemed, "collector")["main_scheme"]
+    assert [s["code"] for s in stages] == ["enc10b"]
+    assert cards.scheme_line(stages[0]) == (
+        "threat: starts at 1 per hero, +1 per hero each villain phase, "
+        "completes at 6 per hero")
+
+
+def test_card_show_prints_scheme_threat_icons_and_boost(
+        schemed, capsys, monkeypatch):
+    import argparse
+
+    monkeypatch.setattr(cards, "_open", lambda: schemed)
+    cards.handle_show(argparse.Namespace(name="Heist", json=False))
+    out = capsys.readouterr().out
+    assert "threat: starts at 3\n" in out
+    assert "icons: hazard" in out
+    assert "boost 2" in out
+
+
+def test_both_faces_of_one_card_are_not_ambiguous(schemed):
+    got = cards.show(schemed, "Big Plan")
+    assert [f["code"] for f in got["faces"]] == ["enc10a", "enc10b"]
+
+
+def test_an_X_value_is_not_printed_as_a_number():
+    line = cards.scheme_line({"base_threat": 4, "escalation_threat": -1,
+                              "escalation_threat_fixed": 1,
+                              "target_threat": 11})
+    assert "+X each villain phase" in line
+
+
+def test_every_real_scenario_shows_its_main_scheme_threat(real_index):
+    """The invariant the Hood case broke, over every villain set."""
+    sets = [r[0] for r in real_index.execute(
+        "SELECT DISTINCT set_code FROM cards WHERE type_code = 'main_scheme' "
+        "AND target_threat IS NOT NULL AND is_reprint = 0")]
+    assert len(sets) > 40
+    missing = [s for s in sets
+               if not cards.encounter(real_index, s)["main_scheme"]]
+    assert not missing, missing
+
+
+def test_a_shared_set_name_opens_the_villain_not_the_hero(real_index):
+    """`encounter venom` printed Venom's hero cards."""
+    got = cards.encounter(real_index, "Venom")
+    assert got["set_code"] == "venom"
+    assert "vnm" in got["also"]
+    assert cards.encounter(real_index, "vnm")["set_code"] == "vnm"

@@ -106,6 +106,12 @@ default when you are quoting to the user.
 | environment problems | `mc-jarvis doctor` |
 | index age, version, counts | `mc-jarvis status` |
 
+- **Scheme threat is always indexed.** `encounter` prints main scheme
+  stages (starting threat, threat added each villain phase, threat to
+  complete) and `card show` prints threat, scheme icons and boost on any
+  scheme. If a number you expect is missing from output, say the output
+  lacks it — never that the index does.
+
 `card show` **lists candidates instead of guessing** when a name is
 ambiguous — many characters exist as both an identity and an ally, so
 "Black Panther" is genuinely several cards. Show the user the candidates

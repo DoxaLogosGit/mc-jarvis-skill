@@ -1235,3 +1235,39 @@ def test_vulnerable_is_reported_as_an_opening_not_an_obstacle(real_index):
     prof = assess.profile(real_index, assess.resolve(real_index, "batroc"))
     assert prof["demands"]["vulnerable"]["opportunity"] is True
     assert prof["demands"]["patrol"]["opportunity"] is False
+
+
+def test_threat_added_each_phase_scales_with_the_table(real_index):
+    """Printed per hero like target and starting threat, and read unscaled:
+    The Hood at two players said +1/phase instead of +2."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "the_hood", players=2,
+                        modular=["mister_hyde"])
+    ms = assess.profile(real_index, sc)["main_scheme"]
+    assert [x["per_phase"] for x in ms["stages"]] == [2, 2, 2]
+    assert [x["target"] for x in ms["stages"]] == [10, 16, 20]
+
+
+def test_an_X_escalation_is_not_reported_as_zero(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "mutagen_formula", players=2)
+    ms = assess.profile(real_index, sc)["main_scheme"]
+    assert None in [x["per_phase"] for x in ms["stages"]]
+
+
+def test_a_refused_player_chosen_scenario_points_at_what_it_can_show(
+        real_index):
+    from mc_jarvis import assess
+
+    with pytest.raises(assess.UnknownScenario,
+                       match="mc-jarvis encounter the_hood"):
+        assess.resolve(real_index, "the_hood")
+
+
+def test_modular_sets_may_be_given_as_one_comma_list():
+    from mc_jarvis import assess
+
+    assert assess._listed(["a,b", " c "]) == ["a", "b", "c"]
+    assert assess._listed(None) is None

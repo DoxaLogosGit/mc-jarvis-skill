@@ -153,7 +153,42 @@ FULL = SUMMARY + ("set_code", "back_link", "is_unique", "permanent",
                   "defense", "recover", "health",
                   "health_per_hero", "scheme", "stage",
                   "hand_size", "resource_physical", "resource_mental",
-                  "resource_energy", "resource_wild", "flavor")
+                  "resource_energy", "resource_wild", "flavor",
+                  "base_threat", "base_threat_fixed", "escalation_threat",
+                  "escalation_threat_fixed", "target_threat",
+                  "target_threat_fixed", "boost", "boost_star",
+                  "scheme_acceleration", "scheme_amplify", "scheme_crisis",
+                  "scheme_hazard")
+
+SCHEME_ICONS = ("acceleration", "amplify", "crisis", "hazard")
+
+
+def _threat(value, fixed) -> str:
+    # -1 is upstream's marker for a value printed as X.
+    if value < 0:
+        return "X"
+    return f"{value}" + ("" if fixed else " per hero")
+
+
+def scheme_line(c: dict) -> str | None:
+    """A scheme's threat as printed: where it starts, what a main scheme
+    adds each villain phase, and what completes it.
+
+    Left out for a long time, and the gap was invisible from inside - an
+    agent asked for The Hood's clock searched `card show --json` for
+    threat, found nothing, and told the player the index lacked it."""
+    bits = []
+    if c.get("base_threat") is not None:
+        bits.append("starts at " + _threat(c["base_threat"],
+                                            c.get("base_threat_fixed")))
+    if c.get("escalation_threat"):
+        bits.append("+" + _threat(c["escalation_threat"],
+                                  c.get("escalation_threat_fixed"))
+                    + " each villain phase")
+    if c.get("target_threat"):
+        bits.append("completes at " + _threat(c["target_threat"],
+                                               c.get("target_threat_fixed")))
+    return "threat: " + ", ".join(bits) if bits else None
 
 
 def _row(conn, code) -> dict | None:
@@ -223,6 +258,14 @@ def show(conn, ident: str, *, owned: bool = False) -> dict:
         card = _row(conn, matches[0]["code"])
         return {"card": card, "faces": _faces(conn, card),
                 "printings": printings(conn, card["code"])}
+    # Both sides of one main scheme share a name, so "Making Connections"
+    # matched 24004a and 24004b and asked which - of a single card.
+    if matches:
+        card = _row(conn, matches[0]["code"])
+        faces = _faces(conn, card)
+        if {m["code"] for m in matches} <= {f["code"] for f in faces}:
+            return {"card": card, "faces": faces,
+                    "printings": printings(conn, card["code"])}
     return {"ambiguous": matches}
 
 
@@ -252,6 +295,17 @@ def _print_card(c: dict) -> None:
     if costs:
         print("  consequential damage: "
               + "  ".join(f"{k} {v}" for k, v in costs))
+    threat = scheme_line(c)
+    if threat:
+        print(f"  {threat}")
+    icons = [i for i in SCHEME_ICONS if c.get(f"scheme_{i}")]
+    if icons:
+        print("  icons: " + ", ".join(
+            f"{i} x{c[f'scheme_{i}']}" if c[f"scheme_{i}"] > 1 else i
+            for i in icons))
+    if c.get("boost") is not None or c.get("boost_star"):
+        print(f"  boost {c.get('boost') or 0}"
+              + (" + star" if c.get("boost_star") else ""))
     if c.get("traits"):
         print(f"  {c['traits']}")
     if c.get("text"):
@@ -363,9 +417,19 @@ def encounter(conn, name: str) -> dict:
     rather than living in separate rows, so the printed value is the base
     and there is deliberately no --difficulty flag.
     """
-    row = conn.execute(
+    # 18 set names are shared - Venom is a hero set and a villain set -
+    # and an unordered match opened the hero's cards for `encounter venom`.
+    # An exact code wins, then the opposition, then modulars, heroes last;
+    # the rest are named so a wrong pick is visible.
+    named = conn.execute(
         "SELECT code, name FROM sets WHERE lower(code) = lower(?) "
-        "   OR lower(name) = lower(?)", (name, name)).fetchone()
+        "   OR lower(name) = lower(?) "
+        "ORDER BY lower(code) = lower(?) DESC, "
+        "  CASE card_set_type_code WHEN 'villain' THEN 0 WHEN 'leader' THEN 0 "
+        "    WHEN 'main_scheme' THEN 1 WHEN 'hero' THEN 3 ELSE 2 END, code",
+        (name, name, name)).fetchall()
+    row = named[0] if named else None
+    also = [r["code"] for r in named[1:]]
     if row is None:
         row = conn.execute(
             "SELECT s.code, s.name FROM sets s JOIN cards c "
@@ -374,13 +438,16 @@ def encounter(conn, name: str) -> dict:
             "ORDER BY c.code LIMIT 1", (name,)).fetchone()
     if row is None:
         return {"set_code": None, "set_name": None,
-                "villain": [], "contents": []}
+                "villain": [], "main_scheme": [], "contents": [],
+                "also": []}
 
     contents = [dict(r) for r in conn.execute(
         f"SELECT {', '.join('cards.' + c for c in SUMMARY)}, "
         f"       cards.quantity, cards.health, cards.health_per_hero, "
         f"       cards.attack, cards.scheme, cards.stage, cards.defense, "
-        f"       cards.thwart "
+        f"       cards.thwart, cards.base_threat, cards.base_threat_fixed, "
+        f"       cards.escalation_threat, cards.escalation_threat_fixed, "
+        f"       cards.target_threat, cards.target_threat_fixed "
         f"FROM cards WHERE set_code = ? AND code = canonical_code "
         f"ORDER BY code", (row["code"],))]
     # A leader IS the opposition the players fight: the `leader`
@@ -390,8 +457,13 @@ def encounter(conn, name: str) -> dict:
     # table is playing against.
     villain = [c for c in contents
                if c["type_code"] in ("villain", "leader")]
+    # Only the side that carries numbers: a main scheme's A side is setup
+    # text, and listing it would read as a stage with no threshold.
+    schemes = [c for c in contents if c["type_code"] == "main_scheme"
+               and scheme_line(c)]
     return {"set_code": row["code"], "set_name": row["name"],
-            "villain": villain, "contents": contents}
+            "villain": villain, "main_scheme": schemes,
+            "contents": contents, "also": also}
 
 
 def handle_encounter(args) -> int:
@@ -404,6 +476,9 @@ def handle_encounter(args) -> int:
         print(f"no encounter set matching {args.name!r}")
         return 1
     print(f"{result['set_name']}  [{result['set_code']}]")
+    if result["also"]:
+        print(f"  (also named this: {', '.join(result['also'])} - "
+              f"pass the code to see one)")
     if result["villain"]:
         kind = ("Leader stages" if all(v["type_code"] == "leader"
                                       for v in result["villain"])
@@ -416,6 +491,12 @@ def handle_encounter(args) -> int:
             stage = f"stage {v['stage']}" if v.get("stage") else ""
             print(f"  {v['name']:<24} {stage:<10} {hp:<16} "
                   f"ATK {v['attack']}  SCH {v['scheme']}")
+    if result["main_scheme"]:
+        print("\nMain scheme stages:")
+        for s in result["main_scheme"]:
+            stage = f"stage {s['stage']}" if s.get("stage") else ""
+            print(f"  {s['name']:<24} {stage:<10} "
+                  f"{scheme_line(s).removeprefix('threat: ')}")
     print(f"\nSet contents ({len(result['contents'])} cards):")
     for c in result["contents"]:
         print(f"  {c['quantity']}x {c['name']:<32} {c['type_code']}")

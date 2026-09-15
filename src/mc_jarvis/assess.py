@@ -208,7 +208,9 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
             f"{code!r} draws its sets from the whole collection while you "
             f"play, and nothing in the card data can infer them. Pass "
             f"--modular to say which seven are on your table; assessing it "
-            f"against no pool would report a deck you never face.")
+            f"against no pool would report a deck you never face. The "
+            f"villain and main scheme stages do not depend on them: "
+            f"`mc-jarvis encounter {code}`.")
 
     mapped = conn.execute(
         "SELECT kind, modular_set FROM scenario_modulars WHERE scenario_set = ?",
@@ -669,7 +671,8 @@ def _main_scheme(conn, scenario: Scenario) -> dict:
     out = []
     for r in conn.execute(
             f"SELECT name, stage, target_threat, target_threat_fixed, "
-            f"base_threat, base_threat_fixed, escalation_threat "
+            f"base_threat, base_threat_fixed, escalation_threat, "
+            f"escalation_threat_fixed "
             f"FROM cards WHERE set_code IN ({marks}) "
             f"AND type_code = 'main_scheme' AND is_reprint = 0 "
             f"AND target_threat IS NOT NULL AND target_threat != 0 "
@@ -684,7 +687,11 @@ def _main_scheme(conn, scenario: Scenario) -> dict:
             "variable": variable,
             "starts_at": (r["base_threat"] or 0)
             * (1 if r["base_threat_fixed"] else scenario.players),
-            "per_phase": r["escalation_threat"] or 0,
+            # Per hero unless marked fixed, like the other two. Read
+            # unscaled it said +1/phase for The Hood at two players.
+            "per_phase": None if (r["escalation_threat"] or 0) < 0
+            else (r["escalation_threat"] or 0)
+            * (1 if r["escalation_threat_fixed"] else scenario.players),
         })
     seen, uniq = set(), []
     for x in out:
@@ -1226,7 +1233,9 @@ def _line(step: dict) -> None:
         for x in ms["stages"]:
             t = "X" if x["variable"] else x["target"]
             bit = f"{x['stage']}: {t}"
-            if x["per_phase"]:
+            if x["per_phase"] is None:
+                bit += " (+X/phase)"
+            elif x["per_phase"]:
                 bit += f" (+{x['per_phase']}/phase)"
             bits.append(bit)
         line = "    threat to advance - " + "   ".join(bits)
@@ -1280,6 +1289,15 @@ def _line(step: dict) -> None:
                       + (" (none prints it)" if not v["total"] else ""))
 
 
+def _listed(values):
+    """`--modular a --modular b` and `--modular a,b` alike. The comma form
+    is what an agent reaches for first, and set codes never contain one."""
+    if values is None:
+        return None
+    return [v.strip() for value in values for v in value.split(",")
+            if v.strip()]
+
+
 def handle(args) -> int:
     from .cards import _open
     from .cli import emit
@@ -1287,9 +1305,9 @@ def handle(args) -> int:
     conn = _open()
     try:
         scenario = resolve(
-            conn, args.villain, modular=args.modular, players=args.players,
-            difficulty=args.difficulty, heroic=args.heroic,
-            nemesis=args.nemesis or ())
+            conn, args.villain, modular=_listed(args.modular),
+            players=args.players, difficulty=args.difficulty,
+            heroic=args.heroic, nemesis=_listed(args.nemesis) or ())
     except UnknownScenario as exc:
         print(f"mc-jarvis assess: {exc}")
         return 1
