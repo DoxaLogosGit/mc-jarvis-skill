@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS play_limits (
     PRIMARY KEY (code, kind, scope, phrase)
 );
 
+-- One row per card an erratum names. `status` is whether this card text
+-- already carries the correction: the card data is mixed, so it is
+-- checked per erratum rather than assumed (errata.py).
+CREATE TABLE IF NOT EXISTS errata (
+    code       TEXT NOT NULL,
+    entry_id   INTEGER NOT NULL,
+    page       INTEGER,
+    source_doc TEXT NOT NULL,
+    status     TEXT NOT NULL,   -- applied | not_applied | unverified
+    PRIMARY KEY (code, entry_id)
+);
+
 CREATE TABLE IF NOT EXISTS rules_entries (
     id                INTEGER PRIMARY KEY,
     term              TEXT NOT NULL,

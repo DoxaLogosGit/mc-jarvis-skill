@@ -230,6 +230,29 @@ def printings(conn, canonical_code: str) -> list[dict]:
         "WHERE canonical_code = ? ORDER BY code", (canonical_code,))]
 
 
+ERRATA_NOTE = {
+    "applied": "the text above already carries it",
+    "not_applied": "the text above is the ORIGINAL wording - the erratum "
+                   "governs",
+    "unverified": "not checked automatically - compare the two",
+}
+
+
+def errata_for(conn, codes: list[str]) -> list[dict]:
+    """Errata naming any of `codes`, and whether each is in the text."""
+    if not codes:
+        return []
+    marks = ",".join("?" * len(codes))
+    try:
+        rows = conn.execute(
+            f"SELECT e.code, e.status, e.page, e.source_doc, r.term, r.body "
+            f"FROM errata e JOIN rules_entries r ON r.id = e.entry_id "
+            f"WHERE e.code IN ({marks}) ORDER BY e.code", codes).fetchall()
+    except Exception:
+        return []
+    return [dict(r) for r in rows]
+
+
 def show(conn, ident: str, *, owned: bool = False) -> dict:
     """One card, or the candidates when a name is ambiguous.
 
@@ -239,8 +262,10 @@ def show(conn, ident: str, *, owned: bool = False) -> dict:
     exact = _row(conn, ident)
     if exact:
         canon = _row(conn, exact["canonical_code"]) or exact
-        return {"card": canon, "faces": _faces(conn, canon),
-                "printings": printings(conn, canon["code"])}
+        faces = _faces(conn, canon)
+        return {"card": canon, "faces": faces,
+                "printings": printings(conn, canon["code"]),
+                "errata": errata_for(conn, [f["code"] for f in faces])}
 
     # An ambiguous name narrows usefully when the player owns only some
     # of the candidates: three Colossus cards become one.
@@ -256,8 +281,10 @@ def show(conn, ident: str, *, owned: bool = False) -> dict:
 
     if len(matches) == 1:
         card = _row(conn, matches[0]["code"])
-        return {"card": card, "faces": _faces(conn, card),
-                "printings": printings(conn, card["code"])}
+        faces = _faces(conn, card)
+        return {"card": card, "faces": faces,
+                "printings": printings(conn, card["code"]),
+                "errata": errata_for(conn, [f["code"] for f in faces])}
     # Both sides of one main scheme share a name, so "Making Connections"
     # matched 24004a and 24004b and asked which - of a single card.
     if matches:
@@ -265,7 +292,8 @@ def show(conn, ident: str, *, owned: bool = False) -> dict:
         faces = _faces(conn, card)
         if {m["code"] for m in matches} <= {f["code"] for f in faces}:
             return {"card": card, "faces": faces,
-                    "printings": printings(conn, card["code"])}
+                    "printings": printings(conn, card["code"]),
+                    "errata": errata_for(conn, [f["code"] for f in faces])}
     return {"ambiguous": matches}
 
 
@@ -335,6 +363,9 @@ def handle_show(args) -> int:
         for lim in limits:
             label = "in play" if lim["kind"] == "in_play" else "use"
             print(f"  Limit ({label}): {lim['phrase']}")
+        for e in result.get("errata") or []:
+            print(f"\n  Errata [{e['source_doc']} p.{e['page']}] - "
+                  f"{ERRATA_NOTE[e['status']]}:\n    {e['body']}")
         packs = result["printings"]
         if len(packs) > 1:
             print("\n  Printings: " + ", ".join(

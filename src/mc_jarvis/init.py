@@ -56,6 +56,8 @@ def rebuild_index(conn: sqlite3.Connection, data_root: Path) -> dict[str, int]:
     counts["deckbuilding_overrides"] = len(deckrules.scan(conn))
 
     counts["rules_links"] = rules.build_links(conn)
+    from . import errata
+    counts.update(errata.build(conn))
 
     counts["timing_triggers"] = timing.build(conn)
     counts.update(encounterdeck.build(conn))

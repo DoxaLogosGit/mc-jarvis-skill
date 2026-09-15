@@ -297,10 +297,9 @@ def test_a_faq_answer_is_searchable_and_cites_a_real_page(real_index):
 
 @pytest.mark.integration
 def test_errata_is_indexed_per_card(real_index):
-    """48 official card corrections. marvelsdb already applies them to
-    card text - checked against Warning, Sanctuary, Aragorn and Armor Up
-    - so these are provenance rather than a correction the tool must
-    make itself."""
+    """Official card corrections, one entry per card. Whether each is in
+    the card text is checked per card (test_errata.py): four sampled
+    cards once suggested marvelsdb applies them all, and it does not."""
     n = real_index.execute(
         "SELECT COUNT(*) FROM rules_entries WHERE term LIKE 'Errata:%'"
     ).fetchone()[0]

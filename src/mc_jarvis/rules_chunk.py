@@ -411,14 +411,97 @@ def _faq_entries(body: str, page: int, source_doc: str) -> list[Entry]:
     return out
 
 
+# Errata are laid out a line at a time: an upper-case card title ending in
+# its collector number, "Should read:", the corrected text, and a gloss of
+# what changed. Pack headers sit between entries. Joining the page into
+# one line first lost 22 of 75: a number like `#29A`, a title containing a
+# full stop (`MS. MARVEL`), or a page footer glued to the next title all
+# merged an entry into its neighbour.
+ERRATA_TITLE_RE = re.compile(
+    r"^([^a-z\n]*?[A-Z][^a-z\n]*?)\s*\(#(\d+[A-Z]?(?:\s*[-,]\s*#?\d+[A-Z]?)*)\)"
+    r"\s*(.*)$")
+_PACK_HEADER_RE = re.compile(r"(?:\bPACK|\bSET|\bEXPANSION|\bSCENARIO|\bHERO)$")
+_FOOTER_RE = re.compile(r"^\d*\s*Rules Reference\s*")
+
+
+def _title_case(name: str) -> str:
+    # `str.title()` capitalises after an apostrophe: `Mystique’S`.
+    return re.sub(r"[A-Za-z]+(?:[’'][A-Za-z]+)?",
+                  lambda m: m.group(0)[0].upper() + m.group(0)[1:].lower(),
+                  name)
+
+
 def _errata_entries(body: str, page: int, source_doc: str) -> list[Entry]:
-    out = []
-    for name, number, text in ERRATA_RE.findall(" ".join(body.split())):
-        out.append(Entry(
-            term=f"Errata: {name.strip().title()} (#{number})",
-            body=text.strip().strip("\u201d\"").strip(),
-            page=page, source_doc=source_doc,
-            entry_addressable=False, searchable=True))
+    out: list[Entry] = []
+    pack = ""
+    title: tuple[str, str] | None = None   # (name, number)
+    locator = ""
+    text: str | None = None                 # from "Should read:" on
+
+    def close():
+        nonlocal text
+        if text and (title or locator):
+            where = ", ".join(x for x in (locator, _title_case(pack)) if x)
+            # A rulebook correction has a locator and no card.
+            term = (f"Errata: {_title_case(title[0])} (#{title[1]}"
+                    + (f", {where}" if where else "") + ")") if title \
+                else f"Errata: {where}"
+            out.append(Entry(
+                term=term,
+                body=" ".join(text.split()), page=page,
+                source_doc=source_doc,
+                entry_addressable=False, searchable=True))
+        text = None
+
+    # All-caps labels wrap across lines - a pack name whose last word falls
+    # on the next line, a rulebook locator split after a comma - so
+    # consecutive ones are one label.
+    label: list[str] = []
+
+    def settle():
+        nonlocal pack, title, locator
+        if not label:
+            return
+        joined = " ".join(label)
+        label.clear()
+        if _PACK_HEADER_RE.search(joined):
+            pack, title, locator = joined, None, ""
+        elif title is None or joined.startswith("RULEBOOK"):
+            # A rulebook correction belongs to no card.
+            title, locator = None, _title_case(joined.rstrip(":"))
+        else:
+            # `SETUP, BULLET 1` under a title: which part it corrects.
+            locator = _title_case(joined.rstrip(":"))
+
+    for raw in body.split("\n"):
+        line = _FOOTER_RE.sub("", raw.strip())
+        if not line or line.isdigit():
+            continue
+        found = ERRATA_TITLE_RE.match(line)
+        # A title may open with a quotation mark, so it is told from a
+        # quoted body line by having no lower-case letter before its
+        # number.
+        if found and not line.startswith("Should read"):
+            close()
+            settle()
+            title, locator = (found.group(1).strip(), found.group(2)), ""
+            line = found.group(3)
+            if not line:
+                continue
+        elif (not re.search(r"[a-z]", line)
+              and not line.startswith(("\u201c", "\"", "("))):
+            close()
+            if line.startswith("RULEBOOK"):
+                settle()
+            label.append(line)
+            continue
+        settle()
+        if "Should read:" in line:
+            close()
+            text = line.split("Should read:", 1)[1]
+        elif text is not None:
+            text += " " + line
+    close()
     return out
 
 

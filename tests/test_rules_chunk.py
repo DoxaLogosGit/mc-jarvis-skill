@@ -449,3 +449,33 @@ def test_a_page_with_no_usable_heading_cites_the_page_alone():
 
     got = chunk_pages(["7\n© 2025 FFG"], source_doc="bk")
     assert got[0].term == "bk p.1"
+
+
+ERRATA_PAGE = (
+    "APPENDIX V: APPENDIX V:\nERRATA ERRATA\n"
+    "THE TESTING\nEXPANSION\n"
+    "WIDGET (#12A)\n"
+    "Should read: “Action: Do a thing\nto a scheme.” (Changed “foo” to\n“bar”.)\n"
+    "63\n"
+    "Rules Reference“IT’S A TRAP!” (#41)\n"
+    "Should read: “When Revealed: Surge.” (Added “Surge”.)\n"
+    "RULEBOOK PG. 9, CAMPAIGN SETUP, LEFT\nCOLUMN, BULLET 2\n"
+    "Should read: “Each player draws a card.” (Clarified.)\n"
+    "MS. GADGET (#7)\n"
+    "Should read: “Hero Action: Ready.” (Removed “(attack)”.)\n"
+)
+
+
+def test_errata_are_read_a_line_at_a_time():
+    """Joining the page first lost 22 of 75 errata: a lettered number, a
+    title opening with a quote, a full stop in a title, a footer glued to
+    the next title, and every rulebook correction."""
+    got = [e.term for e in rules_chunk.chunk_appendices(
+        [ERRATA_PAGE], first=0, source_doc="rr") if e.term.startswith("Errata")]
+    assert got == [
+        "Errata: Widget (#12A, The Testing Expansion)",
+        "Errata: “It’s A Trap!” (#41, The Testing Expansion)",
+        "Errata: Rulebook Pg. 9, Campaign Setup, Left Column, Bullet 2, "
+        "The Testing Expansion",
+        "Errata: Ms. Gadget (#7, The Testing Expansion)",
+    ]

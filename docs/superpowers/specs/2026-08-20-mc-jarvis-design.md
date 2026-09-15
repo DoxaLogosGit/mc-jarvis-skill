@@ -1031,6 +1031,15 @@ the real document rather than the fixtures:
 Warning, Sanctuary, Aragorn and Armor Up: marvelsdb already applies the
 errata to card text, so `card show` was never printing stale wording.
 
+> **Correction (2026-09-15).** Four cards were a sample, and the
+> conclusion did not survive the population. Across all 75 errata — 22
+> of which the page-joining parser had dropped — the card data is mixed:
+> of 73 card rows, 34 carry the correction, 19 still print the original
+> wording (Synth-Suit, Suit Up, Rogue, MACH-IV among them), and 20 have
+> a gloss too vague to test mechanically. `errata.py` now judges each
+> erratum on the change its own gloss names and stores the verdict per
+> card; `card show` and `deck stats` print it.
+
 #### Every rule in Appendix I, against what is implemented
 
 | Appendix I: Player Decks | Status |

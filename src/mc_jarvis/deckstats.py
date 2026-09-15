@@ -102,7 +102,27 @@ def profile(conn, deck) -> dict:
         # (and the ally limit caps those again), while resources cap the
         # `(thwart)`-designated abilities, which do not exhaust the hero.
         "threat_removal": removal_profile(conn, deck),
+        # Every number above reads the card text. Where an erratum is not
+        # in that text, the count may describe the original card.
+        "errata": _errata(conn, deck, cards),
     }
+
+
+def _errata(conn, deck, cards) -> list[dict]:
+    from .cards import errata_for
+    faces = [r["code"] for r in conn.execute(
+        "SELECT code FROM identity_faces WHERE identity_key = ("
+        "  SELECT identity_key FROM identity_faces WHERE code = ?)",
+        (deck.hero_code,))]
+    rows = errata_for(conn, sorted(set(cards) | set(faces)))
+    names = dict(conn.execute(
+        f"SELECT code, name FROM cards WHERE code IN "
+        f"({','.join('?' * len(rows))})", [r["code"] for r in rows]
+    ).fetchall()) if rows else {}
+    return [{"code": r["code"], "name": names.get(r["code"]),
+             "status": r["status"], "page": r["page"],
+             "source_doc": r["source_doc"]}
+            for r in rows if r["status"] != "applied"]
 
 
 def render(p: dict) -> None:
@@ -187,6 +207,16 @@ def render(p: dict) -> None:
                      else "")
                   + " - how it is used is in the hero's rules, not the "
                     "card data")
+
+    wrong = [e for e in p.get("errata") or [] if e["status"] == "not_applied"]
+    unsure = [e for e in p.get("errata") or [] if e["status"] == "unverified"]
+    if wrong:
+        print("  errata NOT in the card text (numbers above read the "
+              "original): " + ", ".join(
+                  f"{e['name']} (p.{e['page']})" for e in wrong))
+    if unsure:
+        print("  errata not checked automatically: " + ", ".join(
+            f"{e['name']} (p.{e['page']})" for e in unsure))
 
     if p["arrives_later"]:
         print("  arrives later: "

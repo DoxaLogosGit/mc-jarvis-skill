@@ -106,6 +106,12 @@ default when you are quoting to the user.
 | environment problems | `mc-jarvis doctor` |
 | index age, version, counts | `mc-jarvis status` |
 
+- **Errata are checked per card, because the card data is mixed.**
+  `card show` prints each erratum and whether the text above it already
+  carries the correction. When it says the text is the original wording,
+  the erratum governs: answer from it and cite its page. `deck stats`
+  names such cards in a deck, and any count it gives for them read the
+  original.
 - **Scheme threat is always indexed.** `encounter` prints main scheme
   stages (starting threat, threat added each villain phase, threat to
   complete) and `card show` prints threat, scheme icons and boost on any
