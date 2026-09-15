@@ -50,6 +50,7 @@ reports what is indexed, which Rules Reference version, and how stale it is.
 | an encounter set | `mc-jarvis encounter <villain-or-set>` |
 | a rules term | `mc-jarvis rules show <term>` |
 | a rules question | `mc-jarvis rules search <text>` |
+| a hero's or product's own rules | `mc-jarvis rules fetch <hero>` (no argument lists them) |
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
 | the game round | `mc-jarvis timing --round` |
 | rulings the rulebook lacks | `mc-jarvis rulings [<text>]` |

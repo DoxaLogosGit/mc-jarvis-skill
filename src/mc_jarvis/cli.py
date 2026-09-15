@@ -122,6 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
     rshow.add_argument("term")
     rsearch = _leaf(rules_sub, "search", "full-text search the rules")
     rsearch.add_argument("text")
+    rfetch = rules_sub.add_parser(
+        "fetch", help="download a hero's or product's rules document")
+    rfetch.add_argument("what", nargs="?", default=None,
+                        help="a hero, or a document slug; omit to list them")
 
     rul = _leaf(sub, "rulings",
                 "designer rulings the rulebook does not yet cover")
@@ -257,6 +261,9 @@ def _dispatch(name: str, args) -> int:
             return rules.handle_show(args)
         if args.rules_cmd == "search":
             return rules.handle_search(args)
+        if args.rules_cmd == "fetch":
+            from . import rulesfetch
+            return rulesfetch.handle(args)
     print(f"mc-jarvis: '{name}' is not implemented yet", file=sys.stderr)
     return 3
 

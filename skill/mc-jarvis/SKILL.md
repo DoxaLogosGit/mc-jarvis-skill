@@ -96,6 +96,7 @@ default when you are quoting to the user.
 | what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty]` |
 | a rules term | `mc-jarvis rules show <term>` |
 | a rules question | `mc-jarvis rules search <text>` |
+| a hero's or product's own rules | `mc-jarvis rules fetch <hero>` |
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
 | the game round | `mc-jarvis timing --round` |
 | rulings the rulebook lacks | `mc-jarvis rulings [<text>]` |
@@ -300,9 +301,9 @@ Colossus with tough, Deadpool with acceleration — is not deficient in it.
 - **Some heroes own cards outside the deck.** `identity` and `deck stats`
   name them — a Sense deck, an Invocation deck, set-aside upgrades — and
   none are in any count. How each is accessed is in that hero's rules
-  insert, which is not indexed: read the cards, fold them into the
-  assessment, and say you cannot cite how they are set up rather than
-  guessing. If the player explains it, take their word.
+  insert: fetch it (above) and cite it. If there is none to fetch, read
+  the cards, say you cannot cite how they are set up, and take the
+  player's word if they explain it.
 
 ## Staleness
 
@@ -310,8 +311,16 @@ Check `mc-jarvis status`. If the index is more than 14 days old, mention
 it once and offer `mc-jarvis update`. Do not nag, and never refresh
 without being asked.
 
-`status` also names the rulebooks indexed. If one is missing, `update`
-cannot fetch it — that needs `mc-jarvis init`.
+`status` also names the rulebooks indexed. A missing core rulebook needs
+`mc-jarvis init`; `update` cannot fetch it.
+
+**Fetch a hero's rules without asking.** When evaluating a deck or
+answering about a hero, check `rules_docs` in `status` for that hero's
+rulesheet or the box it came in. If it is absent, run
+`mc-jarvis rules fetch <hero>`: it downloads that one document into the
+data directory and rebuilds the index, and the player has already agreed
+to that. If it reports no document, the product is newer than FFG's list
+the tool holds; say so, and do not guess the setup.
 
 ## What is not a command
 

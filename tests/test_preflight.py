@@ -38,7 +38,9 @@ CLI = Path(sys.executable).parent / "mc-jarvis"
 # Commands that reach the network or write to the user's own data. A test
 # that runs them rebuilds the index it is testing against, or quietly
 # rewrites the collection of whoever ran the suite.
-SIDE_EFFECTS = {("init",), ("update",), ("collection", "set")}
+# `rules fetch` downloads and rebuilds; its argument is still parsed.
+SIDE_EFFECTS = {("init",), ("update",), ("collection", "set"),
+                ("rules", "fetch")}
 
 DIFFICULTIES = ["standard", "expert", "standard_ii", "expert_ii",
                 "standard_iii"]
@@ -176,7 +178,7 @@ PLACEHOLDERS = {
     "leader set": "iron_man_leader", "name-or-code": "Tackle",
     "query": "tackle", "name": "Spider-Man", "entry": "Ability",
     "keyword": "permanent", "term": "Ability", "text": "guard",
-    "trigger": "when revealed", "pack": "core",
+    "trigger": "when revealed", "pack": "core", "hero": "Doctor Strange",
 }
 # Filled at collection time with a deck written to a temp file, so the
 # deck commands are exercised without reaching marvelcdb.

@@ -1873,3 +1873,22 @@ opening the hero set, one of 18 set names shared between set types.
 Counting the Sense deck also exposed seven player cards counted as removal
 because they *react* to "the last threat" leaving a scheme; that phrase is
 now a condition, not removal.
+
+### 14.28 Errata, checked; hero rules, fetched on demand
+
+**Errata.** The main design (§10, "Errata is provenance") concluded from
+four cards that the card data carries every correction. Checked across
+all of them it does not: 34 card rows carry the correction, 19 print the
+original wording, 20 cannot be tested from their gloss. The parser had
+also dropped 22 of the 75 errata by joining each page into one line.
+`errata.py` now judges each on the change its gloss names; `card show`
+and `deck stats` say which wording the numbers read.
+
+**Hero rules.** A side deck is set up by the hero's own rules insert,
+which `init` never fetched. FFG lists about 80 such documents; 61 of 69
+heroes map to one by hero or pack name, the four Core Set heroes are in
+the core rulebooks, and four are newer than the captured list.
+`rules fetch <hero>` downloads the one a question needs into the data
+directory and rebuilds; the skill runs it without asking, as the player
+directed. A rulesheet has no glossary, so it is page-chunked like Learn to
+Play.
