@@ -128,6 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="a hero, or a document slug; omit to list them")
     rfetch.add_argument("--refresh", action="store_true",
                         help="re-read FFG's document list from archive.org")
+    rfetch.add_argument("--from-html", metavar="FILE",
+                        help="re-read the list from FFG's product page, "
+                             "saved from your browser")
 
     rul = _leaf(sub, "rulings",
                 "designer rulings the rulebook does not yet cover")

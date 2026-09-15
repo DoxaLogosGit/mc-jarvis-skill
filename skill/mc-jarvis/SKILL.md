@@ -321,7 +321,9 @@ rulesheet or the box it came in. If it is absent, run
 data directory and rebuilds the index, and the player has already agreed
 to that. A campaign-box hero is covered by the box's rulebook, and a hero
 missing from the held list triggers one refresh of it. If it still
-reports no document, say so, and do not guess the setup.
+reports no document, say so, do not guess the setup, and offer the fix it
+prints: the player saves FFG's product page and you run
+`mc-jarvis rules fetch <hero> --from-html <file>`.
 
 ## What is not a command
 

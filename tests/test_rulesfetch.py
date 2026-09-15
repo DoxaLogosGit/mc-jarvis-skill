@@ -84,3 +84,42 @@ def test_a_refresh_reports_what_it_added(tmp_path, monkeypatch):
                             source="wayback", captured="2026-09-10"))
     _, added = rulesfetch.refresh(tmp_path)
     assert added == ["fear-no-evil-rulebook"]
+
+
+def test_a_saved_page_refreshes_the_list(tmp_path):
+    """The route for a document posted since archive.org last looked."""
+    path = tmp_path / "rules" / "manifest.json"
+    manifest.write(manifest.ManifestResult(
+        docs=[_doc("old-rulesheet")], source="wayback",
+        captured="2026-09-10"), path)
+    page = tmp_path / "ffg.html"
+    page.write_text('<a class="support-item" href="https://x/n.pdf">'
+                    '<span class="title">Newest Rulebook</span></a>')
+    kept, added = rulesfetch.refresh(tmp_path, page)
+    assert kept.source == "html"
+    assert added == ["newest-rulebook"]
+
+
+def test_a_saved_page_that_is_not_ffgs_is_refused(tmp_path):
+    manifest.write(manifest.ManifestResult(
+        docs=[_doc("old-rulesheet")], source="wayback",
+        captured="2026-09-10"), tmp_path / "rules" / "manifest.json")
+    page = tmp_path / "other.html"
+    page.write_text("<html>nothing here</html>")
+    with pytest.raises(RuntimeError, match="lists no rules PDFs"):
+        rulesfetch.refresh(tmp_path, page)
+    assert manifest.read(
+        tmp_path / "rules" / "manifest.json").docs[0].slug == "old-rulesheet"
+
+
+def test_an_archive_capture_does_not_replace_a_saved_page(tmp_path,
+                                                          monkeypatch):
+    page = tmp_path / "ffg.html"
+    page.write_text('<a class="support-item" href="https://x/n.pdf">'
+                    '<span class="title">Newest Rulebook</span></a>')
+    rulesfetch.refresh(tmp_path, page)
+    monkeypatch.setattr(manifest, "fetch_from_wayback",
+                        lambda: manifest.ManifestResult(
+                            docs=[], source="wayback", captured="2026-09-10"))
+    kept, _ = rulesfetch.refresh(tmp_path)
+    assert [d.slug for d in kept.docs] == ["newest-rulebook"]

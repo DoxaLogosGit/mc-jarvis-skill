@@ -50,11 +50,25 @@ def candidates(conn, docs: list[manifest.RuleDoc], ref: str) -> tuple[list, str]
     return list({d.slug: d for d in hits}.values()), label
 
 
-def refresh(root) -> tuple[manifest.ManifestResult, list[str]]:
-    """Re-read FFG's list from archive.org; the slugs it added."""
+def refresh(root, from_html=None) -> tuple[manifest.ManifestResult, list[str]]:
+    """Re-read FFG's list; the slugs it added.
+
+    From archive.org by default. A page the player saved from their own
+    browser is newer than any capture, so it is taken as it is: the one
+    route that sees a document posted since archive.org last looked."""
     path = root / "rules" / "manifest.json"
     old = manifest.read(path)
-    new = manifest.fetch_from_wayback()
+    if from_html:
+        new = manifest.fetch_from_html(from_html)
+        if not new.docs:
+            raise RuntimeError(
+                f"{from_html} lists no rules PDFs - save FFG's Marvel "
+                f"Champions product page itself:\n  {manifest.PRODUCT_PAGE}")
+        # Dated today, so a later archive.org capture older than the
+        # player's own copy cannot replace it and drop what it added.
+        new.captured = _dt.date.today().isoformat()
+    else:
+        new = manifest.fetch_from_wayback()
     if old.captured and new.captured and new.captured < old.captured:
         return old, []
     manifest.write(new, path)
@@ -87,16 +101,19 @@ def handle(args) -> int:
     def reread():
         nonlocal known
         try:
-            known, added = refresh(root)
-        except RuntimeError as exc:
+            known, added = refresh(root, getattr(args, "from_html", None))
+        except (RuntimeError, OSError) as exc:
             print(f"  could not refresh the list: {exc}")
             return False
-        print(f"  list refreshed (captured {known.captured})"
+        where = ("from your saved page" if known.source == "html"
+                 else f"captured {known.captured}")
+        print(f"  list refreshed ({where})"
               + (f"; new: {', '.join(added)}" if added else "; nothing new"))
         return True
 
-    if args.refresh:
-        reread()
+    if args.refresh or getattr(args, "from_html", None):
+        if not reread() and getattr(args, "from_html", None):
+            return 1
     captured = known.captured or "an unknown date"
 
     if not args.what:
@@ -109,7 +126,7 @@ def handle(args) -> int:
     from .cards import _open
     conn = _open()
     docs, label = candidates(conn, known.docs, args.what)
-    if not docs and not args.refresh:
+    if not docs and not (args.refresh or getattr(args, "from_html", None)):
         # A product newer than the held list is the likely reason, and
         # the player has agreed to downloads: look again once.
         print(f"nothing for {label!r} in the list captured {captured}; "
@@ -119,9 +136,12 @@ def handle(args) -> int:
             docs, label = candidates(conn, known.docs, args.what)
     if not docs:
         print(f"mc-jarvis rules fetch: no rules document for {label!r} in "
-              f"FFG's list as captured {captured}. `mc-jarvis rules fetch` "
-              f"with no argument lists what is. Core Set heroes are "
-              f"covered by the Learn to Play book and the Rules Reference.")
+              f"FFG's list as captured {captured}. If it is newer than "
+              f"that, save FFG's product page from your browser and run "
+              f"`mc-jarvis rules fetch {args.what} --from-html <file>`:\n"
+              f"  {manifest.PRODUCT_PAGE}\n"
+              f"Core Set heroes are covered by the Learn to Play book and "
+              f"the Rules Reference.")
         return 1
 
     fetched = []
