@@ -286,6 +286,18 @@ Two things the numbers will not tell you, so say them yourself: a count is
 a ceiling and not a rate, and a hero whose kit is built on a mechanic —
 Colossus with tough, Deadpool with acceleration — is not deficient in it.
 
+- **A stat line is not a hero's capacity.** Judge thwarting from the
+  `by form` line and the cards, not THW. Most heroes remove threat only in
+  hero form; a deck with alter-ego removal keeps thwarting on the turns it
+  recovers, and a card that swaps in another stat (DEF for THW) makes the
+  printed one irrelevant.
+- **Some heroes own cards outside the deck.** `identity` and `deck stats`
+  name them — a Sense deck, an Invocation deck, set-aside upgrades — and
+  none are in any count. How each is accessed is in that hero's rules
+  insert, which is not indexed: read the cards, fold them into the
+  assessment, and say you cannot cite how they are set up rather than
+  guessing. If the player explains it, take their word.
+
 ## Staleness
 
 Check `mc-jarvis status`. If the index is more than 14 days old, mention

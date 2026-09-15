@@ -162,6 +162,21 @@ def render(p: dict) -> None:
               f"- these do not exhaust the hero - and "
               f"{t['non_thwart_removal']['copies']} that remove threat "
               f"without thwarting, which Patrol cannot stop")
+        f = t.get("by_form") or {}
+        if any(f.values()):
+            print(f"    by form: {f['hero']} hero form only, "
+                  f"{f['alter_ego']} alter-ego only, {f['either']} either "
+                  f"(the hero's THW needs hero form; allies thwart in both)")
+        for sd in t.get("side_decks") or []:
+            n = sum(c["quantity"] or 1 for c in sd["cards"])
+            r = sd["removal"]
+            removal = sum(r.values())
+            print(f"  outside the deck: {sd['name']}, {n} card(s), in none "
+                  f"of the numbers above"
+                  + (f" - {removal} of them remove threat" if removal
+                     else "")
+                  + " - how it is used is in the hero's rules, not the "
+                    "card data")
 
     if p["arrives_later"]:
         print("  arrives later: "

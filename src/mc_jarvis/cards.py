@@ -375,10 +375,11 @@ def identity(conn, name: str) -> dict:
             "SELECT i.identity_key, i.name FROM identities i "
             "JOIN identity_faces f ON f.identity_key = i.identity_key "
             "JOIN cards c ON c.code = f.code "
-            "WHERE lower(c.name) = lower(?) LIMIT 1", (name,)).fetchone()
+            "WHERE lower(c.name) = lower(?) OR lower(c.code) = lower(?) "
+            "LIMIT 1", (name, name)).fetchone()
     if row is None:
         return {"identity": None, "identity_key": None,
-                "faces": [], "signature": []}
+                "faces": [], "signature": [], "side_decks": []}
 
     key = row["identity_key"]
     faces = [_row(conn, r["code"]) for r in conn.execute(
@@ -388,8 +389,10 @@ def identity(conn, name: str) -> dict:
         f"SELECT {', '.join(SUMMARY)} FROM cards "
         f"WHERE set_code = ? AND type_code NOT IN ('hero', 'alter_ego') "
         f"AND code = canonical_code ORDER BY code", (key,))]
+    from .threatremoval import side_decks
+    sides = side_decks(conn, faces[0]["code"]) if faces else []
     return {"identity": row["name"], "identity_key": key,
-            "faces": faces, "signature": signature}
+            "faces": faces, "signature": signature, "side_decks": sides}
 
 
 def handle_identity(args) -> int:
@@ -407,6 +410,13 @@ def handle_identity(args) -> int:
     print(f"\nSignature set ({len(result['signature'])} cards):")
     for c in result["signature"]:
         print(f"  {c['code']:<8} {c['name']:<32} {c['type_code']}")
+    for sd in result["side_decks"]:
+        n = sum(c["quantity"] or 1 for c in sd["cards"])
+        print(f"\n{sd['name']} - outside the deck, set up by the hero's "
+              f"rules ({n} card{'s' if n != 1 else ''}):")
+        for c in sd["cards"]:
+            qty = f"{c['quantity']}x " if (c["quantity"] or 1) > 1 else ""
+            print(f"  {c['code']:<8} {qty}{c['name']:<32} {c['type_code']}")
     return 0
 
 

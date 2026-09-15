@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import re
 
-from .threatremoval import designations, profile as removal_profile
+from .threatremoval import (designations, profile as removal_profile,
+                            removes_threat)
 
 # A keyword the card confers on itself with no condition attached is
 # reliable in a way a one-attack event is not. The two read almost alike
@@ -41,7 +42,6 @@ _GLOBAL_GRANT = re.compile(r"each (?:\w+ )?(?:minion|enemy|character|ally)"
                            r"[^.]{0,40}gains?", re.I)
 _DAMAGES_VILLAIN = re.compile(
     r"damage to (?:the villain|an enemy|each enemy|that enemy)", re.I)
-_REMOVES_THREAT = re.compile(r"remove.{0,40}threat", re.I)
 # Damage reachable only by attacking is still blocked by Guard.
 _NEEDS_ATTACK = re.compile(
     r"(?:after|when) (?:\w+ ){0,3}(?:attacks|makes a basic attack)", re.I)
@@ -190,7 +190,7 @@ def bypasses(conn, codes) -> dict:
                  "copies": codes[r["code"]]}
         if _DAMAGES_VILLAIN.search(text) and "attack" not in acts:
             (contingent if _NEEDS_ATTACK.search(text) else guard).append(entry)
-        if _REMOVES_THREAT.search(text) and "thwart" not in acts:
+        if removes_threat(text) and "thwart" not in acts:
             patrol.append(entry)
     return {"guard": guard, "patrol": patrol,
             "attack_contingent": contingent}
@@ -237,6 +237,12 @@ def pairings(conn, cards, deck, *, sets=()) -> dict:
             "deck_basic_thwart_ceiling": removal["basic_thwart"]["ceiling"],
             "deck_designated_thwarts": removal["designated_thwart"]["copies"],
             "deck_non_thwart_removal": removal["non_thwart_removal"]["copies"],
+            "deck_removal_by_form": removal["by_form"],
+            "deck_side_decks": [
+                {"name": sd["name"],
+                 "cards": sum(c["quantity"] or 1 for c in sd["cards"]),
+                 "removal": sum(sd["removal"].values())}
+                for sd in removal["side_decks"]],
             "deck_interest": acceleration_interest(conn, codes),
             "note": "a ceiling, not a rate; and a loop, not a ratio",
         },

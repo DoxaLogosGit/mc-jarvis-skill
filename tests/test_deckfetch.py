@@ -129,6 +129,44 @@ def test_a_deck_id_is_recognised_in_any_of_its_forms(ref, want):
     assert deckfetch.deck_id(ref) == want
 
 
+@pytest.mark.parametrize("ref,kinds", [
+    ("64331", ("decklist", "deck")),
+    ("https://marvelcdb.com/decklist/view/64331/nova-justice", ("decklist",)),
+    ("https://marvelcdb.com/deck/view/1233874", ("deck",)),
+])
+def test_each_url_names_its_own_endpoint(ref, kinds):
+    """A shared private deck lives at /deck/, not /decklist/. The live
+    test's link was refused as neither an id nor a URL."""
+    assert deckfetch.deck_ref(ref)[0] == kinds
+
+
+def test_a_bare_id_falls_back_to_a_shared_deck(monkeypatch, tmp_path):
+    asked = []
+
+    def fake(url):
+        asked.append(url)
+        if "/decklist/" in url:
+            raise deckfetch.NotADeck("html")
+        return {"id": 7, "name": "D", "hero_code": "01001a",
+                "hero_name": "S", "meta": "{}", "slots": {},
+                "ignoreDeckLimitSlots": None}
+
+    conn = _mkdb(tmp_path, [("01001a", "Spider-Man", "hero", "core", None)])
+    monkeypatch.setattr(deckfetch, "_get", fake)
+    deck = deckfetch.fetch(conn, "7")
+    assert deck.source == "marvelcdb:deck/7"
+    assert [u.rsplit("/", 2)[1] for u in asked] == ["decklist", "deck"]
+
+
+def test_an_unreachable_host_is_not_retried_as_the_other_kind(monkeypatch):
+    def boom(url):
+        raise deckfetch.DeckError("cannot reach marvelcdb")
+
+    monkeypatch.setattr(deckfetch, "_get", boom)
+    with pytest.raises(deckfetch.DeckError, match="cannot reach"):
+        deckfetch.fetch(None, "7")
+
+
 def test_a_local_file_is_not_mistaken_for_an_id(tmp_path):
     path = tmp_path / "deck.json"
     path.write_text("{}", encoding="utf-8")
@@ -177,6 +215,14 @@ def test_real_decks_normalise_without_a_flood_of_unknown_slots(real_index):
     assert missing <= len(parsed), (
         f"{missing} unknown slots across {len(parsed)} decks - the card "
         f"data is probably stale; run `mc-jarvis update`")
+
+
+@pytest.mark.integration
+def test_a_shared_deck_link_fetches(real_index):
+    """The live test's link, which marvelcdb serves from /deck/."""
+    deck = deckfetch.fetch(real_index,
+                           "https://marvelcdb.com/deck/view/1233874")
+    assert deck.hero_name == "Daredevil"
 
 
 @pytest.mark.integration

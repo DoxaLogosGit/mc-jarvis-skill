@@ -50,6 +50,87 @@ _CONDITIONAL = re.compile(r"^\s*(?:if|play only if)\b", re.I)
 
 _DESIGNATOR = re.compile(r"<i>\(([a-z/]+)\)</i>", re.I)
 _REMOVES_THREAT = re.compile(r"remove.{0,40}threat", re.I)
+# A trigger that fires once a scheme's final threat is gone names the
+# removal as its condition and removes nothing itself. Seven player cards matched on that phrase alone,
+# two of them in Daredevil's Sense deck.
+_CONDITION = re.compile(r"remov\w*\s+(?:the last|all)\s+threat", re.I)
+
+
+def removes_threat(text: str | None) -> bool:
+    return bool(_REMOVES_THREAT.search(_CONDITION.sub("", text or "")))
+
+
+# An ability starts at its bold label. `Hero Action` needs hero form,
+# `Alter-Ego Action` alter-ego form, and a bare `Action`, `Response` or
+# `Interrupt` works in either (RR p.4, Ability). Daredevil removes threat from
+# alter-ego form, which few heroes can, and a THW 1 stat line hid it.
+_LABEL = re.compile(r"<b>\W*([^<]{1,40}?)\W*</b>")
+
+
+def side_decks(conn, hero_code: str) -> list[dict]:
+    """The hero's `hero_special` sets: kept outside the deck, never
+    drawn from it, so in none of the deck's numbers."""
+    return [{"set_code": r["code"], "name": r["name"],
+             "cards": [dict(c) for c in conn.execute(
+                 "SELECT code, name, type_code, quantity FROM cards "
+                 "WHERE set_code = ? AND code = canonical_code "
+                 "ORDER BY code", (r["code"],))]}
+            for r in conn.execute(
+                "SELECT s.code, s.name FROM sets s JOIN cards h "
+                "  ON h.set_code = s.parent_code "
+                "WHERE h.code = ? AND s.card_set_type_code = 'hero_special' "
+                "ORDER BY s.code", (hero_code,))]
+
+
+def removal_form(text: str | None) -> str | None:
+    """Which form can use a card's threat removal: `hero`, `alter_ego`,
+    `either`, or None when the card removes none."""
+    text = text or ""
+    labels = list(_LABEL.finditer(text))
+    forms: set[str] = set()
+    # Text before the first label is constant, and works in either form.
+    bounds = [0] + [m.start() for m in labels] + [len(text)]
+    for i in range(len(bounds) - 1):
+        chunk = text[bounds[i]:bounds[i + 1]]
+        if not ("thwart" in designations(chunk)
+                or removes_threat(chunk)):
+            continue
+        label = labels[i - 1].group(1).lower() if i else ""
+        forms.add("hero" if label.startswith("hero")
+                  else "alter_ego" if label.startswith("alter-ego")
+                  else "either")
+    if not forms:
+        return None
+    if "either" in forms or {"hero", "alter_ego"} <= forms:
+        return "either"
+    return forms.pop()
+
+
+def _by_form(entries: list[dict]) -> dict:
+    out = {"hero": 0, "alter_ego": 0, "either": 0}
+    for e in entries:
+        if e.get("form"):
+            out[e["form"]] += e["copies"]
+    return out
+
+
+def _removers(conn, cards: dict[str, int]) -> tuple[list[dict], list[dict]]:
+    designated: list[dict] = []
+    non_thwart: list[dict] = []
+    if not cards:
+        return designated, non_thwart
+    marks = ",".join("?" * len(cards))
+    for r in conn.execute(
+            f"SELECT code, name, type_code, text FROM cards "
+            f"WHERE code IN ({marks})", list(cards)):
+        entry = {"code": r["code"], "name": r["name"],
+                 "copies": cards[r["code"]],
+                 "form": removal_form(r["text"]) or "either"}
+        if "thwart" in designations(r["text"]):
+            designated.append(entry)
+        elif removes_threat(r["text"]):
+            non_thwart.append(entry)
+    return designated, non_thwart
 
 
 def designations(text: str | None) -> frozenset[str]:
@@ -80,20 +161,7 @@ def profile(conn, deck) -> dict:
         (deck.hero_code,)).fetchone()
     hero_thw = hero["thwart"] if hero else None
 
-    designated: list[dict] = []
-    non_thwart: list[dict] = []
-    if cards:
-        marks = ",".join("?" * len(cards))
-        for r in conn.execute(
-                f"SELECT code, name, type_code, text FROM cards "
-                f"WHERE code IN ({marks})", list(cards)):
-            acts = designations(r["text"])
-            entry = {"code": r["code"], "name": r["name"],
-                     "copies": cards[r["code"]]}
-            if "thwart" in acts:
-                designated.append(entry)
-            elif _REMOVES_THREAT.search(r["text"] or ""):
-                non_thwart.append(entry)
+    designated, non_thwart = _removers(conn, cards)
 
     rows = {r["code"]: r for r in conn.execute(
         f"SELECT code, name, text FROM cards WHERE code IN "
@@ -142,4 +210,13 @@ def profile(conn, deck) -> dict:
             "cards": non_thwart,
             "copies": sum(e["copies"] for e in non_thwart),
         },
+        # Which form each removal card needs. The hero's own THW needs
+        # hero form; allies thwart whichever form the hero is in.
+        "by_form": _by_form(designated + non_thwart),
+        # Outside the deck: never drawn, so not in any number above.
+        "side_decks": [
+            dict(sd, removal=_by_form(sum(_removers(
+                conn, {c["code"]: c["quantity"] or 1
+                       for c in sd["cards"]}), [])))
+            for sd in side_decks(conn, deck.hero_code)],
     }

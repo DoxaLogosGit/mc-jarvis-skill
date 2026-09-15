@@ -18,13 +18,20 @@ from pathlib import Path
 
 API = "https://marvelcdb.com/api/public"
 USER_AGENT = "mc-jarvis (+https://marvelcdb.com)"
-# `.../decklist/view/64331/nova-justice`, or the bare id.
-DECK_URL_RE = re.compile(r"marvelcdb\.com/decklist/view/(\d+)", re.I)
+# marvelcdb has two kinds of deck with separate id spaces: a published
+# decklist (`/decklist/view/64331/nova-justice`) and a player's own deck
+# shared by link (`/deck/view/1233874`), each with its own API endpoint.
+# Only the first was recognised, and the live test's deck was the second.
+DECK_URL_RE = re.compile(r"marvelcdb\.com/(decklist|deck)/view/(\d+)", re.I)
 BARE_ID_RE = re.compile(r"^\d+$")
 
 
 class DeckError(RuntimeError):
     """The deck cannot be read, or names a hero this index does not have."""
+
+
+class NotADeck(DeckError):
+    """marvelcdb answered, but not with a deck."""
 
 
 @dataclass
@@ -66,12 +73,24 @@ def parse_meta(raw) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def deck_id(ref: str) -> str | None:
-    """The marvelcdb id in `ref`, or None if it is a path."""
+def deck_ref(ref: str) -> tuple[tuple[str, ...], str] | None:
+    """The endpoints to try and the id in `ref`, or None if it is a path.
+
+    A bare id could be either kind - 40000 is a published decklist and a
+    different player's deck - so the published one is tried first and the
+    source records which answered."""
     match = DECK_URL_RE.search(ref)
     if match:
-        return match.group(1)
-    return ref if BARE_ID_RE.match(ref.strip()) else None
+        return (match.group(1).lower(),), match.group(2)
+    if BARE_ID_RE.match(ref.strip()):
+        return ("decklist", "deck"), ref.strip()
+    return None
+
+
+def deck_id(ref: str) -> str | None:
+    """The marvelcdb id in `ref`, or None if it is a path."""
+    found = deck_ref(ref)
+    return found[1] if found else None
 
 
 def _get(url: str):
@@ -91,7 +110,7 @@ def _get(url: str):
     try:
         return json.loads(body)
     except ValueError:
-        raise DeckError(
+        raise NotADeck(
             "marvelcdb did not return a deck. It answers an unknown id with "
             "a non-JSON page rather than an error, so this usually means the "
             "deck does not exist or is not public.") from None
@@ -150,10 +169,20 @@ def normalise(conn, payload: dict, *, source: str) -> Deck:
 
 def fetch(conn, ref: str) -> Deck:
     """A deck from a marvelcdb id, a marvelcdb URL, or a local JSON file."""
-    identifier = deck_id(ref)
-    if identifier is not None:
-        return normalise(conn, _get(f"{API}/decklist/{identifier}"),
-                         source=f"marvelcdb:{identifier}")
+    found = deck_ref(ref)
+    if found is not None:
+        kinds, identifier = found
+        for kind in kinds:
+            try:
+                payload = _get(f"{API}/{kind}/{identifier}")
+            except NotADeck:
+                continue
+            return normalise(conn, payload,
+                             source=f"marvelcdb:{kind}/{identifier}")
+        raise DeckError(
+            f"marvelcdb has no {' or '.join(kinds)} {identifier} it will "
+            f"share. A deck its owner has not made public cannot be read; "
+            f"export it as text and pass the file instead.")
     if ref == "-":
         # The paste case: somebody has a decklist in front of them and no
         # file, which is the whole reason the text format exists.

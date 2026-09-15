@@ -93,7 +93,11 @@ CREATE TABLE IF NOT EXISTS packs (
 CREATE TABLE IF NOT EXISTS sets (
     code               TEXT PRIMARY KEY,
     name               TEXT,
-    card_set_type_code TEXT
+    card_set_type_code TEXT,
+    -- The hero a `hero_special` set belongs to: Daredevil's Sense deck,
+    -- Doctor Strange's Invocation deck. Outside the 40-50 cards, and was
+    -- invisible to identity and deck stats until a live test missed it.
+    parent_code        TEXT
 );
 
 CREATE TABLE IF NOT EXISTS build_meta (

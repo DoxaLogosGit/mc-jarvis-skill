@@ -1838,3 +1838,38 @@ against config and was clean throughout. It cannot see a keyword indexed
 without its value, a keyword whose `printed` flag means something
 different from the rest, or a keyword nothing reports. Those need a
 reader, and the table above is what the next reader should regenerate.
+
+### 14.27 The first live tests: indexed, and never printed
+
+Two live sessions, one finding each time: the data was in the index and
+no command the agent reached for showed it.
+
+**The Hood.** `assess` refused without the seven modular sets, `encounter`
+printed villain stages but no main scheme stages, and `card show --json`
+carried no threat fields on any scheme. The agent told the player the
+index lacked the clock. Fixed by printing scheme threat in both commands,
+pointing the refusal at `encounter`, and a test that every scenario's main
+scheme threat appears there. The same pass found `assess` adding threat
+each villain phase unscaled — it is printed per hero unless marked fixed,
+so The Hood at two players read +1 instead of +2 — and `encounter venom`
+opening the hero set, one of 18 set names shared between set types.
+
+**Daredevil against Kang.** Three separate gaps behind one wrong verdict
+("weak at thwarting"):
+
+- `deck fetch` recognised only `/decklist/view/`. A deck shared by link
+  lives at `/deck/view/` with its own endpoint and id space; a bare id now
+  tries both and the source records which answered.
+- The Sense deck is a `hero_special` set (six exist, five heroes) with a
+  `parent_code` in `sets.json` that was never indexed. `identity`,
+  `deck stats` and `assess --deck` now name it and count none of it. How a
+  side deck is used is in each hero's rules insert, which is not indexed
+  (§13); the skill says so rather than guessing.
+- Threat removal had no form dimension. RR p.4 (Ability): a trigger naming
+  Hero or Alter-Ego works only in that form. Removal is now split hero /
+  alter-ego / either, because a THW 1 identity whose deck removes threat
+  from alter-ego is not weak at thwarting.
+
+Counting the Sense deck also exposed seven player cards counted as removal
+because they *react* to "the last threat" leaving a scheme; that phrase is
+now a condition, not removal.

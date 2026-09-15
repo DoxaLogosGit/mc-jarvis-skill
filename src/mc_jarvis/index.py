@@ -12,7 +12,7 @@ from . import schema
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
 # migrating - there is nothing here that cannot be regenerated.
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 
 class InvariantError(RuntimeError):
@@ -306,7 +306,8 @@ def load_cards(conn: sqlite3.Connection, marvelsdb_dir: Path) -> BuildReport:
 
     for name, table, cols in (
         ("packs.json", "packs", ("code", "name")),
-        ("sets.json", "sets", ("code", "name", "card_set_type_code")),
+        ("sets.json", "sets", ("code", "name", "card_set_type_code",
+                                "parent_code")),
     ):
         path = marvelsdb_dir / name
         if not path.exists():

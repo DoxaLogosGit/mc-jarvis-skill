@@ -118,3 +118,85 @@ def test_a_limit_raiser_is_named_and_never_applied(tmp_path):
     assert b["ceiling"] == 2 + 3 + 3 + 3      # still three allies
     named = {r["name"]: r["conditional"] for r in b["raises_limit"]}
     assert named == {"The Triskelion": False, "Utopia": True}
+
+
+# --- which form can use it --------------------------------------------
+
+@pytest.mark.parametrize("text,form", [
+    ("<b>Hero Action</b> <i>(thwart)</i>: Remove 3 threat from a scheme.",
+     "hero"),
+    ("<b>Alter-Ego Action</b>: Exhaust this support → remove 2 threat.",
+     "alter_ego"),
+    ("<b>Action</b> <i>(thwart)</i>: Remove 2 threat from a scheme.",
+     "either"),
+    ("<b>Hero Action</b>: Remove 1 threat.\n<b>Alter-Ego Action</b>: "
+     "Remove 2 threat.", "either"),
+    ("<b>Hero Action</b> <i>(attack)</i>: Deal 3 damage.\n<b>Alter-Ego "
+     "Action</b>: Remove 2 threat from a scheme.", "alter_ego"),
+    ("<b>Hero Action</b> <i>(attack)</i>: Deal 3 damage.", None),
+])
+def test_removal_is_labelled_with_the_form_that_can_use_it(text, form):
+    """RR p.4: a trigger naming Hero or Alter-Ego works only in that form.
+    Daredevil's deck removes threat from alter-ego, which a THW 1 stat
+    line hid from the live test."""
+    assert threatremoval.removal_form(text) == form
+
+
+def test_a_trigger_on_removing_the_last_threat_is_not_removal():
+    """Acute Tactility reacts to the last threat leaving a scheme and
+    removes none itself; it was counted as removal."""
+    assert not threatremoval.removes_threat(
+        "<b>Interrupt</b>: When you remove the last threat here, discard "
+        "this → draw a card.")
+    assert not threatremoval.removes_threat(
+        "<b>Response</b>: After a thwart removes all threat there, heal 1.")
+    assert threatremoval.removes_threat(
+        "<b>Hero Action</b> <i>(thwart)</i>: Remove 3 threat. If this "
+        "removes the last threat there, draw 1 card.")
+
+
+# --- side decks --------------------------------------------------------
+
+def test_every_side_deck_belongs_to_a_hero_this_index_has(real_index):
+    orphans = [r[0] for r in real_index.execute(
+        "SELECT code FROM sets WHERE card_set_type_code = 'hero_special' "
+        "AND parent_code NOT IN (SELECT DISTINCT set_code FROM cards "
+        "  WHERE type_code = 'hero' AND set_code IS NOT NULL)")]
+    assert not orphans, orphans
+    assert real_index.execute(
+        "SELECT COUNT(*) FROM sets WHERE card_set_type_code = 'hero_special'"
+    ).fetchone()[0] >= 6
+
+
+def test_daredevils_sense_deck_is_reported_outside_his_deck(real_index):
+    """The live test: a Protection Daredevil deck read as weak at
+    thwarting, with the Sense deck and his alter-ego removal unseen."""
+    deck = deckfetch.normalise(real_index, {
+        "id": 1233874, "name": "D", "hero_code": "60001a",
+        "hero_name": "Daredevil", "meta": '{"aspect":"protection"}',
+        "ignoreDeckLimitSlots": None,
+        "slots": {"01079": 2, "01081": 1, "01088": 1, "01089": 1, "01090": 1,
+                  "09020": 1, "10031": 1, "16016": 1, "16017": 3, "16024": 1,
+                  "32014": 2, "40020": 1, "42017": 1, "48014": 1, "48015": 2,
+                  "56046": 1, "60007": 1, "60008": 2, "60009": 2, "60010": 2,
+                  "60011": 1, "60012": 1, "60013": 1, "60014": 1, "60015": 1,
+                  "60016": 1, "60017": 1, "60018": 1, "60030": 1, "60038": 1,
+                  "60048": 3, "60052": 3}}, source="test")
+    p = threatremoval.profile(real_index, deck)
+    assert p["by_form"]["alter_ego"] == 3        # Deposition x2, Foggy Nelson
+    [sense] = p["side_decks"]
+    assert sense["name"] == "Sense Deck"
+    assert len(sense["cards"]) == 5
+    assert sum(sense["removal"].values()) == 1   # Superior Taste only
+    assert not any(c["code"] in {s["code"] for s in sense["cards"]}
+                   for c in p["designated_thwart"]["cards"]
+                   + p["non_thwart_removal"]["cards"])
+
+
+def test_identity_lists_the_side_deck_and_accepts_a_code(real_index):
+    from mc_jarvis import cards
+
+    got = cards.identity(real_index, "60001a")
+    assert got["identity"] == "Daredevil"
+    assert [sd["name"] for sd in got["side_decks"]] == ["Sense Deck"]
+    assert cards.identity(real_index, "Spider-Man")["side_decks"] == []

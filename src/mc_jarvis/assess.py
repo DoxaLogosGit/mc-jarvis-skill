@@ -1510,6 +1510,15 @@ def _crossref_line(x: dict) -> None:
           f" + {a['deck_non_thwart_removal']} non-thwart")
     print("      the ceiling assumes every ally is in play, ready, and "
           "thwarting rather than attacking or blocking")
+    f = a.get("deck_removal_by_form") or {}
+    if any(f.values()):
+        print(f"      removal cards by form: {f['hero']} hero only, "
+              f"{f['alter_ego']} alter-ego only, {f['either']} either")
+    for sd in a.get("deck_side_decks") or []:
+        print(f"      not counted: {sd['name']} ({sd['cards']} cards outside "
+              f"the deck"
+              + (f", {sd['removal']} removing threat" if sd["removal"] else "")
+              + ") - how it is used is in the hero's rules")
     interest = a.get("deck_interest") or {}
     if interest.get("scales_with"):
         names = ", ".join(c["name"] for c in interest["scales_with"])
