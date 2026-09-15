@@ -56,3 +56,31 @@ def test_a_hero_newer_than_the_list_finds_nothing(real_index):
     got, label = rulesfetch.candidates(real_index, [_doc("storm-rulesheet")],
                                        "Daredevil")
     assert got == [] and label == "Daredevil"
+
+
+def test_a_refresh_never_replaces_a_newer_list_with_an_older_one(
+        tmp_path, monkeypatch):
+    path = tmp_path / "rules" / "manifest.json"
+    manifest.write(manifest.ManifestResult(
+        docs=[_doc("new-rulebook")], source="html", captured="2026-09-01"),
+        path)
+    monkeypatch.setattr(manifest, "fetch_from_wayback",
+                        lambda: manifest.ManifestResult(
+                            docs=[], source="wayback", captured="2026-07-21"))
+    kept, added = rulesfetch.refresh(tmp_path)
+    assert kept.captured == "2026-09-01" and added == []
+    assert manifest.read(path).docs[0].slug == "new-rulebook"
+
+
+def test_a_refresh_reports_what_it_added(tmp_path, monkeypatch):
+    path = tmp_path / "rules" / "manifest.json"
+    manifest.write(manifest.ManifestResult(
+        docs=[_doc("old-rulesheet")], source="wayback",
+        captured="2026-07-21"), path)
+    monkeypatch.setattr(manifest, "fetch_from_wayback",
+                        lambda: manifest.ManifestResult(
+                            docs=[_doc("old-rulesheet"),
+                                  _doc("fear-no-evil-rulebook")],
+                            source="wayback", captured="2026-09-10"))
+    _, added = rulesfetch.refresh(tmp_path)
+    assert added == ["fear-no-evil-rulebook"]

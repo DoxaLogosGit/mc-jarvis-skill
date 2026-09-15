@@ -319,8 +319,9 @@ answering about a hero, check `rules_docs` in `status` for that hero's
 rulesheet or the box it came in. If it is absent, run
 `mc-jarvis rules fetch <hero>`: it downloads that one document into the
 data directory and rebuilds the index, and the player has already agreed
-to that. If it reports no document, the product is newer than FFG's list
-the tool holds; say so, and do not guess the setup.
+to that. A campaign-box hero is covered by the box's rulebook, and a hero
+missing from the held list triggers one refresh of it. If it still
+reports no document, say so, and do not guess the setup.
 
 ## What is not a command
 

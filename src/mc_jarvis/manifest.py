@@ -178,19 +178,60 @@ def latest_snapshot(url: str = PRODUCT_PAGE) -> str | None:
     return rows[-1][1] if len(rows) > 1 else None
 
 
+_CAPTURE_TS_RE = re.compile(r"/web/(\d{14})id_/")
+
+
+def nearest_capture(url: str = PRODUCT_PAGE,
+                    attempts: int = 3) -> tuple[str, str]:
+    """The capture nearest now, and its HTML, without the CDX index.
+
+    Asking for a snapshot at a timestamp redirects to the closest one, and
+    the final URL names it. The CDX search can be down while the archive
+    serves pages fine - it answered 503 for a day while this returned a
+    capture seven weeks newer than the one the tool held."""
+    now = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    last: Exception | None = None
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(2 ** attempt)
+        req = urllib.request.Request(
+            WAYBACK_SNAPSHOT.format(ts=now, url=url),
+            headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                raw = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    raw = gzip.decompress(raw)
+                found = _CAPTURE_TS_RE.search(resp.geturl())
+        except Exception as exc:      # noqa: BLE001 - retried above
+            last = exc
+            continue
+        if not found:
+            raise RuntimeError(f"archive.org redirected to {resp.geturl()}, "
+                               f"which names no capture")
+        return found.group(1), raw.decode("utf-8", errors="replace")
+    raise RuntimeError(f"could not reach a capture of {url} after "
+                       f"{attempts} attempts: {last}") from last
+
+
 def fetch_from_wayback(url: str = PRODUCT_PAGE) -> ManifestResult:
     """The default path: no browser, no manual step.
 
     `id_` asks for the original capture rather than archive.org's
     rewritten copy, so the hrefs are FFG's own CDN URLs.
     """
-    timestamp = latest_snapshot(url)
+    try:
+        timestamp = latest_snapshot(url)
+        html = None
+    except RuntimeError:
+        timestamp, html = nearest_capture(url)
     if timestamp is None:
         raise RuntimeError(
             "archive.org has no usable snapshot of the product page. Save "
             f"the page from a browser and use --from-html.\n  {url}")
-    html = _get(WAYBACK_SNAPSHOT.format(ts=timestamp, url=url),
-                timeout=90).decode("utf-8", errors="replace")
+    if html is None:
+        html = _get(WAYBACK_SNAPSHOT.format(ts=timestamp, url=url),
+                    timeout=90).decode("utf-8", errors="replace")
     docs = parse(html)
     if not docs:
         raise RuntimeError(

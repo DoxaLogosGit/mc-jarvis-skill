@@ -50,6 +50,18 @@ def candidates(conn, docs: list[manifest.RuleDoc], ref: str) -> tuple[list, str]
     return list({d.slug: d for d in hits}.values()), label
 
 
+def refresh(root) -> tuple[manifest.ManifestResult, list[str]]:
+    """Re-read FFG's list from archive.org; the slugs it added."""
+    path = root / "rules" / "manifest.json"
+    old = manifest.read(path)
+    new = manifest.fetch_from_wayback()
+    if old.captured and new.captured and new.captured < old.captured:
+        return old, []
+    manifest.write(new, path)
+    return new, [slug for slug, what in manifest.diff(old.docs, new.docs)
+                 if what == "added"]
+
+
 def fetch(conn, root, doc: manifest.RuleDoc) -> bool:
     """Download and extract `doc`. False when it was already here."""
     target = root / "rules" / "pdf" / f"{doc.slug}.pdf"
@@ -71,6 +83,20 @@ def handle(args) -> int:
               "`mc-jarvis init` first.")
         return 1
     have = {p.stem for p in (root / "rules" / "pdf").glob("*.pdf")}
+
+    def reread():
+        nonlocal known
+        try:
+            known, added = refresh(root)
+        except RuntimeError as exc:
+            print(f"  could not refresh the list: {exc}")
+            return False
+        print(f"  list refreshed (captured {known.captured})"
+              + (f"; new: {', '.join(added)}" if added else "; nothing new"))
+        return True
+
+    if args.refresh:
+        reread()
     captured = known.captured or "an unknown date"
 
     if not args.what:
@@ -83,12 +109,19 @@ def handle(args) -> int:
     from .cards import _open
     conn = _open()
     docs, label = candidates(conn, known.docs, args.what)
+    if not docs and not args.refresh:
+        # A product newer than the held list is the likely reason, and
+        # the player has agreed to downloads: look again once.
+        print(f"nothing for {label!r} in the list captured {captured}; "
+              f"refreshing it...")
+        if reread():
+            captured = known.captured or captured
+            docs, label = candidates(conn, known.docs, args.what)
     if not docs:
         print(f"mc-jarvis rules fetch: no rules document for {label!r} in "
-              f"FFG's list as captured {captured}. A product released "
-              f"since is not in it yet; `mc-jarvis rules fetch` with no "
-              f"argument lists what is. Core Set heroes are covered by the "
-              f"Learn to Play book and the Rules Reference.")
+              f"FFG's list as captured {captured}. `mc-jarvis rules fetch` "
+              f"with no argument lists what is. Core Set heroes are "
+              f"covered by the Learn to Play book and the Rules Reference.")
         return 1
 
     fetched = []

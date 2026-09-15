@@ -269,3 +269,49 @@ def test_the_real_site_resolves_through_its_nav():
     assert look.status in ("ok", "unreachable"), look.detail
     if look.ok:
         assert look.version and look.url.endswith(".pdf")
+
+
+# --- when the CDX search is down --------------------------------------
+
+class _Resp:
+    def __init__(self, url, body=b"<html></html>"):
+        self._url, self._body, self.headers = url, body, {}
+
+    def read(self):
+        return self._body
+
+    def geturl(self):
+        return self._url
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_the_nearest_capture_is_found_without_the_cdx_index(monkeypatch):
+    """CDX answered 503 for a day while archive.org served pages, and the
+    capture it hid listed the Fear No Evil rulebook."""
+    import urllib.request
+    final = ("https://web.archive.org/web/20260910165414id_/"
+             "https://www.fantasyflightgames.com/en/products/x/")
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda req, timeout: _Resp(final, b"<p>page</p>"))
+    assert manifest.nearest_capture("https://x/") == ("20260910165414",
+                                                      "<p>page</p>")
+
+
+def test_wayback_falls_back_when_the_cdx_index_fails(monkeypatch):
+    def down(url):
+        raise RuntimeError("HTTP Error 503")
+
+    monkeypatch.setattr(manifest, "latest_snapshot", down)
+    monkeypatch.setattr(manifest, "nearest_capture",
+                        lambda url: ("20260910000000",
+                                     '<a class="support-item" href="x.pdf">'
+                                     '<span class="title">A Rulebook</span>'
+                                     '</a>'))
+    result = manifest.fetch_from_wayback()
+    assert result.captured == "2026-09-10"
+    assert [d.slug for d in result.docs] == ["a-rulebook"]
