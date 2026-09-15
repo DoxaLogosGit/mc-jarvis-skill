@@ -238,6 +238,11 @@ def pairings(conn, cards, deck, *, sets=()) -> dict:
             "deck_designated_thwarts": removal["designated_thwart"]["copies"],
             "deck_non_thwart_removal": removal["non_thwart_removal"]["copies"],
             "deck_removal_by_form": removal["by_form"],
+            "deck_removal_cards": [
+                {"name": c["name"], "copies": c["copies"], "form": c["form"],
+                 "scales": c["scales"]}
+                for c in removal["designated_thwart"]["cards"]
+                + removal["non_thwart_removal"]["cards"]],
             "deck_side_decks": [
                 {"name": sd["name"],
                  "cards": sum(c["quantity"] or 1 for c in sd["cards"]),

@@ -1514,6 +1514,15 @@ def _crossref_line(x: dict) -> None:
     if any(f.values()):
         print(f"      removal cards by form: {f['hero']} hero only, "
               f"{f['alter_ego']} alter-ego only, {f['either']} either")
+        for form, label in (("either", "either form"),
+                            ("alter_ego", "alter-ego only"),
+                            ("hero", "hero only")):
+            named = [f"{c['name']} x{c['copies']}"
+                     + (" (scales)" if c["scales"] else "")
+                     for c in a.get("deck_removal_cards") or []
+                     if c["form"] == form]
+            if named:
+                print(f"        {label}: {', '.join(named)}")
     for sd in a.get("deck_side_decks") or []:
         print(f"      not counted: {sd['name']} ({sd['cards']} cards outside "
               f"the deck"

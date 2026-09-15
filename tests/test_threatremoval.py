@@ -200,3 +200,19 @@ def test_identity_lists_the_side_deck_and_accepts_a_code(real_index):
     assert got["identity"] == "Daredevil"
     assert [sd["name"] for sd in got["side_decks"]] == ["Sense Deck"]
     assert cards.identity(real_index, "Spider-Man")["side_decks"] == []
+
+
+@pytest.mark.parametrize("text,scales", [
+    ("<b>Action</b> <i>(thwart)</i>: Remove 2 threat. Then remove 1 more "
+     "threat for each upgrade on the scheme.", True),
+    ("<b>Hero Action</b>: For each support you control, choose:\n"
+     "• Remove 1 threat from a scheme.\n• Deal 1 damage to an enemy.", True),
+    ("Increase the cost to play this card by 1 for each ally you control. "
+     "<b>Hero Action</b>: Remove 2 threat from a scheme.", False),
+    ("<b>Interrupt</b>: Remove up to 3 threat from here → this attack deals "
+     "1 additional damage for each threat removed this way.", False),
+])
+def test_removal_that_grows_with_the_board_is_flagged(text, scales):
+    """Living Lie Detector removes 2, plus 1 per upgrade on the scheme -
+    in a Sense deck, reliably more than the 2 a flat count reports."""
+    assert threatremoval.removal_scales(text) is scales

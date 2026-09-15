@@ -56,6 +56,20 @@ _REMOVES_THREAT = re.compile(r"remove.{0,40}threat", re.I)
 _CONDITION = re.compile(r"remov\w*\s+(?:the last|all)\s+threat", re.I)
 
 
+# Removal whose amount grows with the board: one upgrade per scheme, one
+# ally per trait. A flat count reads these as their minimum.
+_SCALES = re.compile(r"\bfor each\b|\bequal to\b|\bwhere X\b", re.I)
+# Tested per clause: across a whole card, 12 of 54 matches scaled a cost,
+# damage, or threat taken off the card itself rather than the removal.
+_CLAUSE = re.compile(r"\.\s|→")
+
+
+def removal_scales(text: str | None) -> bool:
+    plain = re.sub(r"<[^>]+>", "", text or "")
+    return any(_SCALES.search(c) and removes_threat(c)
+               for c in _CLAUSE.split(plain))
+
+
 def removes_threat(text: str | None) -> bool:
     return bool(_REMOVES_THREAT.search(_CONDITION.sub("", text or "")))
 
@@ -125,7 +139,8 @@ def _removers(conn, cards: dict[str, int]) -> tuple[list[dict], list[dict]]:
             f"WHERE code IN ({marks})", list(cards)):
         entry = {"code": r["code"], "name": r["name"],
                  "copies": cards[r["code"]],
-                 "form": removal_form(r["text"]) or "either"}
+                 "form": removal_form(r["text"]) or "either",
+                 "scales": removal_scales(r["text"])}
         if "thwart" in designations(r["text"]):
             designated.append(entry)
         elif removes_threat(r["text"]):

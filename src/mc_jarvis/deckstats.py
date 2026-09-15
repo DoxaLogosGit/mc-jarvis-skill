@@ -167,6 +167,16 @@ def render(p: dict) -> None:
             print(f"    by form: {f['hero']} hero form only, "
                   f"{f['alter_ego']} alter-ego only, {f['either']} either "
                   f"(the hero's THW needs hero form; allies thwart in both)")
+            removal_cards = (t["designated_thwart"]["cards"]
+                             + t["non_thwart_removal"]["cards"])
+            for form, label in (("either", "either form"),
+                                ("alter_ego", "alter-ego only"),
+                                ("hero", "hero only")):
+                named = [f"{c['name']} x{c['copies']}"
+                         + (" (scales)" if c.get("scales") else "")
+                         for c in removal_cards if c["form"] == form]
+                if named:
+                    print(f"      {label}: {', '.join(named)}")
         for sd in t.get("side_decks") or []:
             n = sum(c["quantity"] or 1 for c in sd["cards"])
             r = sd["removal"]
