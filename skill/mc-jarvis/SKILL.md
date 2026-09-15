@@ -113,6 +113,12 @@ default when you are quoting to the user.
   the erratum governs: answer from it and cite its page. `deck stats`
   names such cards in a deck, and any count it gives for them read the
   original.
+- **A player's printed card may predate its erratum.** When they quote
+  wording that differs from `card show`, check the card's errata before
+  deciding who is right. If an erratum explains the difference, say so
+  plainly: their copy was printed before the correction, the corrected
+  wording governs, and here is the page. Never call their reading wrong
+  without that — the card in their hand really does say it.
 - **Scheme threat is always indexed.** `encounter` prints main scheme
   stages (starting threat, threat added each villain phase, threat to
   complete) and `card show` prints threat, scheme icons and boost on any
@@ -468,7 +474,8 @@ Six things to carry into any answer:
   and scenario rules above the Rules Reference, which is above Learn to
   Play. That is why Spider-Woman may take two aspects and Adam Warlock
   all four: their own cards say so. If a player quotes a card at you that
-  contradicts a rule, the card is probably right.
+  contradicts a rule, the card is probably right — unless an erratum has
+  since changed that card, which `card show` will list.
 - **A failing size check may not be the player's fault.** If the deck
   names cards this index does not carry, `deck check` says so and calls
   the count a floor. Say that rather than telling them to add cards.

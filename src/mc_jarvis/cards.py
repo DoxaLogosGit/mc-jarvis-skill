@@ -231,7 +231,8 @@ def printings(conn, canonical_code: str) -> list[dict]:
 
 
 ERRATA_NOTE = {
-    "applied": "the text above already carries it",
+    "applied": "the text above already carries it; a printed copy may "
+               "still show the original wording",
     "not_applied": "the text above is the ORIGINAL wording - the erratum "
                    "governs",
     "unverified": "not checked automatically - compare the two",
