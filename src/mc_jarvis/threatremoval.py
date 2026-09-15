@@ -70,6 +70,71 @@ def removal_scales(text: str | None) -> bool:
                for c in _CLAUSE.split(plain))
 
 
+_TEMPORARY = re.compile(r"\bfor (?:this|that)\b|\buntil the end\b|"
+                        r"\bthis (?:round|phase)\b|→", re.I)
+_STAT_SUBSTITUTE = re.compile(
+    r"use your (ATK|THW|DEF|REC) in place of your "
+    r"((?:ATK|THW|DEF|REC)(?:,? (?:and )?(?:ATK|THW|DEF|REC))*)", re.I)
+
+
+def stat_modifiers(conn, cards: dict[str, int], hero_code: str,
+                   stat: str) -> list[dict]:
+    """Cards in the deck that lastingly raise the identity's `stat`.
+
+    The ceiling reads the printed stat, which is the floor: a THW 1 hero
+    with two THW upgrades thwarts for 3. Named, never summed - each must be
+    in play, and most are limited per player. A bonus lasting one thwart
+    or one phase is an event's effect, not the hero's stat."""
+    names = {r["name"].lower() for r in conn.execute(
+        "SELECT name FROM cards WHERE code IN (SELECT code FROM "
+        "identity_faces WHERE identity_key = (SELECT identity_key FROM "
+        "identity_faces WHERE code = ?))", (hero_code,))}
+    subject = "|".join(["your hero", "your identity", "you"]
+                       + sorted(re.escape(n) for n in names))
+    # The subject may open a later clause, after "and" or a comma - a card
+    # granting hit points first and DEF second was missed when only a
+    # sentence start counted.
+    pattern = re.compile(
+        rf"(?:^|\band |, )(?:{subject}) gets? "
+        rf"(?:\+\d \w+,? (?:and )?)*\+(\d) {stat}\b", re.I)
+    out = []
+    if not cards:
+        return out
+    marks = ",".join("?" * len(cards))
+    for r in conn.execute(f"SELECT code, name, text FROM cards "
+                          f"WHERE code IN ({marks}) ORDER BY name",
+                          list(cards)):
+        plain = re.sub(r"<[^>]+>|\[\[|\]\]", "", r["text"] or "")
+        for sentence in re.split(r"(?<=\.)\s+|\n", plain):
+            m = pattern.search(sentence.strip())
+            if m and not _TEMPORARY.search(sentence):
+                out.append({"code": r["code"], "name": r["name"],
+                            "copies": cards[r["code"]],
+                            "plus": int(m.group(1)),
+                            "conditional": bool(re.match(
+                                r"\s*(?:while|if)\b", sentence, re.I))})
+                break
+    return out
+
+
+def stat_substitutes(conn, cards: dict[str, int], stat: str) -> list[dict]:
+    """Cards that make the identity use another stat in place of `stat`.
+    The Best Offense... makes Daredevil thwart with DEF, so his printed
+    THW 1 is not the number he thwarts for."""
+    out = []
+    if not cards:
+        return out
+    marks = ",".join("?" * len(cards))
+    for r in conn.execute(f"SELECT code, name, text FROM cards "
+                          f"WHERE code IN ({marks}) ORDER BY name",
+                          list(cards)):
+        for used, replaced in _STAT_SUBSTITUTE.findall(r["text"] or ""):
+            if stat.upper() in replaced.upper():
+                out.append({"code": r["code"], "name": r["name"],
+                            "copies": cards[r["code"]], "uses": used.upper()})
+    return out
+
+
 def removes_threat(text: str | None) -> bool:
     return bool(_REMOVES_THREAT.search(_CONDITION.sub("", text or "")))
 
@@ -196,10 +261,23 @@ def profile(conn, deck) -> dict:
     best = sorted(counted, key=lambda a: a["thwart"],
                   reverse=True)[:ALLY_LIMIT] + exempt
 
+    substitutes = stat_substitutes(conn, cards, "THW")
+    for s in substitutes:
+        stat = conn.execute(
+            f"SELECT {s['uses'].lower() if s['uses'] != 'DEF' else 'defense'}"
+            f" AS v FROM cards WHERE code = ?", (deck.hero_code,)).fetchone()
+        s["printed"] = stat["v"] if stat else None
+        s["raised_by"] = stat_modifiers(conn, cards, deck.hero_code,
+                                        s["uses"])
+
     return {
         # Limited by exhaustion: one basic thwart each, per turn.
         "basic_thwart": {
             "hero": hero_thw,
+            # The ceiling reads the printed THW; these change it in play.
+            "hero_thw_raised_by": stat_modifiers(conn, cards,
+                                                 deck.hero_code, "THW"),
+            "hero_thw_replaced_by": substitutes,
             "allies_in_deck": len(allies),
             "allies_fielded": len(best),
             "ally_limit": ALLY_LIMIT,

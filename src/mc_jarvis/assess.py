@@ -1510,6 +1510,15 @@ def _crossref_line(x: dict) -> None:
           f" + {a['deck_non_thwart_removal']} non-thwart")
     print("      the ceiling assumes every ally is in play, ready, and "
           "thwarting rather than attacking or blocking")
+    raised = a.get("deck_hero_thw_raised_by") or []
+    if raised:
+        print("      and reads the printed hero THW; raised in play by "
+              + ", ".join(f"{m['name']} +{m['plus']}" for m in raised))
+    for s in a.get("deck_hero_thw_replaced_by") or []:
+        ups = sum(m["plus"] for m in s["raised_by"])
+        print(f"      {s['name']} x{s['copies']}: the hero thwarts with "
+              f"{s['uses']} instead ({s['printed']} printed, up to "
+              f"+{ups} from {len(s['raised_by'])} card(s) in the deck)")
     f = a.get("deck_removal_by_form") or {}
     if any(f.values()):
         print(f"      removal cards by form: {f['hero']} hero only, "

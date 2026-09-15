@@ -169,6 +169,19 @@ def render(p: dict) -> None:
         print(f"  threat removal: basic thwart ceiling {b['ceiling']} "
               f"(hero {b['hero']} + {b['allies_fielded']} of "
               f"{b['allies_in_deck']} allies, limit {b['ally_limit']})")
+        raised = b.get("hero_thw_raised_by") or []
+        if raised:
+            print("    hero THW is the printed value; raised in play by: "
+                  + ", ".join(f"{m['name']} +{m['plus']} x{m['copies']}"
+                              + (" (conditional)" if m["conditional"] else "")
+                              for m in raised))
+        for s in b.get("hero_thw_replaced_by") or []:
+            ups = ", ".join(f"{m['name']} +{m['plus']}"
+                            for m in s["raised_by"])
+            print(f"    {s['name']} x{s['copies']}: while it is in play the "
+                  f"hero thwarts with {s['uses']} (printed {s['printed']}"
+                  + (f"; raised by {ups}" if ups else "") + ") instead of "
+                  f"THW, and THW modifiers are ignored")
         if b.get("exempt_allies"):
             print("    outside the limit: "
                   + ", ".join(c["name"] for c in b["exempt_allies"]))

@@ -238,6 +238,10 @@ def pairings(conn, cards, deck, *, sets=()) -> dict:
             "deck_designated_thwarts": removal["designated_thwart"]["copies"],
             "deck_non_thwart_removal": removal["non_thwart_removal"]["copies"],
             "deck_removal_by_form": removal["by_form"],
+            "deck_hero_thw_raised_by": removal["basic_thwart"][
+                "hero_thw_raised_by"],
+            "deck_hero_thw_replaced_by": removal["basic_thwart"][
+                "hero_thw_replaced_by"],
             "deck_removal_cards": [
                 {"name": c["name"], "copies": c["copies"], "form": c["form"],
                  "scales": c["scales"]}

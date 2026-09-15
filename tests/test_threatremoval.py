@@ -216,3 +216,38 @@ def test_removal_that_grows_with_the_board_is_flagged(text, scales):
     """Living Lie Detector removes 2, plus 1 per upgrade on the scheme -
     in a Sense deck, reliably more than the 2 a flat count reports."""
     assert threatremoval.removal_scales(text) is scales
+
+
+# --- the hero's printed THW is not the number it thwarts for ------------
+
+def test_a_stat_substitute_is_reported_with_what_feeds_it(real_index):
+    """The live test: The Best Offense... makes Daredevil thwart with DEF,
+    and deck stats read his printed THW 1."""
+    cards = {"60052": 3, "01081": 1, "48015": 2, "01079": 2}
+    [sub] = threatremoval.stat_substitutes(real_index, cards, "THW")
+    assert (sub["name"], sub["uses"]) == ("The Best Offense...", "DEF")
+    raised = threatremoval.stat_modifiers(real_index, cards, "60001a", "DEF")
+    assert {m["name"] for m in raised} >= {"Armored Vest",
+                                           "The Best Offense..."}
+
+
+def test_a_stat_bonus_counts_for_its_own_hero_only(real_index):
+    """Colossus's Iron Will names Colossus; it raises no one else."""
+    iron_will = {r[0]: 1 for r in real_index.execute(
+        "SELECT code FROM cards WHERE name = 'Iron Will' "
+        "AND code = canonical_code")}
+    colossus = real_index.execute(
+        "SELECT code FROM cards WHERE name = 'Colossus' "
+        "AND type_code = 'hero'").fetchone()[0]
+    assert threatremoval.stat_modifiers(real_index, iron_will, colossus,
+                                        "THW")
+    assert not threatremoval.stat_modifiers(real_index, iron_will, "60001a",
+                                            "THW")
+
+
+def test_a_bonus_for_one_thwart_is_not_the_heros_stat(real_index):
+    civic_duty = {r[0]: 1 for r in real_index.execute(
+        "SELECT code FROM cards WHERE name = 'Civic Duty' "
+        "AND code = canonical_code")}
+    assert not threatremoval.stat_modifiers(real_index, civic_duty,
+                                            "60001a", "THW")

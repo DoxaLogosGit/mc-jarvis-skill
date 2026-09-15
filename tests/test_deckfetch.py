@@ -4,6 +4,8 @@ The API shapes asserted here were measured on 2026-08-27 across 124
 published decks from five `by_date` days. Three of them differ from what
 §10 records, and each difference is named where it bites.
 """
+import json
+
 import pytest
 
 from mc_jarvis import deckfetch, index
@@ -263,3 +265,19 @@ def test_an_unreachable_host_is_a_clear_error_too(monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", _boom)
     with pytest.raises(deckfetch.DeckError, match="cannot reach marvelcdb"):
         deckfetch._get("https://marvelcdb.com/api/public/decklist/1")
+
+
+def test_a_fetched_deck_written_as_json_reads_back(tmp_path):
+    """The live test saved `deck fetch --json` to a file, and `deck check`
+    refused it: the output named the hero and carried no `hero_code`."""
+    conn = _mkdb(tmp_path, [("01001a", "Spider-Man", "hero", "core", None),
+                            ("01002", "Tackle", "event", "core", None)])
+    deck = deckfetch.normalise(conn, {
+        "id": 9, "name": "D", "hero_code": "01001a", "hero_name": "S",
+        "meta": '{"aspect": "aggression"}', "ignoreDeckLimitSlots": None,
+        "slots": {"01002": 2, "99999": 1}}, source="test")
+    path = tmp_path / "deck.json"
+    path.write_text(json.dumps(deckfetch.payload(deck)))
+    again = deckfetch.fetch(conn, str(path))
+    assert (again.hero_code, again.aspects, again.slots, again.unknown) == \
+        (deck.hero_code, deck.aspects, deck.slots, deck.unknown)

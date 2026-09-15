@@ -126,6 +126,25 @@ def fetch_by_date(day: str) -> list[dict]:
     return payload if isinstance(payload, list) else []
 
 
+def payload(deck: Deck) -> dict:
+    """A `Deck` in marvelcdb's own shape, so a saved `deck fetch --json`
+    reads back into `deck check`. It used to write `hero` (a name) and no
+    `hero_code`, and every command refused the file it had just written.
+
+    Unknown slots go back into `slots`: reading the file again reports
+    them again, rather than losing them to a silently shorter deck."""
+    meta = {"aspect": deck.aspects[0]} if deck.aspects else {}
+    if len(deck.aspects) > 1:
+        meta["aspect2"] = deck.aspects[1]
+    if deck.deck_format != "current":
+        meta["format"] = deck.deck_format
+    return {"id": deck.id, "name": deck.name,
+            "hero_code": deck.hero_code, "hero_name": deck.hero_name,
+            "meta": json.dumps(meta), "slots": {**deck.slots, **deck.unknown},
+            "ignoreDeckLimitSlots": deck.ignore_limit or None,
+            "cards": sum(deck.slots.values())}
+
+
 def normalise(conn, payload: dict, *, source: str) -> Deck:
     """A marvelcdb payload as a `Deck`, with every slot canonicalised."""
     hero_code = payload.get("hero_code") or ""
@@ -273,10 +292,11 @@ def handle(args) -> int:
         return 1
 
     if args.deck_cmd == "fetch":
-        emit({"id": deck.id, "name": deck.name, "hero": deck.hero_name,
+        emit(payload(deck) if args.json else
+             {"id": deck.id, "name": deck.name, "hero": deck.hero_name,
               "aspects": deck.aspects, "format": deck.deck_format,
-              "cards": sum(deck.slots.values()), "slots": deck.slots,
-              "unknown": deck.unknown}, as_json=args.json)
+              "cards": sum(deck.slots.values()), "slots": deck.slots},
+             as_json=args.json)
         if not args.json and deck.unknown:
             print(f"  {sum(deck.unknown.values())} card(s) are not in this "
                   f"index: {', '.join(sorted(deck.unknown))}")
