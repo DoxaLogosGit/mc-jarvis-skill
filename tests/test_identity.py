@@ -149,3 +149,28 @@ def test_identity_selection_scope(real_index):
     assert identity.identities_conflict(real_index, ["nebu", "gam"]) == []
     conflict = identity.identities_conflict(real_index, ["daredevil", "echo"])
     assert isinstance(conflict, list)
+
+
+def test_a_name_shared_with_other_cards_names_them(real_index):
+    """Four cards are called Black Panther: T'Challa's identity, Shuri's,
+    a Leadership ally and a Secret Avengers minion. `identity` answered
+    with one of the two heroes and named none of the rest, which a live
+    test read as "this is the card"."""
+    from mc_jarvis import cards
+
+    got = cards.identity(real_index, "Black Panther")
+    also = {(o["kind"], o.get("identity_key") or o.get("code"))
+            for o in got["also"]}
+    assert ("identity", "black_panther_shuri") in also
+    assert ("ally", "23012") in also
+    assert ("minion", "56155") in also
+
+
+def test_a_hero_with_one_identity_names_no_other_identity(real_index):
+    """Ironheart shares her name with an ally, and that is worth saying;
+    what must not appear is a second identity that does not exist."""
+    from mc_jarvis import cards
+
+    got = cards.identity(real_index, "Ironheart")
+    assert not [o for o in got["also"] if o["kind"] == "identity"]
+    assert [o["kind"] for o in got["also"]] == ["ally"]

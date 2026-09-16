@@ -2,11 +2,16 @@
 name: mc-jarvis
 description: >-
   Marvel Champions LCG assistant. Use when the user asks about Marvel
-  Champions cards, heroes, identities, encounter sets, deck legality, rules
-  questions, trigger timing, or designer rulings — including "is this
-  legal", "what does this keyword do", "which cards have X", "does my
-  Response happen first", "has FFG ruled on this", and anything about a
-  marvelcdb deck.
+  Champions cards, heroes, identities, encounter sets, scenarios, villains,
+  deck legality, rules questions, trigger timing, or designer rulings —
+  including "is this legal", "what does this keyword do", "which cards have
+  X", "does my Response happen first", "has FFG ruled on this", and
+  anything about a marvelcdb deck. In this workspace the game is the
+  subject, so use it for the game's own vocabulary even when a question
+  never names the game: keywords (stalwart, steady, piercing, surge, guard,
+  patrol, retaliate, toughness, overkill, quickstrike, vulnerable),
+  statuses (stunned, confused, tough), threat, schemes, boost icons,
+  aspects, modular sets, nemesis sets and hero side decks.
 compatibility: Requires Python 3.10+ and the `mc-jarvis` command on PATH.
 license: MIT
 ---
@@ -111,8 +116,7 @@ default when you are quoting to the user.
   `card show` prints each erratum and whether the text above it already
   carries the correction. When it says the text is the original wording,
   the erratum governs: answer from it and cite its page. `deck stats`
-  names such cards in a deck, and any count it gives for them read the
-  original.
+  names such cards in a deck, whose counts then read the original.
 - **A player's printed card may predate its erratum.** When they quote
   wording that differs from `card show`, check the card's errata before
   deciding who is right. If an erratum explains the difference, say so
@@ -306,10 +310,9 @@ Colossus with tough, Deadpool with acceleration — is not deficient in it.
   printed one irrelevant.
 - **Some heroes own cards outside the deck.** `identity` and `deck stats`
   name them — a Sense deck, an Invocation deck, set-aside upgrades — and
-  none are in any count. How each is accessed is in that hero's rules
-  insert: fetch it (above) and cite it. If there is none to fetch, read
-  the cards, say you cannot cite how they are set up, and take the
-  player's word if they explain it.
+  none are in any count. Fetch that hero's rules insert (below) and cite
+  it; with none to fetch, read the cards, say you cannot cite the setup,
+  and take the player's word if they explain it.
 
 ## Staleness
 
@@ -320,16 +323,11 @@ without being asked.
 `status` also names the rulebooks indexed. A missing core rulebook needs
 `mc-jarvis init`; `update` cannot fetch it.
 
-**Fetch a hero's rules without asking.** When evaluating a deck or
-answering about a hero, check `rules_docs` in `status` for that hero's
-rulesheet or the box it came in. If it is absent, run
-`mc-jarvis rules fetch <hero>`: it downloads that one document into the
-data directory and rebuilds the index, and the player has already agreed
-to that. A campaign-box hero is covered by the box's rulebook, and a hero
-missing from the held list triggers one refresh of it. If it still
-reports no document, say so, do not guess the setup, and offer the fix it
-prints: the player saves FFG's product page and you run
-`mc-jarvis rules fetch <hero> --from-html <file>`.
+**Fetch a hero's rules without asking.** If `rules_docs` in `status` has
+no rulesheet for that hero (or the box it came in), run
+`mc-jarvis rules fetch <hero>` — one document, into the data directory,
+index rebuilt; the player has agreed to that. If it still reports none,
+say so, do not guess the setup, and offer the fix it prints.
 
 ## What is not a command
 

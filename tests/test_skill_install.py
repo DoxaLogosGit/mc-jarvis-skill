@@ -393,3 +393,13 @@ def test_the_built_wheel_carries_the_whole_skill():
             "mc_jarvis/_bundled/legality.yaml",
             "mc_jarvis/_bundled/glyphs.yaml"):
         assert required in names, required
+
+
+def test_the_description_names_the_games_own_vocabulary():
+    """A live test asked "what's the difference between stalwart and
+    steady?" in the deck workspace and the skill never loaded: the
+    description spoke only of "keywords" in the abstract, and nothing
+    connected those two words to this game."""
+    front = _skill_text().split("---")[1]
+    for term in ("stalwart", "steady", "piercing", "threat", "nemesis"):
+        assert term in front.lower(), term

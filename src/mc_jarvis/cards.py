@@ -399,19 +399,24 @@ def identity(conn, name: str) -> dict:
     "What are Angel's stats" has a different answer in Angel form and
     Archangel form, so every face is returned (spec §8).
     """
-    row = conn.execute(
+    # Four cards are called Black Panther: two heroes, an ally and an
+    # encounter minion. Answering with whichever identity sorted first,
+    # and naming none of the others, reads as "this is the card".
+    rows = conn.execute(
         "SELECT identity_key, name FROM identities "
-        "WHERE lower(name) = lower(?)", (name,)).fetchone()
-    if row is None:
-        row = conn.execute(
-            "SELECT i.identity_key, i.name FROM identities i "
+        "WHERE lower(name) = lower(?) ORDER BY identity_key",
+        (name,)).fetchall()
+    if not rows:
+        rows = conn.execute(
+            "SELECT DISTINCT i.identity_key, i.name FROM identities i "
             "JOIN identity_faces f ON f.identity_key = i.identity_key "
             "JOIN cards c ON c.code = f.code "
             "WHERE lower(c.name) = lower(?) OR lower(c.code) = lower(?) "
-            "LIMIT 1", (name, name)).fetchone()
+            "ORDER BY i.identity_key", (name, name)).fetchall()
+    row = rows[0] if rows else None
     if row is None:
-        return {"identity": None, "identity_key": None,
-                "faces": [], "signature": [], "side_decks": []}
+        return {"identity": None, "identity_key": None, "faces": [],
+                "signature": [], "side_decks": [], "also": []}
 
     key = row["identity_key"]
     faces = [_row(conn, r["code"]) for r in conn.execute(
@@ -423,8 +428,19 @@ def identity(conn, name: str) -> dict:
         f"AND code = canonical_code ORDER BY code", (key,))]
     from .threatremoval import side_decks
     sides = side_decks(conn, faces[0]["code"]) if faces else []
+    # Every other identity of this name, and every non-identity card that
+    # shares it: an ally and a minion answer "what does X do" too.
+    also = [{"identity_key": r["identity_key"], "name": r["name"],
+             "kind": "identity"} for r in rows[1:]]
+    also += [{"code": r["code"], "name": r["name"], "kind": r["type_code"],
+              "faction": r["faction_code"]} for r in conn.execute(
+        "SELECT code, name, type_code, faction_code FROM cards "
+        "WHERE lower(name) = lower(?) AND code = canonical_code "
+        "AND type_code NOT IN ('hero', 'alter_ego') ORDER BY code",
+        (row["name"],))]
     return {"identity": row["name"], "identity_key": key,
-            "faces": faces, "signature": signature, "side_decks": sides}
+            "faces": faces, "signature": signature, "side_decks": sides,
+            "also": also}
 
 
 def handle_identity(args) -> int:
@@ -437,6 +453,12 @@ def handle_identity(args) -> int:
         print(f"no identity named {args.name!r}")
         return 1
     print(f"{result['identity']}  [{result['identity_key']}]")
+    for other in result.get("also") or []:
+        where = (f"another identity - mc-jarvis identity "
+                 f"{other['identity_key']}" if other["kind"] == "identity"
+                 else f"{other['faction']} {other['kind']} "
+                 f"[{other['code']}]")
+        print(f"  also named {other['name']}: {where}")
     for f in result["faces"]:
         _print_card(f)
     print(f"\nSignature set ({len(result['signature'])} cards):")
