@@ -387,3 +387,28 @@ composition:
     note: >-
       Four separate 15-card encounter decks, one per villain, and no other
       encounter sets. Expert mode means the version-B villains.
+
+# Villain stages fought per difficulty, where the main scheme's contents do
+# not print them. Each read from the scenario's rulebook; everything else
+# is read from the contents sentence itself (assess.stages_in_play).
+stages:
+  absorbing_man:
+    standard: [I, II]
+    expert: [II, III]
+    source: the-rise-of-red-skull-rulebook
+  crossbones:
+    standard: [I, II]
+    expert: [II, III]
+    source: the-rise-of-red-skull-rulebook
+  taskmaster:
+    standard: [I, II]
+    expert: [II, III]
+    source: the-rise-of-red-skull-rulebook
+  zola:
+    standard: [I, II]
+    expert: [II, III]
+    source: the-rise-of-red-skull-rulebook
+  red_skull:
+    standard: [I, II]
+    expert: [II, III]
+    source: the-rise-of-red-skull-rulebook

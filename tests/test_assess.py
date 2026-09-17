@@ -726,7 +726,8 @@ def test_alternate_villain_stages_are_collapsed_not_summed(real_index):
 
     sc = assess.resolve(real_index, "en_sabah_nur", players=1)
     opp = assess.profile(real_index, sc)["opposition"]
-    assert [x["stage"] for x in opp["stages"]] == ["I", "II", "III"]
+    # Standard fights I and II; the collapse is counted before that filter.
+    assert [x["stage"] for x in opp["stages"]] == ["I", "II"]
     assert opp["collapsed_duplicates"] == 6
     # `branching` used to carry this, but it also fired on any set naming
     # more than one villain -- which reported Four Horsemen as alternates
@@ -742,11 +743,9 @@ def test_villain_hit_points_scale_with_the_table(real_index):
         real_index, assess.resolve(real_index, "Zola", players=1))
     four = assess.profile(
         real_index, assess.resolve(real_index, "Zola", players=4))
-    assert [x["health"] for x in one["opposition"]["stages"]] == [12, 14, 16]
-    assert [x["health"] for x in four["opposition"]["stages"]] == [48, 56, 64]
-    # Never summed: which stages are played is scenario prose, and the
-    # set may hold alternates rather than a longer fight.
-    assert "total" not in one["opposition"]
+    # Standard fights stages I and II (The Rise of Red Skull rulebook).
+    assert [x["health"] for x in one["opposition"]["stages"]] == [12, 14]
+    assert [x["health"] for x in four["opposition"]["stages"]] == [48, 56]
 
 
 def test_density_is_a_share_of_the_deck(real_index):
@@ -791,7 +790,8 @@ def test_a_zero_hit_point_face_is_not_a_rung_on_the_ladder(real_index):
 
     sc = assess.resolve(real_index, "Escape the Museum", players=1)
     stages = assess.profile(real_index, sc)["opposition"]["stages"]
-    assert [x["stage"] for x in stages] == ["A1", "B1"]
+    assert [x["stage"] for x in stages] == ["A1"]
+    assert all(x["health"] for x in stages)
 
 
 def test_the_ladder_carries_attack_and_scheme(real_index):
@@ -803,7 +803,7 @@ def test_the_ladder_carries_attack_and_scheme(real_index):
     sc = assess.resolve(real_index, "Zola", players=1)
     stages = assess.profile(real_index, sc)["opposition"]["stages"]
     assert [(x["health"], x["attack"], x["scheme"]) for x in stages] == [
-        (12, 1, 2), (14, 2, 2), (16, 2, 3)]
+        (12, 1, 2), (14, 2, 2)]
 
 
 def test_acceleration_icons_reach_the_text_output(real_index, capsys):
@@ -1154,16 +1154,17 @@ def test_two_faces_of_one_villain_are_not_two_villains(real_index):
     assert "total_health" not in opp
 
 
-def test_a_ladder_faced_in_full_is_still_not_totalled(real_index):
-    """Tower Defense fights both villains, but each has a three-rung
-    ladder and a scenario plays two of them. Adding all six rungs would
-    overstate it by a whole stage apiece."""
+def test_a_ladder_faced_in_full_totals_only_the_stages_fought(real_index):
+    """Tower Defense fights both villains, each on a three-rung ladder of
+    which a difficulty plays two. Adding all six rungs overstated it by a
+    stage apiece; the contents name which two, so those are what add up."""
     from mc_jarvis import assess
 
     opp = assess._opposition(
         real_index, assess.resolve(real_index, "tower_defense"))
     assert opp["mode"] == "together" and opp["faced"] == "all"
-    assert "total_health" not in opp
+    assert {x["stage"] for x in opp["stages"]} == {"I", "II"}
+    assert opp["total_health"] == sum(x["health"] for x in opp["stages"])
 
 
 def test_a_single_villain_scenario_is_unchanged(real_index):
@@ -1318,3 +1319,51 @@ def test_the_wrecking_crew_is_its_own_four_decks(real_index):
     ).fetchone()[0]
     with pytest.raises(assess.UnknownScenario, match="without nemesis"):
         assess.resolve(real_index, "wrecking_crew", nemesis=[nemesis])
+
+
+# --- which villain stages a difficulty fights ---------------------------
+
+@pytest.mark.parametrize("scenario,difficulty,stages", [
+    ("rhino", "standard", ["I", "II"]),
+    ("rhino", "expert", ["II", "III"]),
+    ("the_hood", "expert", ["II", "III"]),
+    # "(Apocalypse (III) only for expert mode)": added, not swapped in.
+    ("apocalypse", "standard", ["II"]),
+    ("apocalypse", "expert", ["II", "III"]),
+    # "(Baron Zemo (B1) instead for expert mode)" means every B stage.
+    ("baron_zemo", "expert", ["B1", "B2"]),
+    ("batroc", "expert", ["B"]),
+    # Not on the card; read from The Rise of Red Skull rulebook.
+    ("crossbones", "expert", ["II", "III"]),
+])
+def test_the_stages_fought_follow_the_difficulty(real_index, scenario,
+                                                 difficulty, stages):
+    """A live test: expert printed The Hood's stage I, which expert does
+    not use, beside "most scenarios play two of these"."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, scenario, difficulty=difficulty,
+                        modular=["mister_hyde"] if scenario == "the_hood"
+                        else None)
+    assert assess.stages_in_play(real_index, sc)[0] == stages
+
+
+def test_a_scenario_that_prints_no_stage_rule_is_not_guessed(real_index):
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "kang", difficulty="expert")
+    assert assess.stages_in_play(real_index, sc) is None
+
+
+def test_the_hood_opening_deck_holds_none_of_the_chosen_sets(real_index):
+    """Setup shuffles in one of the seven at random and the rest arrive
+    during play. All seven were counted in the opening deck."""
+    from mc_jarvis import assess
+
+    chosen = ["beasty_boys", "brothers_grimm", "mister_hyde"]
+    sc = assess.resolve(real_index, "the_hood", modular=chosen,
+                        difficulty="expert")
+    assert sc.modulars == [] and sc.pool == chosen
+    opening = assess.profile(real_index, sc)
+    assert not set(chosen) & set(opening["by_set"])
+    assert any("one of your 3 sets" in c for c in opening["caveats"])

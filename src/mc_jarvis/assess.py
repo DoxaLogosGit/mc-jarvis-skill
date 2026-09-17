@@ -261,6 +261,11 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
         modulars = required + [m["modular_set"] for m in suggested
                                if m["modular_set"]]
 
+    if growth == "player_chosen":
+        # The Hood: the chosen sets are set aside and arrive one at a time,
+        # the first at setup. Counting all seven in the opening deck, as it
+        # did, reported a deck twice the size anyone starts against.
+        pool, modulars = modulars, []
     return Scenario(scenario_set=code, modulars=modulars,
                     difficulty=difficulty, players=players, heroic=heroic,
                     nemesis=list(nemesis), modular_kind=kind,
@@ -393,7 +398,7 @@ def _by_type(cards: list[dict]) -> dict[str, dict]:
 
 
 def caveats(scenario: Scenario, sets: list[str],
-            config: dict | None = None) -> list[str]:
+            config: dict | None = None, *, conn=None) -> list[str]:
     """Known overstatements in this particular deck.
 
     A limitation recorded only in config is invisible to someone reading a
@@ -404,6 +409,17 @@ def caveats(scenario: Scenario, sets: list[str],
     """
     config = config if config is not None else load_config()
     out = []
+    if conn is not None and scenario.growth == "player_chosen" \
+            and scenario.pool and len(sets) == len(_sets(scenario)):
+        sizes = [conn.execute(
+            "SELECT COALESCE(SUM(c.quantity), 0) FROM cards c "
+            "JOIN encounter_role e ON e.code = c.code "
+            "WHERE c.set_code = ? AND c.is_reprint = 0 AND e.role = 'deck'",
+            (code,)).fetchone()[0] for code in scenario.pool]
+        out.append(
+            f"setup shuffles in one of your {len(scenario.pool)} sets at "
+            f"random, which is not counted below: +{min(sizes)} to "
+            f"+{max(sizes)} cards; the rest arrive during play")
     shape = composition(scenario.scenario_set)
     if shape.get("note"):
         out.append(" ".join(shape["note"].split())
@@ -488,7 +504,7 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
             "star_rate": (star / size) if size else 0.0,
         },
         "caveats": caveats(scenario, _sets(scenario)
-                           + scenario.pool[:added]),
+                           + scenario.pool[:added], conn=conn),
         "by_type": _by_type(cards),
         "by_set": dict(by_set),
         # Surge decides how many encounter cards resolve in a turn, and it
@@ -972,10 +988,15 @@ def _opposition(conn, scenario: Scenario) -> dict:
                      "attack": r["attack"], "scheme": r["scheme"]}
     stages = sorted(seen.values(), key=lambda x: (x["name"], x["stage"] or ""))
     names = sorted({x["name"] for x in stages})
+    played = stages_in_play(conn, scenario)
+    if played and any(x["stage"] in played[0] for x in stages):
+        stages = [x for x in stages if x["stage"] in played[0]]
     out = {"stages": stages, "villains": names,
            "collapsed_duplicates": alternates,
            "mode": plan.get("mode"), "stage_kind": plan.get("stages"),
-           "faced": plan.get("faced"), "note": plan.get("note")}
+           "faced": plan.get("faced"), "note": plan.get("note"),
+           "stages_played": played[0] if played else None,
+           "stages_source": played[1] if played else None}
     if plan.get("in_play") == "players_plus_1":
         # Sinister Six starts with one villain more than there are
         # players, so the opposition on the table grows with the group
@@ -988,10 +1009,10 @@ def _opposition(conn, scenario: Scenario) -> dict:
     # hit points at one player.
     one_stage_each = len(stages) == len(names)
     if plan.get("faced") == "all" and plan.get("stages") == "ladder":
-        # Only when each villain is a single card. A ladder of I/II/III is
-        # not all fought - "most scenarios play two of these" - so adding
-        # the rungs would overstate Tower Defense by a whole third stage.
-        if one_stage_each:
+        # Only when each villain is a single card, or the stages fought
+        # are known. A ladder of I/II/III is not all fought, so adding
+        # every rung overstated Tower Defense by a whole third stage.
+        if one_stage_each or out["stages_played"]:
             out["total_health"] = sum(x["health"] for x in stages)
     elif plan.get("faced") == "all":
         # A/B are one set of stages per difficulty, not a ladder, so only
@@ -1002,6 +1023,71 @@ def _opposition(conn, scenario: Scenario) -> dict:
             out["total_health"] = sum(x["health"] for x in chosen)
             out["counted_stage"] = want
     return out
+
+
+_ROMAN = re.compile(r"(?<![A-Za-z])(IV|III|II|I)(?![A-Za-z])")
+_LETTERED = re.compile(r"(?<![A-Za-z])([AB]\d?)(?![A-Za-z])")
+_EXPERT_CLAUSE = re.compile(
+    r"\(((?:[^()]|\([^()]*\))*?)\b(instead |only )?for expert mode\.?\)",
+    re.I)
+
+
+def stages_in_play(conn, scenario: Scenario) -> tuple[list[str], str] | None:
+    """The villain stages this difficulty fights, and where that was read.
+
+    Expert printed stage I beside II and III with "most scenarios play two
+    of these", though The Hood's own contents name II and III for expert.
+    About forty scenarios print that sentence in one regular shape and are
+    read from it; the rest are recorded in config from their rulebooks,
+    and anything neither covers returns None rather than a guess.
+    """
+    expert = scenario.difficulty.startswith("expert")
+    override = (load_config().get("stages") or {}).get(scenario.scenario_set)
+    if override:
+        return (list(override["expert" if expert else "standard"]),
+                override.get("source", "scenario rulebook"))
+    labels = {r[0] for r in conn.execute(
+        "SELECT DISTINCT stage FROM cards WHERE set_code = ? "
+        "AND type_code IN ('villain', 'leader') AND is_reprint = 0 "
+        "AND stage IS NOT NULL", (scenario.scenario_set,))}
+    row = conn.execute(
+        "SELECT text FROM cards WHERE set_code = ? AND type_code = "
+        "'main_scheme' AND is_reprint = 0 AND text LIKE '%Contents%' "
+        "ORDER BY code LIMIT 1", (scenario.scenario_set,)).fetchone()
+    if not row or not labels:
+        return None
+    plain = " ".join(re.sub(r"<[^>]+>|\[\[|\]\]", "", row["text"]).split())
+    body = re.search(r"Contents:(.*?)(?:Setup:|$)", plain)
+    clause = _EXPERT_CLAUSE.search(body.group(1)) if body else None
+    if not clause:
+        return None
+    pattern = _ROMAN if labels & {"I", "II", "III", "IV"} else _LETTERED
+
+    def found(text):
+        seen = []
+        for token in pattern.findall(text):
+            # "A1" on the card, "A" in a sentence: a bare letter names every
+            # stage it prefixes.
+            # Lettered stages run A1 then A2: the letter is the version and
+            # the digit its step, so "(B1) instead" means every B stage.
+            key = token if pattern is _ROMAN else token[0]
+            for label in sorted(labels):
+                if (label == key or (pattern is _LETTERED
+                                     and label.startswith(key))) \
+                        and label not in seen:
+                    seen.append(label)
+        return seen
+
+    standard = found(body.group(1)[:clause.start()])
+    named = found(clause.group(0))
+    if not standard or not named:
+        return None
+    if clause.group(2) and clause.group(2).strip().lower() == "only":
+        # "(III) only for expert mode": added for expert, absent otherwise.
+        standard = [s for s in standard if s not in named]
+        named = standard + [s for s in named if s not in standard]
+    played = named if expert else standard
+    return played, "the scenario's main scheme contents"
 
 
 def _density(cards: list[dict], size: int) -> dict:
@@ -1406,7 +1492,12 @@ def handle(args) -> int:
              "random": " (drawn at random)"}.get(scenario.modular_kind, "")
     print(f"{scenario.scenario_set} - {scenario.difficulty}, "
           f"{scenario.players} player(s)")
-    print(f"  modular sets: {', '.join(scenario.modulars) or 'none'}{label}")
+    if scenario.growth == "player_chosen":
+        print(f"  modular sets: {len(scenario.pool)} chosen and set aside "
+              f"- they arrive one at a time, the first at setup")
+    else:
+        print(f"  modular sets: {', '.join(scenario.modulars) or 'none'}"
+              f"{label}")
     if scenario.nemesis:
         # Printed separately from the modulars because it is not the same
         # kind of choice: these sets are at the table because of who is
@@ -1414,7 +1505,7 @@ def handle(args) -> int:
         print(f"  nemesis sets: {', '.join(scenario.nemesis)} "
               f"(set aside by the player whose hero owns them)")
     if scenario.pool:
-        print(f"  grows during play, drawing from: "
+        print(f"  {'your sets' if scenario.growth == 'player_chosen' else 'grows during play, drawing from'}: "
               f"{', '.join(scenario.pool)}")
     for step in steps:
         if step["added"] == 0:
@@ -1453,7 +1544,17 @@ def _opposition_note(opp: dict) -> None:
     config, because no count can tell a roster from a list.
     """
     mode = opp.get("mode")
+    if opp.get("stages_played") and mode in (None, "together"):
+        fought = " and ".join(opp["stages_played"])
+        print(f"      stages fought at this difficulty: {fought} "
+              f"(from {opp['stages_source']})")
     if mode is None:
+        if opp.get("stages_played"):
+            if len(opp["villains"]) == 1:
+                total = sum(x["health"] for x in opp["stages"])
+                print(f"      {total} hit points of villain across those "
+                      f"stages")
+            return
         note = "most scenarios play two of these; some three"
         if len(opp["villains"]) > 1 or opp["collapsed_duplicates"]:
             note += ("; this set names more than one villain, so read the "
@@ -1470,7 +1571,7 @@ def _opposition_note(opp: dict) -> None:
                   ", the same at any table size")
         print(f"      {opp['total_health']} hit points of villain in total"
               f"{which}{scaled}")
-    elif opp.get("faced") == "all":
+    elif opp.get("faced") == "all" and not opp.get("stages_played"):
         print("      every one of them is faced, but a ladder is not all "
               "fought - most scenarios play two stages of each")
 
