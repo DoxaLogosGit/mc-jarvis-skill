@@ -1271,3 +1271,50 @@ def test_modular_sets_may_be_given_as_one_comma_list():
 
     assert assess._listed(["a,b", " c "]) == ["a", "b", "c"]
     assert assess._listed(None) is None
+
+
+# --- what each difficulty puts in the deck -----------------------------
+
+def test_expert_adds_the_expert_set_to_the_standard_one(real_index):
+    """RR p.28: expert mode adds the Expert set. It was read as a swap, so
+    every expert assessment left the Standard set out - a live test caught
+    The Hood's expert deck missing it."""
+    from mc_jarvis import assess
+
+    std = assess.resolve(real_index, "rhino", difficulty="standard")
+    exp = assess.resolve(real_index, "rhino", difficulty="expert")
+    assert assess.difficulty_sets(std) == ["standard"]
+    assert assess.difficulty_sets(exp) == ["standard", "expert"]
+    std_n = assess.profile(real_index, std)["deck_size"]
+    exp_n = assess.profile(real_index, exp)["deck_size"]
+    expert_cards = real_index.execute(
+        "SELECT SUM(quantity) FROM cards WHERE set_code = 'expert' "
+        "AND is_reprint = 0").fetchone()[0]
+    assert exp_n == std_n + expert_cards
+
+
+def test_expert_ii_pairs_with_standard_ii(real_index):
+    """The Hood rulebook: Standard II may replace Standard, Expert II may
+    replace Expert."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "rhino", difficulty="expert_ii")
+    assert assess.difficulty_sets(sc) == ["standard_ii", "expert_ii"]
+
+
+def test_the_wrecking_crew_is_its_own_four_decks(real_index):
+    """Its rulebook: no other encounter sets, and no nemesis cards or
+    obligations. The deck read 0 cards once the Standard set it never uses
+    was taken out, because its cards live in the four villains' sets."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "wrecking_crew", difficulty="expert")
+    assert assess.difficulty_sets(sc) == []
+    sets = assess._sets(sc)
+    assert {"wrecker", "thunderball", "piledriver", "bulldozer"} <= set(sets)
+    assert assess.profile(real_index, sc)["deck_size"] > 50
+    nemesis = real_index.execute(
+        "SELECT code FROM sets WHERE card_set_type_code = 'nemesis' LIMIT 1"
+    ).fetchone()[0]
+    with pytest.raises(assess.UnknownScenario, match="without nemesis"):
+        assess.resolve(real_index, "wrecking_crew", nemesis=[nemesis])

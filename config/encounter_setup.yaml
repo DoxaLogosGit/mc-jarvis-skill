@@ -371,3 +371,19 @@ opposition:
     stages: ladder
     faced: one
     note: the Contents block names only Norman Osborn
+
+# Scenarios whose set list departs from the usual one, each read from the
+# scenario's own rulebook. `difficulty_sets: false` means no Standard or
+# Expert set at any difficulty; `nemesis` and `obligations` false mean the
+# players' nemesis sets and obligation cards stay out of the game.
+composition:
+  wrecking_crew:
+    # Each villain's set is its own encounter deck.
+    encounter_sets: [wrecker, thunderball, piledriver, bulldozer]
+    difficulty_sets: false
+    nemesis: false
+    obligations: false
+    source: the-wrecking-crew-rulebook p.3 and p.8
+    note: >-
+      Four separate 15-card encounter decks, one per villain, and no other
+      encounter sets. Expert mode means the version-B villains.

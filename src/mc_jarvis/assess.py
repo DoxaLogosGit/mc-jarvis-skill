@@ -231,6 +231,17 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
     # as a set on the table and silently assessed as nothing. That is the
     # partial deck this command exists to refuse.
     _known_sets(conn, list(modular or ()) + list(nemesis or ()))
+    shape = composition(code)
+    if nemesis and shape.get("nemesis") is False:
+        raise UnknownScenario(
+            f"{code!r} is played without nemesis sets "
+            f"({shape.get('source', 'its rulebook')}), so --nemesis has "
+            f"nothing to add. Assess it without one.")
+    if modular and shape.get("difficulty_sets") is False \
+            and shape.get("encounter_sets"):
+        raise UnknownScenario(
+            f"{code!r} uses no modular sets "
+            f"({shape.get('source', 'its rulebook')}).")
     if modular is not None:
         # A nemesis set arrives with a hero, not with a scenario (RR
         # p.30), so it is not a set the table can choose to face. The
@@ -256,9 +267,41 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
                     pool=pool, growth=growth, max_draws=max_draws)
 
 
+# The encounter sets each difficulty puts in the deck. Expert mode ADDS the
+# Expert set to the standard content (RR p.28, Modes of Play); it read as a
+# swap, so every expert assessment left the Standard set out. Standard II
+# may stand in for Standard and Expert II for Expert (The Hood rulebook,
+# Alternative Sets), and Expert II is paired with the Standard II it
+# shipped beside.
+DIFFICULTY_SETS = {
+    "standard": ["standard"],
+    "expert": ["standard", "expert"],
+    "standard_ii": ["standard_ii"],
+    "expert_ii": ["standard_ii", "expert_ii"],
+    "standard_iii": ["standard_iii"],
+    "standard_pvp": ["standard_pvp"],
+}
+
+
+def composition(scenario_set: str) -> dict:
+    """A scenario's departures from the usual set list, hand-verified
+    against its rulebook: The Wrecking Crew uses no difficulty set, no
+    nemesis and no obligations."""
+    return (load_config().get("composition") or {}).get(scenario_set) or {}
+
+
+def difficulty_sets(scenario: Scenario) -> list[str]:
+    if composition(scenario.scenario_set).get("difficulty_sets") is False:
+        return []
+    return list(DIFFICULTY_SETS.get(scenario.difficulty,
+                                    [scenario.difficulty]))
+
+
 def _sets(scenario: Scenario) -> list[str]:
-    return ([scenario.scenario_set] + scenario.modulars
-            + [scenario.difficulty] + scenario.nemesis)
+    extra = list(composition(scenario.scenario_set).get("encounter_sets")
+                 or ())
+    return ([scenario.scenario_set] + extra + scenario.modulars
+            + difficulty_sets(scenario) + scenario.nemesis)
 
 
 def back_faces(conn, config: dict | None = None) -> set[str]:
@@ -361,6 +404,10 @@ def caveats(scenario: Scenario, sets: list[str],
     """
     config = config if config is not None else load_config()
     out = []
+    shape = composition(scenario.scenario_set)
+    if shape.get("note"):
+        out.append(" ".join(shape["note"].split())
+                   + f" ({shape.get('source', 'scenario rulebook')})")
     # Civil War and Synthezoid Smackdown print two modes, and the setup
     # differs between them: competitive reveals `Choosing Sides`,
     # cooperative reveals the chosen leader's own side scheme. Which one
