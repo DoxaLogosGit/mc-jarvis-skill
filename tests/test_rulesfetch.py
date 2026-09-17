@@ -123,3 +123,20 @@ def test_an_archive_capture_does_not_replace_a_saved_page(tmp_path,
                             docs=[], source="wayback", captured="2026-09-10"))
     kept, _ = rulesfetch.refresh(tmp_path)
     assert [d.slug for d in kept.docs] == ["newest-rulebook"]
+
+
+@pytest.mark.parametrize("ref,slug", [
+    # A live test was told no document existed for this.
+    ("Rise of Red Skull", "the-rise-of-red-skull-rulebook"),
+    # Scenarios reach their pack's rulebook, by name or by code.
+    ("wrecking crew", "the-wrecking-crew-rulebook"),
+    ("wrecking_crew", "the-wrecking-crew-rulebook"),
+    ("kang", "the-once-and-future-kang-rulebook"),
+])
+def test_a_scenario_or_campaign_names_its_rulebook(real_index, ref, slug):
+    docs = [_doc(s) for s in ("the-rise-of-red-skull-rulebook",
+                              "the-wrecking-crew-rulebook",
+                              "the-once-and-future-kang-rulebook",
+                              "storm-rulesheet")]
+    got, _ = rulesfetch.candidates(real_index, docs, ref)
+    assert [d.slug for d in got] == [slug]

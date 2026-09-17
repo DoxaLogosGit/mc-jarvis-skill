@@ -51,6 +51,31 @@ class Scenario:
     modular_kind: str = "none"
 
 
+def _set_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text.lower().replace("\u2019", "")
+                  .replace("'", "")).strip("_")
+
+
+def set_codes(conn, names) -> list[str]:
+    """Set codes for what a player typed: a code, or a set's printed name.
+
+    A live test passed "Beasty Boys" and "Crossfire's Crew", was refused as
+    unknown sets, and spent four attempts finding the codes. A name is
+    accepted when it names exactly one set; otherwise it passes through
+    unchanged and `_known_sets` refuses it with suggestions."""
+    if names is None:
+        return None
+    by_key: dict[str, set[str]] = {}
+    for r in conn.execute("SELECT code, name FROM sets"):
+        for key in {_set_key(r["name"] or ""), r["code"]}:
+            by_key.setdefault(key, set()).add(r["code"])
+    out = []
+    for name in names:
+        hits = by_key.get(name) or by_key.get(_set_key(name)) or set()
+        out.append(next(iter(hits)) if len(hits) == 1 else name)
+    return out
+
+
 def _known_sets(conn, codes: list[str]) -> None:
     """Refuse a set code the data does not hold.
 
@@ -1453,9 +1478,11 @@ def handle(args) -> int:
     conn = _open()
     try:
         scenario = resolve(
-            conn, args.villain, modular=_listed(args.modular),
+            conn, args.villain,
+            modular=set_codes(conn, _listed(args.modular)),
             players=args.players, difficulty=args.difficulty,
-            heroic=args.heroic, nemesis=_listed(args.nemesis) or ())
+            heroic=args.heroic,
+            nemesis=set_codes(conn, _listed(args.nemesis)) or ())
     except UnknownScenario as exc:
         print(f"mc-jarvis assess: {exc}")
         return 1

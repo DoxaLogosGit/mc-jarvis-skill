@@ -1405,3 +1405,16 @@ def test_the_nemesis_is_raised_only_when_it_comes_more_often(
     pull = assess.nemesis_pull(real_index, sc)
     assert pull, "every difficulty carries at least one pull"
     assert assess.nemesis_elevated(pull) is elevated
+
+
+def test_modular_sets_may_be_named_as_printed(real_index):
+    """A live test passed "Beasty Boys" and "Crossfire's Crew" and spent
+    four attempts finding the codes."""
+    from mc_jarvis import assess
+
+    assert assess.set_codes(real_index, ["Beasty Boys", "Crossfire's Crew",
+                                         "mister_hyde"]) == [
+        "beasty_boys", "crossfire_crew", "mister_hyde"]
+    # An unknown name passes through, to be refused with suggestions.
+    assert assess.set_codes(real_index, ["Nope"]) == ["Nope"]
+    assert assess.set_codes(real_index, None) is None

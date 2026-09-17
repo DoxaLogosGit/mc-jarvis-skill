@@ -44,9 +44,36 @@ def candidates(conn, docs: list[manifest.RuleDoc], ref: str) -> tuple[list, str]
             names.append(pack["name"])
     else:
         names.append(ref)
-    wanted = [f"{manifest.slugify(n)}-{kind}" for n in names
-              for kind in ("rulesheet", "rulebook")]
+        # A scenario or campaign: its pack's rulebook. "wrecking crew" is
+        # the Wrecking Crew scenario pack; "kang" the Kang pack.
+        from .assess import _set_key
+        key = _set_key(ref)
+        for row in conn.execute(
+                "SELECT DISTINCT s.code, s.name AS set_name, p.name "
+                "FROM cards c JOIN packs p ON p.code = c.pack_code "
+                "JOIN sets s ON s.code = c.set_code "
+                "WHERE s.card_set_type_code IN ('villain', 'main_scheme')"):
+            if key in (row["code"], _set_key(row["set_name"] or "")):
+                names.append(row["name"])
+    wanted = []
+    for n in names:
+        slug = manifest.slugify(n)
+        bare = slug.removeprefix("the-")
+        for kind in ("rulesheet", "rulebook", "rulebook-and-campaign-log"):
+            wanted += [f"{slug}-{kind}", f"{bare}-{kind}",
+                       f"the-{bare}-{kind}"]
     hits = [by_slug[w] for w in wanted if w in by_slug]
+    if not hits:
+        # Last resort: every word asked for, in one rulebook's slug. A
+        # live test asked for "Rise of Red Skull" and was told no document
+        # existed while `the-rise-of-red-skull-rulebook` did.
+        words = [w for w in manifest.slugify(ref).replace("_", "-")
+                 .split("-") if w and w != "the"]
+        hits = [d for d in docs if words and all(
+            w in d.slug.split("-") for w in words)
+            and ("rulebook" in d.slug or "rulesheet" in d.slug)]
+        if len(hits) > 3:
+            hits = []
     return list({d.slug: d for d in hits}.values()), label
 
 
@@ -140,8 +167,8 @@ def handle(args) -> int:
               f"that, save FFG's product page from your browser and run "
               f"`mc-jarvis rules fetch {args.what} --from-html <file>`:\n"
               f"  {manifest.PRODUCT_PAGE}\n"
-              f"Core Set heroes are covered by the Learn to Play book and "
-              f"the Rules Reference.")
+              f"Core Set heroes and scenarios are covered by the Learn to "
+              f"Play book and the Rules Reference.")
         return 1
 
     fetched = []
