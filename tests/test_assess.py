@@ -1381,3 +1381,27 @@ def test_a_grant_says_who_it_reaches(real_index):
               for v in grown["demands"].values() for g in v["global_grants"]}
     assert scopes["Sewer Tunnels"] == "every character, yours included"
     assert scopes["Warehouse District"] == "every character, yours included"
+
+
+@pytest.mark.parametrize("scenario,difficulty,elevated", [
+    # One draw of Shadow of the Past is in every standard scenario.
+    ("rhino", "standard", False),
+    ("rhino", "expert", False),
+    # Standard III's Pursued by the Past starts in play and counts up.
+    ("rhino", "standard_iii", True),
+    # Expert II adds Seek and Destroy: a second card that can draw it.
+    ("rhino", "expert_ii", True),
+    # Kang's Wrath pulls it on a schedule.
+    ("kang", "standard", True),
+])
+def test_the_nemesis_is_raised_only_when_it_comes_more_often(
+        real_index, scenario, difficulty, elevated):
+    """Live tests A1, A2 and A5: every standard deck can bring your nemesis
+    out, so saying so on every scenario is noise. What a player needs to
+    hear is when something makes it more frequent."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, scenario, difficulty=difficulty)
+    pull = assess.nemesis_pull(real_index, sc)
+    assert pull, "every difficulty carries at least one pull"
+    assert assess.nemesis_elevated(pull) is elevated

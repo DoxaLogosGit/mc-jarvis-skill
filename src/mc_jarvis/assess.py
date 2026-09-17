@@ -888,6 +888,7 @@ def nemesis_pull(conn, scenario: Scenario) -> list[dict]:
     """
     sets = [c for c in _sets(scenario) if c not in scenario.nemesis]
     marks = ",".join("?" * len(sets))
+    base = set(difficulty_sets(scenario))
     out = []
     for r in conn.execute(
             f"SELECT * FROM cards WHERE set_code IN ({marks}) "
@@ -895,11 +896,23 @@ def nemesis_pull(conn, scenario: Scenario) -> list[dict]:
         text = _plain(r["text"])
         if not _NEMESIS_PULL.search(text):
             continue
+        scheduled = (bool(_SCHEDULED.match(text))
+                     or r["type_code"] == "main_scheme")
         out.append({"name": r["name"], "set": r["set_code"],
-                    "type": r["type_code"],
-                    "scheduled": bool(_SCHEDULED.match(text))
-                    or r["type_code"] == "main_scheme"})
+                    "type": r["type_code"], "scheduled": scheduled,
+                    # One draw-dependent pull in the Standard set is in
+                    # every scenario at that difficulty, so it says
+                    # nothing about this one (live test, A1 and A2).
+                    "baseline": r["set_code"] in base and not scheduled})
     return out
+
+
+def nemesis_elevated(pull: list[dict]) -> bool:
+    """Whether this table sees its nemesis more than the usual one draw:
+    a scheduled pull (Kang's Wrath, Standard III's counters), a pull from
+    the scenario's own sets, or more than one draw-dependent card."""
+    return (any(not c["baseline"] for c in pull)
+            or sum(1 for c in pull if c["baseline"]) > 1)
 
 
 def _loss_population(conn, scenario: Scenario) -> list[dict]:
@@ -1329,8 +1342,9 @@ def _line(step: dict) -> None:
                   f"- permanent, {how}")
             _nemesis_line(c)
     pull = step.get("nemesis_pull") or []
-    if pull:
-        print(f"    nemesis sets can be pulled in by {len(pull)} card(s):")
+    if pull and nemesis_elevated(pull):
+        print(f"    nemesis sets can be pulled in by {len(pull)} card(s), "
+              f"more often than the usual single draw:")
         for on_time in (True, False):
             named = sorted(f"{c['name']} ({c['set']})"
                            for c in pull if c["scheduled"] is on_time)
