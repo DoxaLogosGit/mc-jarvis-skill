@@ -310,9 +310,26 @@ Colossus with tough, Deadpool with acceleration — is not deficient in it.
   printed one irrelevant.
 - **Some heroes own cards outside the deck.** `identity` and `deck stats`
   name them — a Sense deck, an Invocation deck, set-aside upgrades — and
-  none are in any count. Fetch that hero's rules insert (below) and cite
-  it; with none to fetch, read the cards, say you cannot cite the setup,
-  and take the player's word if they explain it.
+  none are in any count. Fetch that hero's rules insert (below) and
+  `rules search` the side deck by name before judging the deck, even when
+  the document is already indexed; cite it. With none to fetch, read the
+  cards, say you cannot cite the setup, and take the player's word.
+- **Read a card's exact words before you cut it or fear it.** Before
+  recommending a cut, check what the card feeds in this deck: a discount
+  on a trait (Superpower) also pays for side-deck cards with that trait.
+  Before saying an encounter card shuts a plan down, check the zone and
+  card type it names — "discard each event from your hand" never touches
+  a side deck. When unsure, `rules search` the interaction and say so.
+- **"(scales)" means the printed number is the floor.** Removal or damage
+  that grows per upgrade, ally or counter is worth more in a deck built to
+  feed it; say how the deck feeds it rather than quoting the base value.
+- **A trait is a label, not a stat.** Defender, Avenger or Spy mark which
+  cards synergise with a hero; they add nothing to DEF, ATK or THW.
+- **Ask what the player owns before recording it.** If
+  `collection show` is empty, ask; `mc-jarvis collection set <pack>...`
+  records it (`mc-jarvis collection show --available` lists pack codes).
+- **Files in the workspace are past sessions' work.** A saved deck there
+  says nothing about which heroes a new question is about; ask.
 
 ## Staleness
 
@@ -340,103 +357,59 @@ cost, or a rule to support a recommendation.
 
 `mc-jarvis assess <scenario>` reports what an encounter deck holds: size,
 boost curve, minions, treacheries, side schemes, keywords. Every number
-names the cards behind it, so cite rather than assert.
+names the cards behind it, so cite rather than assert. `--modular`
+**replaces** the scenario's defaults, and takes set names as printed.
 
-`--modular` **replaces** the scenario's defaults rather than adding to
-them. A player naming modular sets is describing the game on their table,
-not amending a recommendation.
-
-Five things to carry into any answer:
-
-- **A scenario is not a villain.** Seven scenarios choose their villain or
-  compose it from several, and six villain sets are components rather than
-  scenarios. Ask for the scenario. Which villain you face does not change
-  the encounter deck — no villain card is ever a deck member — with one
-  exception, `on_the_run`, where the villain drawn decides which minion
-  leaves.
-- **Some scenarios grow while you play.** Dark Beast, Mojo, Mister
-  Sinister and Escape the Museum shuffle sets in mid-game, so `assess`
-  prints the opening deck *and* the fully-grown one. Quote both: a single
-  average is wrong for most of the game. The Hood refuses without
-  `--modular`, because its seven sets come from the whole collection and
-  nothing can infer them.
-- **Printed surge and conditional surge are different numbers.** A card
-  reading "this card gains surge" surges only when its condition holds,
-  and the condition is the point of the card. Rhino's deck has **zero**
-  printed surge and twelve conditional copies; reporting one number would
-  say it surges 86% of the time. Never add them together.
-- **Difficulty changes the numbers.** Omitting the difficulty set
-  understates the boost curve; Expert's three cards average boost 2.3.
-- **"Another way to lose" is not a footnote.** Every scenario ends if the
-  main scheme deck runs out, so `assess` prints the threat clock for all
-  of them. Twenty-six cards state a *second* losing condition, and it is
-  usually the one that actually kills the table: Project Wideawake ends
-  on cards piling up under a side scheme, not on threat. The line names
-  the card and the kind of thing to watch — a counter, a count of cards,
-  a character who must stay alive, a supply running out — and stops
-  there, because the threshold is printed only on the card and the
-  scenarios do not scale it the same way. Tell the player to read that
-  card; do not invent the number.
-- **Ask whether the losing card can be got rid of.** A second losing
-  condition on a side scheme you can defeat is a chore; the same
-  condition on a **permanent** card is a clock. `assess` says which, and
-  distinguishes a card that prints the keyword from one granted it by
-  this scenario. Only Project Wideawake grants it — Operation Zero
-  Tolerance is an ordinary side scheme in every other deck it appears
-  in, so do not carry that scenario's difficulty over to the modular.
-- **A nemesis set is a player's, not the scenario's.** Every identity
-  comes with one and the player sets it aside; it reaches the game
-  because of who is at the table. Pass it with `--nemesis`, never
-  `--modular`, and when a finding is marked as coming from one, say
-  whose it is — Consume the World is only Phoenix's problem, and the
-  same scenario played by anyone else never sees it.
-- **Ask whether anything can pull the nemesis in.** A nemesis set is set
-  aside and is not in the opening deck, so it only matters if a card on
-  the table can reveal it. `assess` names those cards and splits them:
-  Standard I and II carry a single treachery, so the nemesis may never
-  come up, while Standard III starts a permanent card that counts to
-  players + 3 and makes it routine. Do not recommend nemesis-proofing a
-  deck for a table where nothing pulls.
-- **The deck reshuffling is a second acceleration source.** An empty
-  encounter deck is reshuffled and an acceleration token placed, so every
-  pass through the deck adds a permanent +1 threat per villain phase on
-  top of any icons. A small deck therefore accelerates sooner. `assess`
-  states the deck size and the mechanism and does not predict the turn —
-  cards drawn per round moves with encounters dealt, surge and boost.
-- **Several scenarios field more than one villain, in five different
-  ways.** `assess` prints one line per villain and says which way this
-  one works: all in play at once (Four Horsemen, Wrecking Crew, Tower
-  Defense), a number that scales with the table (Sinister Six puts one
-  more into play than there are players), a deck whose top card is in
-  play (Mansion Attack), one chosen at random with the rest set aside
-  (God of Lies, Kang's second stage), or two faces of a single villain
-  (Risky Business). A total hit point figure appears only where every
-  villain is faced and the stages are unambiguous — never assume one.
-- **Boost stars are the curveballs.** A star in the boost field means a
-  mandatory ability fires when that card is dealt face down during a
-  villain activation. `assess` gives the count and the rate, because six
-  in eighteen cards is a different game from six in fifty-five. The same
-  icon also appears in an enemy's ATK and SCH fields (RR p.40) and those
-  are not boost stars — only the boost one is counted.
-- **Teamwork is about the trait, not the count.** A teamwork minion
-  activates the moment it arrives *only if another minion sharing the
-  named trait is already in play*. `assess` prints the trait and how many
-  minions carry it: five ACOLYTE minions all printing Teamwork (ACOLYTE)
-  means every one after the first attacks on arrival. One alone never
-  fires. Never report teamwork without the trait.
+- **Read the scenario's own rulebook first.** Unusual scenarios are
+  defined there, not on the cards: The Wrecking Crew uses no Standard or
+  Expert set, no nemesis and no obligations. Run
+  `mc-jarvis rules fetch <scenario>` (it maps a scenario to its pack's
+  rulebook), then `rules search` it, and cite what you use.
+- **A scenario is not a villain.** Several choose or compose their
+  villain, and some villain sets are components. Ask for the scenario.
+  No villain card is ever an encounter-deck member.
+- **Some scenarios grow while you play**, so `assess` prints the opening
+  deck *and* the fully grown one; quote both. The Hood needs its seven
+  sets named: they are set aside, one arrives at setup, the rest later.
+- **Printed and conditional surge are different numbers.** "This card
+  gains surge" fires only when its condition holds. Never add them.
+- **Difficulty changes the deck and the villain.** Expert adds the Expert
+  set to the Standard one, and `assess` shows only the villain stages
+  that difficulty fights, citing where it read them.
+- **"Another way to lose" is not a footnote.** The line names the card
+  and the kind of thing to watch — a counter, a count of cards, a
+  character who must stay alive — and stops, because the threshold is
+  printed only on the card and scales differently between scenarios.
+  Send the player to that card; do not invent the number.
+- **Ask whether the losing card can be got rid of.** A condition on a
+  side scheme you can defeat is a chore; on a **permanent** card it is a
+  clock. Only Project Wideawake makes Operation Zero Tolerance permanent.
+- **A nemesis set is a player's, not the scenario's.** Pass it with
+  `--nemesis`, never `--modular`, and say whose it is. Every Standard set
+  can draw one out, so that is not news: `assess` names nemesis pulls
+  only when this table sees them more often — a scheduled pull (Kang's
+  Wrath, Standard III's pursuit counters) or a second card (Expert II).
+- **Reshuffling is a second acceleration source.** Each pass through the
+  encounter deck adds a permanent +1 threat per villain phase, so a small
+  deck accelerates sooner. `assess` states the mechanism, not the turn.
+- **Several scenarios field more than one villain, in five ways**: all in
+  play at once (Four Horsemen, Wrecking Crew, Tower Defense), a number
+  that scales with the table (Sinister Six), a deck whose top card is in
+  play (Mansion Attack), one chosen at random (God of Lies, Kang's second
+  stage), or two faces of one villain (Risky Business). Never assume a
+  total hit point figure `assess` does not print.
+- **Boost stars are the curveballs**: a mandatory ability when dealt face
+  down as boost. Quote the rate, not just the count. Stars in ATK or SCH
+  fields are not boost stars.
+- **Teamwork is about the trait.** A teamwork minion activates on arrival
+  only if another minion with the named trait is in play; one alone
+  never fires. Never report teamwork without the trait.
 - **Stalwart and steady beat a status deck; vulnerable loses to one.**
-  Stalwart cannot be stunned or confused at all; steady needs two of each
-  rather than one, doubling the cost. `assess` lists both among what the
-  scenario demands. Vulnerable is the opposite - a stun or confuse
-  discards the character outright - so it is printed on its own line as
-  something in the player's favour. Do not read it as another threat.
-- **A keyword's number is part of it.** Retaliate 2 is twice Retaliate 1,
-  and `Hinder 4[per_hero]` is four threat *per player*. The index keeps
-  these values; quote them rather than the bare keyword.
-- **Coverage is bounded by marvelcdb.** If `assess` says a scenario is not
-  in the card data, that is the honest answer — it may be perfectly
-  playable and simply absent upstream. Do not substitute a similar
-  villain.
+  Vulnerable is printed as something in the player's favour.
+- **A keyword's number is part of it.** `Hinder 4[per_hero]` is four
+  threat *per player*; quote the value.
+- **Coverage is bounded by marvelcdb.** A scenario not in the card data
+  is absent upstream; do not substitute a similar villain.
 
 `assess` reports facts. Turning "6 Tough minions, 2 answers in the deck"
 into "cut a Tackle" is your job, not the command's.
