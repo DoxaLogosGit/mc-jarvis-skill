@@ -54,7 +54,7 @@ reports what is indexed, which Rules Reference version, and how stale it is.
 | trigger ordering | `mc-jarvis timing [<trigger>]` |
 | the game round | `mc-jarvis timing --round` |
 | rulings the rulebook lacks | `mc-jarvis rulings [<text>]` |
-| what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty --nemesis]` |
+| what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty --standard-set --expert-set --nemesis]` |
 | the same, against your deck | `mc-jarvis assess <scenario> --deck <id-url-or-file>` |
 | import a deck | `mc-jarvis deck fetch <id-url-or-file>` |
 | is it legal | `mc-jarvis deck check <id-url-or-file>` |

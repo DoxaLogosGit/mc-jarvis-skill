@@ -35,6 +35,10 @@ class Scenario:
     scenario_set: str
     modulars: list[str] = field(default_factory=list)
     difficulty: str = "standard"
+    # The standard set in the deck, and the expert set added to it, if any.
+    # Set from `difficulty` unless either is named outright.
+    standard_set: str = "standard"
+    expert_set: str | None = None
     players: int = 1
     heroic: int = 0
     nemesis: list[str] = field(default_factory=list)
@@ -119,7 +123,8 @@ def _host_scenarios(conn, code: str) -> list[str]:
 
 def resolve(conn, villain: str, *, modular=None, players: int = 1,
             difficulty: str = "standard", heroic: int = 0,
-            nemesis=()) -> Scenario:
+            nemesis=(), standard_set: str | None = None,
+            expert_set: str | None = None) -> Scenario:
     """A scenario, named by its own code or by a villain that appears in it."""
     # 18 set names are ambiguous, in five different ways: hero against
     # villain (Venom, Nebula, Magneto, Black Widow), hero against a
@@ -291,25 +296,34 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
         # the first at setup. Counting all seven in the opening deck, as it
         # did, reported a deck twice the size anyone starts against.
         pool, modulars = modulars, []
+    paired = DIFFICULTY_SETS.get(difficulty, (difficulty, None))
+    chosen_standard = standard_set or paired[0]
+    chosen_expert = paired[1] if expert_set is None else (
+        None if expert_set == "none" else expert_set)
+    label = chosen_standard + (f" + {chosen_expert}" if chosen_expert else "")
     return Scenario(scenario_set=code, modulars=modulars,
-                    difficulty=difficulty, players=players, heroic=heroic,
+                    difficulty=label, standard_set=chosen_standard,
+                    expert_set=chosen_expert,
+                    players=players, heroic=heroic,
                     nemesis=list(nemesis), modular_kind=kind,
                     pool=pool, growth=growth, max_draws=max_draws)
 
 
-# The encounter sets each difficulty puts in the deck. Expert mode ADDS the
-# Expert set to the standard content (RR p.28, Modes of Play); it read as a
-# swap, so every expert assessment left the Standard set out. Standard II
-# may stand in for Standard and Expert II for Expert (The Hood rulebook,
-# Alternative Sets), and Expert II is paired with the Standard II it
-# shipped beside.
+# Two independent choices, not one ladder. A scenario takes ONE standard
+# set, and expert mode adds ONE expert set on top of it (RR p.28, Modes of
+# Play). Standard II or III may stand in for Standard, and Expert II for
+# Expert (The Hood rulebook, Alternative Sets) - but nothing pairs them, so
+# Standard III with Expert II is a legal table. `--difficulty` names a
+# common pairing; `--standard-set` and `--expert-set` set either half.
+STANDARD_SETS = ("standard", "standard_ii", "standard_iii", "standard_pvp")
+EXPERT_SETS = ("expert", "expert_ii")
 DIFFICULTY_SETS = {
-    "standard": ["standard"],
-    "expert": ["standard", "expert"],
-    "standard_ii": ["standard_ii"],
-    "expert_ii": ["standard_ii", "expert_ii"],
-    "standard_iii": ["standard_iii"],
-    "standard_pvp": ["standard_pvp"],
+    "standard": ("standard", None),
+    "expert": ("standard", "expert"),
+    "standard_ii": ("standard_ii", None),
+    "expert_ii": ("standard_ii", "expert_ii"),
+    "standard_iii": ("standard_iii", None),
+    "standard_pvp": ("standard_pvp", None),
 }
 
 
@@ -323,8 +337,7 @@ def composition(scenario_set: str) -> dict:
 def difficulty_sets(scenario: Scenario) -> list[str]:
     if composition(scenario.scenario_set).get("difficulty_sets") is False:
         return []
-    return list(DIFFICULTY_SETS.get(scenario.difficulty,
-                                    [scenario.difficulty]))
+    return [s for s in (scenario.standard_set, scenario.expert_set) if s]
 
 
 def _sets(scenario: Scenario) -> list[str]:
@@ -1055,7 +1068,7 @@ def _opposition(conn, scenario: Scenario) -> dict:
     elif plan.get("faced") == "all":
         # A/B are one set of stages per difficulty, not a ladder, so only
         # the faces for the difficulty in play are added.
-        want = "B" if scenario.difficulty.startswith("expert") else "A"
+        want = "B" if scenario.expert_set else "A"
         chosen = [x for x in stages if (x["stage"] or "") == want]
         if chosen:
             out["total_health"] = sum(x["health"] for x in chosen)
@@ -1079,7 +1092,7 @@ def stages_in_play(conn, scenario: Scenario) -> tuple[list[str], str] | None:
     read from it; the rest are recorded in config from their rulebooks,
     and anything neither covers returns None rather than a guess.
     """
-    expert = scenario.difficulty.startswith("expert")
+    expert = bool(scenario.expert_set)
     override = (load_config().get("stages") or {}).get(scenario.scenario_set)
     if override:
         return (list(override["expert" if expert else "standard"]),
@@ -1481,6 +1494,8 @@ def handle(args) -> int:
             conn, args.villain,
             modular=set_codes(conn, _listed(args.modular)),
             players=args.players, difficulty=args.difficulty,
+            standard_set=getattr(args, "standard_set", None),
+            expert_set=getattr(args, "expert_set", None),
             heroic=args.heroic,
             nemesis=set_codes(conn, _listed(args.nemesis)) or ())
     except UnknownScenario as exc:

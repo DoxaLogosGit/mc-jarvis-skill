@@ -13,6 +13,16 @@ def _difficulties():
     return list(DIFFICULTIES)
 
 
+def _standard_sets():
+    from .assess import STANDARD_SETS
+    return list(STANDARD_SETS)
+
+
+def _expert_sets():
+    from .assess import EXPERT_SETS
+    return list(EXPERT_SETS)
+
+
 def _players(value: str) -> int:
     """A player count the game actually supports.
 
@@ -161,7 +171,16 @@ def build_parser() -> argparse.ArgumentParser:
                           "scenario's defaults rather than adding to them")
     asr.add_argument("--players", type=_players, default=1)
     asr.add_argument("--difficulty", default="standard",
-                     choices=_difficulties())
+                     choices=_difficulties(),
+                     help="a common pairing of the two sets below")
+    # One standard set, optionally one expert set on top: any combination
+    # is legal, so neither is inferred from the other.
+    asr.add_argument("--standard-set", dest="standard_set",
+                     choices=_standard_sets(),
+                     help="the standard set in the deck")
+    asr.add_argument("--expert-set", dest="expert_set",
+                     choices=list(_expert_sets()) + ["none"],
+                     help="the expert set added on top, or none")
     asr.add_argument("--heroic", type=_positive, default=0,
                      help="recorded, but does not change the numbers yet")
     asr.add_argument("--nemesis", action="append")

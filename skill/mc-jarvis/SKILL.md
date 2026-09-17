@@ -373,9 +373,11 @@ names the cards behind it, so cite rather than assert. `--modular`
   sets named: they are set aside, one arrives at setup, the rest later.
 - **Printed and conditional surge are different numbers.** "This card
   gains surge" fires only when its condition holds. Never add them.
-- **Difficulty changes the deck and the villain.** Expert adds the Expert
-  set to the Standard one, and `assess` shows only the villain stages
-  that difficulty fights, citing where it read them.
+- **Difficulty is two choices.** One standard set, plus an expert set on
+  top if playing expert; Standard II or III may stand in for Standard and
+  Expert II for Expert, in any combination. `--difficulty` names a common
+  pairing, `--standard-set` and `--expert-set` set either half, and
+  `assess` shows only the villain stages that table fights.
 - **"Another way to lose" is not a footnote.** The line names the card
   and the kind of thing to watch — a counter, a count of cards, a
   character who must stay alive — and stops, because the threshold is

@@ -1294,13 +1294,27 @@ def test_expert_adds_the_expert_set_to_the_standard_one(real_index):
     assert exp_n == std_n + expert_cards
 
 
-def test_expert_ii_pairs_with_standard_ii(real_index):
-    """The Hood rulebook: Standard II may replace Standard, Expert II may
-    replace Expert."""
+def test_the_two_sets_are_chosen_independently(real_index):
+    """The Hood rulebook: Standard II may stand in for Standard and
+    Expert II for Expert. Nothing pairs them - Standard III with Expert II
+    is a legal table - so `--difficulty` only names a common pairing and
+    either half can be set outright."""
     from mc_jarvis import assess
 
-    sc = assess.resolve(real_index, "rhino", difficulty="expert_ii")
-    assert assess.difficulty_sets(sc) == ["standard_ii", "expert_ii"]
+    paired = assess.resolve(real_index, "rhino", difficulty="expert_ii")
+    assert assess.difficulty_sets(paired) == ["standard_ii", "expert_ii"]
+
+    mixed = assess.resolve(real_index, "rhino", standard_set="standard_iii",
+                           expert_set="expert_ii")
+    assert assess.difficulty_sets(mixed) == ["standard_iii", "expert_ii"]
+    assert mixed.difficulty == "standard_iii + expert_ii"
+
+    # Expert stages follow the expert set, not the label it came from.
+    assert assess.stages_in_play(real_index, mixed)[0] == ["II", "III"]
+    plain = assess.resolve(real_index, "rhino", difficulty="expert",
+                           expert_set="none")
+    assert assess.difficulty_sets(plain) == ["standard"]
+    assert assess.stages_in_play(real_index, plain)[0] == ["I", "II"]
 
 
 def test_the_wrecking_crew_is_its_own_four_decks(real_index):
