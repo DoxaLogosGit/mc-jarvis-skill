@@ -1367,3 +1367,17 @@ def test_the_hood_opening_deck_holds_none_of_the_chosen_sets(real_index):
     opening = assess.profile(real_index, sc)
     assert not set(chosen) & set(opening["by_set"])
     assert any("one of your 3 sets" in c for c in opening["caveats"])
+
+
+def test_a_grant_says_who_it_reaches(real_index):
+    """A live test: Sewer Tunnels and Warehouse District were reported as
+    granting to every minion. Both say each character in play, which
+    includes the heroes and allies."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "the_hood", modular=["streets_of_mayhem"])
+    grown = assess.trajectory(real_index, sc)[-1]
+    scopes = {g["name"]: g["scope"]
+              for v in grown["demands"].values() for g in v["global_grants"]}
+    assert scopes["Sewer Tunnels"] == "every character, yours included"
+    assert scopes["Warehouse District"] == "every character, yours included"

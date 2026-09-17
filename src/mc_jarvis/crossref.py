@@ -38,8 +38,14 @@ _SELF_GRANT = re.compile(
     r"(?<!this )(?<!that )(?:attacks?|basic attacks?) (?:gain|gains) (\w+)",
     re.I)
 _CONDITIONAL = re.compile(r"^\s*(?:if\b|play only if\b|while\b)", re.I)
-_GLOBAL_GRANT = re.compile(r"each (?:\w+ )?(?:minion|enemy|character|ally)"
+_GLOBAL_GRANT = re.compile(r"each (?:\w+ )?(minion|enemy|character|ally)"
                            r"[^.]{0,40}gains?", re.I)
+# Who a grant reaches, in the reader's terms. Sewer Tunnels gives retaliate
+# to each CHARACTER, heroes and allies included, and was printed as a
+# minion-only buff - hiding that it helps the players too.
+GRANT_SCOPE = {"minion": "every minion", "enemy": "every enemy",
+               "character": "every character, yours included",
+               "ally": "every ally"}
 _DAMAGES_VILLAIN = re.compile(
     r"damage to (?:the villain|an enemy|each enemy|that enemy)", re.I)
 # Damage reachable only by attacking is still blocked by Guard.
@@ -91,9 +97,12 @@ def scenario_keyword(conn, cards, keyword: str) -> dict:
             other += n
     # A card that gives every minion the keyword is worth more than its
     # own row, and no count of printed copies sees it (design §10.14).
-    grants = [{"code": c["code"], "name": c["name"]} for c in cards
-              if _GLOBAL_GRANT.search(_plain(c.get("text")))
-              and keyword in (c.get("text") or "").lower()]
+    grants = []
+    for c in cards:
+        found = _GLOBAL_GRANT.search(_plain(c.get("text")))
+        if found and keyword in (c.get("text") or "").lower():
+            grants.append({"code": c["code"], "name": c["name"],
+                           "scope": GRANT_SCOPE[found.group(1).lower()]})
     return {"villain": villain, "other": other, "total": villain + other,
             "global_grants": grants}
 

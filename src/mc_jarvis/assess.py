@@ -1418,7 +1418,8 @@ def _line(step: dict) -> None:
                   + " - a stun or a confuse discards it outright")
         for kw, v in dem.items():
             for g in v["global_grants"]:
-                print(f"      {g['name']} grants {kw} to every minion"
+                print(f"      {g['name']} grants {kw} to "
+                      f"{g.get('scope', 'every minion')}"
                       + (" (none prints it)" if not v["total"] else ""))
 
 
@@ -1624,8 +1625,9 @@ def _crossref_line(x: dict) -> None:
               f"(villain {ts['villain']}, other {ts['other']})"
               f"  vs piercing {sure} in deck{extra}")
         if ts["global_grants"]:
-            names = ", ".join(c["name"] for c in ts["global_grants"])
-            print(f"      a card grants it to every minion: {names}")
+            names = ", ".join(f"{c['name']} ({c.get('scope', 'every minion')})"
+                              for c in ts["global_grants"])
+            print(f"      a card grants it widely: {names}")
         if not sure and not ps["per_use"]:
             print("      no piercing: each tough card costs a whole "
                   "damage instance, however large")
