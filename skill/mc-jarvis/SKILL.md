@@ -320,6 +320,11 @@ Colossus with tough, Deadpool with acceleration — is not deficient in it.
   Before saying an encounter card shuts a plan down, check the zone and
   card type it names — "discard each event from your hand" never touches
   a side deck. When unsure, `rules search` the interaction and say so.
+- **One hero's side-deck ruling is not another's.** The verb on the hero
+  card decides: Doctor Strange *resolves* an Invocation ability (so the
+  FAQ, RR p.59, says Depowered does not stop him) while Daredevil *plays*
+  a Sense card from the deck. Where no published answer covers the hero in
+  front of you, give both readings and say it is unsettled.
 - **"(scales)" means the printed number is the floor.** Removal or damage
   that grows per upgrade, ally or counter is worth more in a deck built to
   feed it; say how the deck feeds it rather than quoting the base value.
