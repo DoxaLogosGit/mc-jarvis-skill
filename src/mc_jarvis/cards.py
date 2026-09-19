@@ -131,9 +131,9 @@ def handle_search(args) -> int:
         print("no matches")
         return 1
     for h in hits:
-        cost = "-" if h["cost"] is None else h["cost"]
-        print(f"{h['code']:<8} {h['name']:<34} "
-              f"{h['faction_code']:<12} {h['type_code']:<10} {cost}")
+        cost = "" if h["cost"] is None else f"cost {h['cost']}"
+        print(f"{h['name']:<34} {describe(conn, h):<40} {cost:<7} "
+              f"{h['code']}")
     if getattr(hits, "truncated", False):
         print(f"\n(first {len(hits)}; more match - raise --limit or "
               f"narrow the search)")
@@ -298,6 +298,29 @@ def show(conn, ident: str, *, owned: bool = False) -> dict:
     return {"ambiguous": matches}
 
 
+# A collector number identifies nothing to a player: what a card IS is its
+# name, what kind of card it is, and the product it came in. The code is
+# only what you type back, so it is printed last and labelled as such.
+TYPE_WORDS = {"alter_ego": "alter-ego", "player_side_scheme":
+              "player side scheme", "main_scheme": "main scheme",
+              "side_scheme": "side scheme"}
+
+
+def describe(conn, row: dict) -> str:
+    """A card in a player's terms: kind of card, and where it came from."""
+    kind = TYPE_WORDS.get(row["type_code"], row["type_code"])
+    faction = row.get("faction_code")
+    if faction and faction not in ("hero", "encounter", "campaign"):
+        # An aspect is a proper name on the card: Leadership, Protection.
+        kind = f"{faction.capitalize()} {kind}"
+    elif faction == "encounter" and row["type_code"] not in (
+            "main_scheme", "side_scheme"):
+        kind = f"encounter {kind}"
+    pack = conn.execute("SELECT name FROM packs WHERE code = ?",
+                        (row.get("pack_code"),)).fetchone()
+    return f"{kind}, {pack['name']}" if pack else kind
+
+
 def which_one(conn, row: dict) -> str:
     """What tells this card apart from others of the same name.
 
@@ -404,12 +427,13 @@ def handle_show(args) -> int:
         else:
             print(f"no card named {args.name!r}")
         return 1
-    print(f"{args.name!r} matches several cards - pick one by code:")
+    print(f"{args.name!r} matches several cards:")
     for c in result["ambiguous"]:
         label = which_one(conn, c)
         shown = f"{c['name']} ({label})" if label else c["name"]
-        print(f"  {c['code']:<8} {shown:<34} "
-              f"{c['type_code']:<10} {c['faction_code']:<12} {c['pack_code']}")
+        print(f"  {shown:<32} {describe(conn, c):<38} "
+              f"card show {c['code']}")
+    print("\n  Say which you meant, or run the command beside it.")
     return 1
 
 
@@ -484,23 +508,35 @@ def handle_identity(args) -> int:
     for other in result.get("also") or []:
         named = other["name"] + (f" ({other['which']})"
                                  if other.get("which") else "")
-        where = (f"another identity - mc-jarvis identity "
-                 f"{other['identity_key']}" if other["kind"] == "identity"
-                 else f"{other['faction']} {other['kind']} "
-                 f"[{other['code']}]")
+        if other["kind"] == "identity":
+            where = ("a second identity - mc-jarvis identity "
+                     f"{other['identity_key']}")
+        else:
+            kind = TYPE_WORDS.get(other["kind"], other["kind"])
+            faction = other.get("faction")
+            label = kind if faction in ("hero", None) else (
+                f"{kind}" if faction == "encounter"
+                else f"{faction.capitalize()} {kind}")
+            article = "an" if label[0].lower() in "aeiou" else "a"
+            if faction == "encounter":
+                label = f"encounter {kind}"
+                article = "an"
+            where = f"{article} {label} - card show {other['code']}"
         print(f"  also named {named}: {where}")
     for f in result["faces"]:
         _print_card(f)
     print(f"\nSignature set ({len(result['signature'])} cards):")
     for c in result["signature"]:
-        print(f"  {c['code']:<8} {c['name']:<32} {c['type_code']}")
+        kind = TYPE_WORDS.get(c["type_code"], c["type_code"])
+        print(f"  {c['name']:<32} {kind:<20} {c['code']}")
     for sd in result["side_decks"]:
         n = sum(c["quantity"] or 1 for c in sd["cards"])
         print(f"\n{sd['name']} - outside the deck, set up by the hero's "
               f"rules ({n} card{'s' if n != 1 else ''}):")
         for c in sd["cards"]:
             qty = f"{c['quantity']}x " if (c["quantity"] or 1) > 1 else ""
-            print(f"  {c['code']:<8} {qty}{c['name']:<32} {c['type_code']}")
+            kind = TYPE_WORDS.get(c["type_code"], c["type_code"])
+            print(f"  {qty}{c['name']:<32} {kind:<20} {c['code']}")
     return 0
 
 

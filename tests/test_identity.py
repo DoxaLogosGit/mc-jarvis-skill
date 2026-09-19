@@ -197,3 +197,19 @@ def test_the_also_list_carries_those_labels(real_index):
 
     also = cards.identity(real_index, "Black Panther")["also"]
     assert {o["which"] for o in also if o["kind"] == "identity"} == {"Shuri"}
+
+
+def test_a_card_is_described_in_a_players_terms(real_index):
+    """A collector number identifies nothing at the table: what a card is
+    is its kind and the product it came in."""
+    from mc_jarvis import cards
+
+    rows = {r["code"]: dict(r) for r in real_index.execute(
+        "SELECT code, name, type_code, faction_code, pack_code FROM cards "
+        "WHERE code IN ('23012', '56155', '01040a', '60001b')")}
+    assert cards.describe(real_index, rows["23012"]) == \
+        "Leadership ally, War Machine"
+    assert cards.describe(real_index, rows["56155"]) == \
+        "encounter minion, Civil War"
+    assert cards.describe(real_index, rows["01040a"]) == "hero, Core Set"
+    assert cards.describe(real_index, rows["60001b"]).startswith("alter-ego")
