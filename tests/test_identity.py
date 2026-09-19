@@ -174,3 +174,26 @@ def test_a_hero_with_one_identity_names_no_other_identity(real_index):
     got = cards.identity(real_index, "Ironheart")
     assert not [o for o in got["also"] if o["kind"] == "identity"]
     assert [o["kind"] for o in got["also"]] == ["ally"]
+
+
+def test_cards_of_one_name_are_told_apart_by_their_other_face(real_index):
+    """Four cards are called Black Panther, so a list of names cannot
+    separate them: a live test asked for them to be named. The identities
+    carry their alter-egos and the ally its own subtitle."""
+    from mc_jarvis import cards
+
+    rows = {r["code"]: r for r in real_index.execute(
+        "SELECT code, name, subname FROM cards WHERE code IN "
+        "('01040a', '51001a', '23012', '56155')")}
+    assert cards.which_one(real_index, dict(rows["01040a"])) == "T'Challa"
+    assert cards.which_one(real_index, dict(rows["51001a"])) == "Shuri"
+    assert cards.which_one(real_index, dict(rows["23012"])) == "T'Challa"
+    # An encounter minion has no other face and invents none.
+    assert cards.which_one(real_index, dict(rows["56155"])) == ""
+
+
+def test_the_also_list_carries_those_labels(real_index):
+    from mc_jarvis import cards
+
+    also = cards.identity(real_index, "Black Panther")["also"]
+    assert {o["which"] for o in also if o["kind"] == "identity"} == {"Shuri"}

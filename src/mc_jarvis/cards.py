@@ -298,6 +298,24 @@ def show(conn, ident: str, *, owned: bool = False) -> dict:
     return {"ambiguous": matches}
 
 
+def which_one(conn, row: dict) -> str:
+    """What tells this card apart from others of the same name.
+
+    Four cards are called Black Panther and none of their names separate
+    them: the identities are told apart by their alter-egos (T'Challa,
+    Shuri) and the ally by its own subtitle.
+    """
+    if row.get("subname"):
+        return row["subname"]
+    other = conn.execute(
+        "SELECT name FROM cards WHERE code IN ("
+        "  SELECT code FROM identity_faces WHERE identity_key = ("
+        "    SELECT identity_key FROM identity_faces WHERE code = ?)) "
+        "AND lower(name) != lower(?) AND type_code = 'alter_ego' LIMIT 1",
+        (row["code"], row["name"] or "")).fetchone()
+    return other["name"] if other else ""
+
+
 def _print_card(c: dict) -> None:
     title = c["name"] + (f" - {c['subname']}" if c.get("subname") else "")
     print(f"\n{title}  [{c['code']}]")
@@ -388,8 +406,10 @@ def handle_show(args) -> int:
         return 1
     print(f"{args.name!r} matches several cards - pick one by code:")
     for c in result["ambiguous"]:
-        print(f"  {c['code']:<8} {c['name']:<30} "
-              f"{c['type_code']:<10} {c['faction_code']}")
+        label = which_one(conn, c)
+        shown = f"{c['name']} ({label})" if label else c["name"]
+        print(f"  {c['code']:<8} {shown:<34} "
+              f"{c['type_code']:<10} {c['faction_code']:<12} {c['pack_code']}")
     return 1
 
 
@@ -430,11 +450,19 @@ def identity(conn, name: str) -> dict:
     sides = side_decks(conn, faces[0]["code"]) if faces else []
     # Every other identity of this name, and every non-identity card that
     # shares it: an ally and a minion answer "what does X do" too.
-    also = [{"identity_key": r["identity_key"], "name": r["name"],
-             "kind": "identity"} for r in rows[1:]]
+    also = []
+    for r in rows[1:]:
+        face = conn.execute(
+            "SELECT code, name, subname FROM cards WHERE code IN ("
+            "  SELECT code FROM identity_faces WHERE identity_key = ?) "
+            "AND type_code = 'hero' LIMIT 1", (r["identity_key"],)).fetchone()
+        also.append({"identity_key": r["identity_key"], "name": r["name"],
+                     "kind": "identity",
+                     "which": which_one(conn, dict(face)) if face else ""})
     also += [{"code": r["code"], "name": r["name"], "kind": r["type_code"],
-              "faction": r["faction_code"]} for r in conn.execute(
-        "SELECT code, name, type_code, faction_code FROM cards "
+              "faction": r["faction_code"],
+              "which": which_one(conn, dict(r))} for r in conn.execute(
+        "SELECT code, name, subname, type_code, faction_code FROM cards "
         "WHERE lower(name) = lower(?) AND code = canonical_code "
         "AND type_code NOT IN ('hero', 'alter_ego') ORDER BY code",
         (row["name"],))]
@@ -454,11 +482,13 @@ def handle_identity(args) -> int:
         return 1
     print(f"{result['identity']}  [{result['identity_key']}]")
     for other in result.get("also") or []:
+        named = other["name"] + (f" ({other['which']})"
+                                 if other.get("which") else "")
         where = (f"another identity - mc-jarvis identity "
                  f"{other['identity_key']}" if other["kind"] == "identity"
                  else f"{other['faction']} {other['kind']} "
                  f"[{other['code']}]")
-        print(f"  also named {other['name']}: {where}")
+        print(f"  also named {named}: {where}")
     for f in result["faces"]:
         _print_card(f)
     print(f"\nSignature set ({len(result['signature'])} cards):")

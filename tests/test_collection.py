@@ -120,3 +120,29 @@ def test_an_empty_collection_filters_nothing(tmp_path):
         "3, 3, '{}', '')")
     conn.commit()
     assert len(cards.search(conn, type="ally", owned=True)) == 1
+
+
+def test_a_recorded_collection_is_not_replaced_silently(tmp_path, capsys,
+                                                        monkeypatch):
+    """`set` replaces the whole list, and a live test cut a real collection
+    down to one pack to answer a one-off question."""
+    import argparse
+
+    from mc_jarvis import cards, collection
+
+    conn = _mkdb(tmp_path)
+    collection.set_packs(conn, ["core"])
+    monkeypatch.setattr(cards, "_open", lambda: conn)
+
+    def run(packs, replace=False):
+        return collection.handle(argparse.Namespace(
+            collection_cmd="set", packs=packs, available=False,
+            replace=replace, json=False))
+
+    assert run(["sm"]) == 1
+    assert "already own" in capsys.readouterr().out
+    assert collection.owned_packs(conn) == ["core"]
+    # Naming the same packs again is not a change, and neither is --replace.
+    assert run(["core"]) == 0
+    assert run(["sm"], replace=True) == 0
+    assert collection.owned_packs(conn) == ["sm"]

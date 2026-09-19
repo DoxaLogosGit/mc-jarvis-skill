@@ -115,6 +115,17 @@ def handle(args) -> int:
         print("mc-jarvis collection set: name at least one pack code. "
               "`collection show --available` lists them.")
         return 1
+    # `set` replaces the whole collection, and a live test replaced a real
+    # one with a single pack for a one-off question. What is already
+    # recorded has to be said out loud before it is thrown away.
+    existing = owned_packs(conn)
+    if existing and not getattr(args, "replace", False) \
+            and sorted(existing) != sorted(args.packs):
+        print(f"mc-jarvis collection set: you already own "
+              f"{len(existing)} pack(s): {', '.join(existing)}. This would "
+              f"replace that list. Pass --replace to change it, or name "
+              f"every pack you own.")
+        return 1
     try:
         result = set_packs(conn, args.packs)
     except UnknownPack as exc:

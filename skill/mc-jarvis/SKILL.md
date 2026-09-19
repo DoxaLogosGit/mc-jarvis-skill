@@ -334,8 +334,11 @@ Colossus with tough, Deadpool with acceleration — is not deficient in it.
 - **Ask what the player owns before recording it.** If
   `collection show` is empty, ask; `mc-jarvis collection set <pack>...`
   records it (`mc-jarvis collection show --available` lists pack codes).
-- **Files in the workspace are past sessions' work.** A saved deck there
-  says nothing about which heroes a new question is about; ask.
+  A collection already recorded is not replaced without `--replace`, so
+  read what is there before changing it.
+- **Files in the workspace are past sessions' work.** Do not open a deck
+  file you were not pointed at, and never infer from one which heroes a
+  new question is about: ask for the deck, or ask which hero.
 
 ## Staleness
 
@@ -392,6 +395,11 @@ names the cards behind it, so cite rather than assert. `--modular`
 - **Ask whether the losing card can be got rid of.** A condition on a
   side scheme you can defeat is a chore; on a **permanent** card it is a
   clock. Only Project Wideawake makes Operation Zero Tolerance permanent.
+- **To compare difficulties, read the sets themselves.** `assess` reports
+  the table in front of it, so a question about how Standard II or III
+  differ is answered with `mc-jarvis encounter standard_ii`,
+  `encounter standard_iii`, `encounter expert_ii`: each lists its cards,
+  and that is where the nemesis mechanism differs between them.
 - **A nemesis set is a player's, not the scenario's.** Pass it with
   `--nemesis`, never `--modular`, and say whose it is. Every Standard set
   can draw one out, so that is not news: `assess` names nemesis pulls

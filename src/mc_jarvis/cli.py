@@ -163,6 +163,8 @@ def build_parser() -> argparse.ArgumentParser:
     col.add_argument("packs", nargs="*", help="pack codes, for `set`")
     col.add_argument("--available", action="store_true",
                      help="list every pack code this index knows")
+    col.add_argument("--replace", action="store_true",
+                     help="replace a collection already recorded")
 
     asr = _leaf(sub, "assess", "what a scenario throws at you")
     asr.add_argument("villain", help="a scenario, or a villain that names one")
