@@ -347,9 +347,9 @@ Colossus with tough, Deadpool with acceleration — is not deficient in it.
 - **Ask what the player owns before recording it.** If
   `collection show` is empty, ask; `mc-jarvis collection set <pack>...`
   records it (`mc-jarvis collection show --available` lists pack codes).
-  A collection already recorded is not replaced without `--replace`, so
-  read what is there before changing it; `collection clear` forgets it,
-  which is not the same as owning nothing.
+  A recorded collection is not replaced without `--replace`, and
+  `collection clear` forgets it. Recording one lasts, so say in your reply
+  that you did it and what it now narrows.
 - **Files in the workspace are past sessions' work.** Do not open a deck
   file you were not pointed at, and never infer from one which heroes a
   new question is about: ask for the deck, or ask which hero.

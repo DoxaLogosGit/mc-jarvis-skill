@@ -159,3 +159,21 @@ def test_a_collection_can_be_forgotten(tmp_path):
     assert collection.clear(conn) == ["core"]
     assert collection.owned_packs(conn) == []
     assert collection.clear(conn) == []
+
+
+def test_setting_a_collection_says_what_it_recorded(tmp_path, capsys,
+                                                    monkeypatch):
+    """It printed "owned: 1", which says nothing about what was written or
+    that it narrows every later search - a live test left a player unaware
+    a lasting change had been made for them."""
+    import argparse
+
+    from mc_jarvis import cards, collection
+
+    conn = _mkdb(tmp_path)
+    monkeypatch.setattr(cards, "_open", lambda: conn)
+    assert collection.handle(argparse.Namespace(
+        collection_cmd="set", packs=["core"], available=False,
+        replace=False, json=False)) == 0
+    out = capsys.readouterr().out
+    assert "Core Set" in out and "--owned" in out

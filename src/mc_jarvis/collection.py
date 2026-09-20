@@ -151,5 +151,15 @@ def handle(args) -> int:
     except UnknownPack as exc:
         print(f"mc-jarvis collection: {exc}")
         return 1
-    emit(result, as_json=args.json)
+    if args.json:
+        emit(result, as_json=True)
+        return 0
+    # "owned: 1" said nothing about what had just been written to disk, or
+    # that it now narrows every later search. A player was left unaware a
+    # lasting change had been made on their behalf.
+    names = dict(available_packs(conn))
+    print("Recorded " + ", ".join(names.get(p, p)
+                                  for p in owned_packs(conn)) + ".")
+    print("`--owned` searches are narrowed to these until you change it: "
+          "`collection set ... --replace`, or `collection clear` to forget.")
     return 0
