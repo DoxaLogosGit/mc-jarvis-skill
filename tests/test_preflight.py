@@ -283,3 +283,17 @@ def test_heroic_zero_is_a_level_not_a_refusal():
 
     assert parse_args(["assess", "rhino", "--heroic", "0"]).heroic == 0
     assert parse_args(["assess", "rhino", "--heroic", "3"]).heroic == 3
+
+
+def test_sets_can_be_added_as_well_as_replaced():
+    """`--modular` replaces. A campaign penalty is added, and expressing
+    that as a replacement drops the scenario's own sets."""
+    from mc_jarvis.cli import parse_args
+
+    args = parse_args(["assess", "ebony_maw", "--add-modular", "expcamp"])
+    assert args.add_modular == ["expcamp"]
+    assert args.modular is None
+    # The comma form is what an agent reaches for first.
+    assert parse_args(["assess", "ebony_maw", "--add-modular",
+                       "expcamp,mts_campaign"]).add_modular == [
+        "expcamp,mts_campaign"]

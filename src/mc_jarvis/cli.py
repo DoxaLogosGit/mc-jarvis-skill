@@ -189,6 +189,13 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--modular", action="append",
                      help="the modular sets on your table; REPLACES the "
                           "scenario's defaults rather than adding to them")
+    # Campaign penalties, and any set a table adds for its own sake, go
+    # ON TOP of what the scenario brings. Expressing that with --modular
+    # meant retyping the scenario's own sets, and a player who did not
+    # silently dropped them.
+    asr.add_argument("--add-modular", dest="add_modular", action="append",
+                     help="modular sets to ADD to the scenario's own, "
+                          "such as a campaign penalty")
     asr.add_argument("--players", type=_players, default=1)
     asr.add_argument("--difficulty", default="standard",
                      choices=_difficulties(),

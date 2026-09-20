@@ -403,6 +403,10 @@ names the cards behind it, so cite rather than assert. `--modular`
 - **Heroic is a clock, not more cards to answer.** `--heroic N` deals
   every player N further encounter cards each villain phase; the deck's
   contents are unchanged, so it asks for draw and tempo, not more tech.
+- **Campaigns differ from each other by design.** Never carry one
+  campaign's rules to another: fetch that campaign's own rulebook or log
+  and cite it. Add penalties with `--add-modular` (`--modular` would
+  replace the scenario's own); rewards are the player's word to give.
 - **"Another way to lose" is not a footnote.** The line names the card
   and the kind of thing to watch — a counter, a count of cards, a
   character who must stay alive — and stops, because the threshold is
@@ -422,12 +426,11 @@ names the cards behind it, so cite rather than assert. `--modular`
 - **Reshuffling is a second acceleration source.** Each pass through the
   encounter deck adds a permanent +1 threat per villain phase, so a small
   deck accelerates sooner. `assess` states the mechanism, not the turn.
-- **Several scenarios field more than one villain, in five ways**: all in
-  play at once (Four Horsemen, Wrecking Crew, Tower Defense), a number
-  that scales with the table (Sinister Six), a deck whose top card is in
-  play (Mansion Attack), one chosen at random (God of Lies, Kang's second
-  stage), or two faces of one villain (Risky Business). Never assume a
-  total hit point figure `assess` does not print.
+- **Several scenarios field more than one villain, in five ways**: all at
+  once (Four Horsemen, Wrecking Crew), a number scaling with the table
+  (Sinister Six), a deck whose top card is in play (Mansion Attack), one
+  at random (God of Lies, Kang stage two), or two faces of one villain
+  (Risky Business). Never assume a hit point total `assess` omits.
 - **Boost stars are the curveballs**: a mandatory ability when dealt face
   down as boost. Quote the rate, not just the count. Stars in ATK or SCH
   fields are not boost stars.
@@ -459,11 +462,10 @@ Aspect: Justice
 
 A spreadsheet with a name column and a count column works too. Names that
 match several cards, or none, are **reported rather than guessed** — they
-come back in `unknown` with their candidate codes, and every count that
-depends on a complete deck says it is a floor. Pass those back to the
-player and ask which one they meant; do not pick for them. An ambiguous
-**hero** is refused outright, because two heroes named `Black Panther`
-carry different signature cards.
+come back in `unknown` with candidate codes, and any count needing a
+complete deck says it is a floor. Pass those back and ask which was meant;
+do not pick. An ambiguous **hero** is refused outright, because two heroes
+named `Black Panther` carry different signature cards.
 
 `deck check` reports rule by rule and names the Rules Reference entry
 behind each failure. Run `mc-jarvis rules show <entry>` for the wording —
@@ -473,25 +475,23 @@ Six things to carry into any answer:
 
 - **A card can beat a rulebook.** `Golden Rules` (RR p.4) puts card text
   and scenario rules above the Rules Reference, which is above Learn to
-  Play. That is why Spider-Woman may take two aspects and Adam Warlock
-  all four: their own cards say so. If a player quotes a card at you that
-  contradicts a rule, the card is probably right — unless an erratum has
-  since changed that card, which `card show` will list.
+  Play — that is why Spider-Woman takes two aspects and Adam Warlock all
+  four. A card quoted against a rule is probably right, unless an erratum
+  has changed it since, which `card show` lists.
 - **A failing size check may not be the player's fault.** If the deck
   names cards this index does not carry, `deck check` says so and calls
   the count a floor. Say that rather than telling them to add cards.
 - **Two sizes, and both are correct.** `deck stats` reports what you
   *built* and what you will *draw*. Permanent and linked cards are in
   neither; Rogue's Touched counts toward the 40 and is never drawn. A
-  player asking "why does it say 40 when I count 39" is asking about
-  this.
+  player asking "why 40 when I count 39" is asking about this.
 - **A stale aspect is common and is not illegal.** marvelcdb stores the
-  declared aspect in a field of its own, so rebuilding a deck leaves the
-  old declaration behind. When the cards contradict it, `deck check`
-  says so and does not judge purity.
+  declared aspect in its own field, so rebuilding a deck leaves the old
+  declaration behind. When the cards contradict it, `deck check` says so
+  and does not judge purity.
 - **marvelcdb does not enforce the rules.** It is a community
-  deck-builder and storage site; illegal decks can be saved, published,
-  and played. A deck being on marvelcdb is not evidence it is legal.
+  deck-builder and store; illegal decks can be saved, published and
+  played. A deck on marvelcdb is not evidence it is legal.
 - **`--owned` filters over printings, not packs.** Owning any printing of
   a card is owning the card, so a reprint in a pack they own counts.
 

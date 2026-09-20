@@ -1499,3 +1499,127 @@ def test_the_heroic_level_reaches_the_header_and_the_json(real_index, capsys):
     step = json.loads(capsys.readouterr().out)["steps"][0]
     assert step["heroic"] == 3
     assert step["pace"]["dealt_per_phase"] == 8
+
+
+# --- adding a set on top of the scenario's own ------------------------
+
+def test_adding_a_modular_keeps_the_scenarios_own(real_index):
+    """A campaign penalty is added to the scenario's deck, not swapped
+    for it. `--modular` replaces (spec §6), so the only way to add one
+    was to retype the defaults - and a player who did not silently lost
+    Armies of Titan and the Black Order."""
+    from mc_jarvis import assess
+
+    plain = assess.resolve(real_index, "ebony maw")
+    added = assess.resolve(real_index, "ebony maw",
+                           add_modular=["mts_campaign"])
+
+    assert plain.modulars == ["armies_of_titan", "black_order"]
+    assert added.modulars == ["armies_of_titan", "black_order",
+                              "mts_campaign"]
+    # Recorded apart from the scenario's own, so the output can say which
+    # sets are on the table because the player put them there.
+    assert added.added_modulars == ["mts_campaign"]
+    assert plain.added_modulars == []
+    # And the deck really grows: replacing gave 35 cards where the
+    # scenario's own two sets plus the campaign set give more.
+    assert (assess.profile(real_index, added)["deck_size"]
+            > assess.profile(real_index, plain)["deck_size"])
+
+
+def test_replacing_and_adding_compose(real_index):
+    """`--modular` still replaces; `--add-modular` layers onto whatever
+    is left. Both at once is a table that chose its modulars AND is
+    carrying a campaign penalty."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "ebony maw", modular=["bomb_scare"],
+                        add_modular=["expcamp"])
+    assert sc.modulars == ["bomb_scare", "expcamp"]
+    assert sc.added_modulars == ["expcamp"]
+
+
+def test_an_added_set_is_checked_like_any_other(real_index):
+    """The flag that adds a set needs the refusals the flag that replaces
+    one already has, or a typo is assessed as nothing."""
+    from mc_jarvis import assess
+
+    with pytest.raises(assess.UnknownScenario) as err:
+        assess.resolve(real_index, "ebony maw", add_modular=["not_a_set"])
+    assert "no set named" in str(err.value)
+
+    # A nemesis set arrives with a hero, so it cannot be added to a
+    # scenario any more than it can replace its modulars (RR p.30).
+    with pytest.raises(assess.UnknownScenario) as err:
+        assess.resolve(real_index, "ebony maw", add_modular=["rhino_nemesis"])
+    assert "nemesis" in str(err.value)
+
+
+def test_a_campaign_sets_player_cards_stay_out_of_the_encounter_deck(
+        real_index):
+    """`mts_campaign` holds 20 cards: 12 for the encounter deck and 8 for
+    the players - allies, a resource and the Norn Stones. The set is one
+    unit, so adding it must not deal Lady Sif into the villain's deck."""
+    from mc_jarvis import assess
+
+    sc = assess.resolve(real_index, "ebony maw", add_modular=["mts_campaign"])
+    named = {c["name"] for t in assess.profile(
+        real_index, sc)["by_type"].values() for c in t["cards"]}
+    for player_card in ("Lady Sif", "Cosmo", "Volstagg", "Fandral", "Hogun",
+                        "Shawarma", "Norn Stone"):
+        assert player_card not in named, player_card
+    # The encounter half is there.
+    assert "Summoned Back" in named
+
+
+def test_the_added_sets_are_named_in_their_own_right(real_index, capsys):
+    """Printed together with the scenario's own, the campaign set reads
+    as something the scenario brought."""
+    import argparse
+
+    from mc_jarvis import assess
+
+    args = argparse.Namespace(
+        villain="ebony maw", modular=None, add_modular=["mts_campaign"],
+        players=1, difficulty="standard", standard_set=None,
+        expert_set=None, heroic=0, nemesis=None, deck=None, json=False)
+    assert assess.handle(args) == 0
+    out = capsys.readouterr().out
+    assert "added on top: mts_campaign" in out
+    assert "armies_of_titan" in out
+
+
+def test_overridden_modulars_are_not_called_the_scenarios(real_index, capsys):
+    """The label describes the scenario's own suggestion. Printed over a
+    list the player supplied, it credits the scenario with sets it never
+    named."""
+    import argparse
+
+    from mc_jarvis import assess
+
+    args = argparse.Namespace(
+        villain="ebony maw", modular=["bomb_scare"], add_modular=None,
+        players=1, difficulty="standard", standard_set=None,
+        expert_set=None, heroic=0, nemesis=None, deck=None, json=False)
+    assert assess.handle(args) == 0
+    out = capsys.readouterr().out
+    assert "named by the scenario" not in out
+    assert "yours" in out
+
+
+def test_an_added_set_is_not_swallowed_by_a_set_aside_pool(real_index):
+    """The Hood moves the player's chosen sets into the pool, where they
+    arrive one at a time. A set added on top is not one of those: it is
+    in the deck from the start, so it must be added after that move."""
+    from mc_jarvis import assess
+
+    seven = ["beasty_boys", "brothers_grimm", "crossfire_crew",
+             "mister_hyde", "ransacked_armory", "sinister_syndicate",
+             "state_of_emergency"]
+    sc = assess.resolve(real_index, "the hood", modular=seven,
+                        add_modular=["expcamp"])
+    assert sc.pool == seven
+    assert sc.modulars == ["expcamp"]
+    plain = assess.resolve(real_index, "the hood", modular=seven)
+    assert (assess.profile(real_index, sc)["opening_deck_size"]
+            > assess.profile(real_index, plain)["opening_deck_size"])

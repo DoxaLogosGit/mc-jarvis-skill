@@ -34,6 +34,13 @@ class Scenario:
     # have (§14.10).
     scenario_set: str
     modulars: list[str] = field(default_factory=list)
+    # The sets the player put on the table on top of the scenario's own.
+    # Carried separately only so the output can say which is which; they
+    # are already inside `modulars` and no count reads this.
+    added_modulars: list[str] = field(default_factory=list)
+    # Whether `modulars` is the player's list rather than the scenario's
+    # suggestion, which decides how the line describing them reads.
+    modulars_chosen: bool = False
     difficulty: str = "standard"
     # The standard set in the deck, and the expert set added to it, if any.
     # Set from `difficulty` unless either is named outright.
@@ -121,7 +128,8 @@ def _host_scenarios(conn, code: str) -> list[str]:
     return sorted(set(hosts))
 
 
-def resolve(conn, villain: str, *, modular=None, players: int = 1,
+def resolve(conn, villain: str, *, modular=None, add_modular=None,
+            players: int = 1,
             difficulty: str = "standard", heroic: int = 0,
             nemesis=(), standard_set: str | None = None,
             expert_set: str | None = None) -> Scenario:
@@ -260,31 +268,33 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
     # An unknown set contributes no cards, so a typo used to be reported
     # as a set on the table and silently assessed as nothing. That is the
     # partial deck this command exists to refuse.
-    _known_sets(conn, list(modular or ()) + list(nemesis or ()))
+    _known_sets(conn, list(modular or ()) + list(add_modular or ())
+                + list(nemesis or ()))
     shape = composition(code)
     if nemesis and shape.get("nemesis") is False:
         raise UnknownScenario(
             f"{code!r} is played without nemesis sets "
             f"({shape.get('source', 'its rulebook')}), so --nemesis has "
             f"nothing to add. Assess it without one.")
-    if modular and shape.get("difficulty_sets") is False \
+    if (modular or add_modular) and shape.get("difficulty_sets") is False \
             and shape.get("encounter_sets"):
         raise UnknownScenario(
             f"{code!r} uses no modular sets "
             f"({shape.get('source', 'its rulebook')}).")
+    # A nemesis set arrives with a hero, not with a scenario (RR p.30),
+    # so it is not a set the table can choose to face - by either flag.
+    # The data types all 69 of them, so this needs no guesswork.
+    wrong = [m for m in list(modular or ()) + list(add_modular or ())
+             if conn.execute(
+                 "SELECT 1 FROM sets WHERE code = ? "
+                 "AND card_set_type_code = 'nemesis'", (m,)).fetchone()]
+    if wrong:
+        raise UnknownScenario(
+            f"{', '.join(wrong)} - a nemesis set is not a modular. It "
+            f"comes with the player whose hero owns it rather than "
+            f"with the scenario, so it cannot be chosen for one. Pass "
+            f"it with --nemesis to say who is at the table.")
     if modular is not None:
-        # A nemesis set arrives with a hero, not with a scenario (RR
-        # p.30), so it is not a set the table can choose to face. The
-        # data types all 69 of them, so this needs no guesswork.
-        wrong = [m for m in modular if conn.execute(
-            "SELECT 1 FROM sets WHERE code = ? "
-            "AND card_set_type_code = 'nemesis'", (m,)).fetchone()]
-        if wrong:
-            raise UnknownScenario(
-                f"{', '.join(wrong)} - a nemesis set is not a modular. It "
-                f"comes with the player whose hero owns it rather than "
-                f"with the scenario, so it cannot be chosen for one. Pass "
-                f"it with --nemesis to say who is at the table.")
         # An explicit list REPLACES the suggestion (§6).
         modulars = required + [m for m in modular if m not in required]
     else:
@@ -296,12 +306,18 @@ def resolve(conn, villain: str, *, modular=None, players: int = 1,
         # the first at setup. Counting all seven in the opening deck, as it
         # did, reported a deck twice the size anyone starts against.
         pool, modulars = modulars, []
+    # Added last, and after the swap above: a set the player adds is in
+    # the deck from the start, not one more of the sets set aside.
+    added = [m for m in (add_modular or ()) if m not in modulars]
+    modulars = modulars + added
     paired = DIFFICULTY_SETS.get(difficulty, (difficulty, None))
     chosen_standard = standard_set or paired[0]
     chosen_expert = paired[1] if expert_set is None else (
         None if expert_set == "none" else expert_set)
     label = chosen_standard + (f" + {chosen_expert}" if chosen_expert else "")
     return Scenario(scenario_set=code, modulars=modulars,
+                    added_modulars=added,
+                    modulars_chosen=modular is not None,
                     difficulty=label, standard_set=chosen_standard,
                     expert_set=chosen_expert,
                     players=players, heroic=heroic,
@@ -1549,6 +1565,8 @@ def handle(args) -> int:
         scenario = resolve(
             conn, args.villain,
             modular=set_codes(conn, _listed(args.modular)),
+            add_modular=set_codes(conn, _listed(
+                getattr(args, "add_modular", None))),
             players=args.players, difficulty=args.difficulty,
             standard_set=getattr(args, "standard_set", None),
             expert_set=getattr(args, "expert_set", None),
@@ -1603,6 +1621,12 @@ def handle(args) -> int:
                            "constraint is the count)",
              "open": " (you choose these)",
              "random": " (drawn at random)"}.get(scenario.modular_kind, "")
+    # Every one of those labels describes the scenario's OWN suggestion.
+    # Printed over a list the player supplied, it credits the scenario
+    # with sets it never named - and "named by the scenario" is then
+    # flatly false about what is on the table.
+    if scenario.modulars_chosen:
+        label = " (yours, in place of the scenario's suggestion)"
     print(f"{scenario.scenario_set} - {scenario.difficulty}, "
           f"{scenario.players} player(s)"
           + (f", heroic {scenario.heroic}" if scenario.heroic else ""))
@@ -1610,8 +1634,14 @@ def handle(args) -> int:
         print(f"  modular sets: {len(scenario.pool)} chosen and set aside "
               f"- they arrive one at a time, the first at setup")
     else:
-        print(f"  modular sets: {', '.join(scenario.modulars) or 'none'}"
-              f"{label}")
+        own = [m for m in scenario.modulars
+               if m not in scenario.added_modulars]
+        print(f"  modular sets: {', '.join(own) or 'none'}{label}")
+    if scenario.added_modulars:
+        # Named on its own line: a campaign penalty is on the table
+        # because of something that happened in an earlier game, not
+        # because this scenario calls for it.
+        print(f"    added on top: {', '.join(scenario.added_modulars)}")
     if scenario.nemesis:
         # Printed separately from the modulars because it is not the same
         # kind of choice: these sets are at the table because of who is
