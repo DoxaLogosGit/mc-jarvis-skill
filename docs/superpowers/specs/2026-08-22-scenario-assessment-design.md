@@ -1892,3 +1892,34 @@ the core rulebooks, and four are newer than the captured list.
 directory and rebuilds; the skill runs it without asking, as the player
 directed. A rulesheet has no glossary, so it is page-chunked like Learn to
 Play.
+
+### 14.29 What the live trials found
+
+Five batches of live sessions between 14 and 20 September, 38 prompts,
+graded by the player. The pattern is worth keeping: every finding but two
+was a tool defect wearing the costume of a judgement error.
+
+| Complaint at the table | What it actually was |
+|---|---|
+| "It says the index has no main scheme values" | Three commands held them and printed none |
+| "It thinks Daredevil is weak at thwarting" | `deck stats` read the printed THW and knew nothing of side decks, form, or a card that swaps in DEF |
+| "It got the expert setup wrong" | Expert replaced the Standard set instead of adding to it (RR p.28) - every expert assessment since the beginning |
+| "It keeps warning me about my nemesis" | Every Standard set can draw one; only an elevated rate is news |
+| "It talks in card numbers" | Search results named eight allies "Spider-Man" with nothing but a code to separate them |
+| "It didn't ask about my collection" | It had been told; what was missing was saying it had written one |
+
+Two were genuine judgement failures, and both became SKILL.md rules: a cut
+recommended without reading what the card feeds (Deft Focus discounts the
+Superpower trait every Sense card carries), and a trait read as a stat
+(Defender is a synergy label).
+
+Three method notes for the next round:
+
+- **Read the transcript, not the grade.** A third of one batch's notes
+  were pasted from the previous run; the sessions themselves showed the
+  fixes had landed.
+- **A criterion can be the defect.** B1 failed twice against "asks before
+  recording your collection" when the prompt had already said what the
+  player owned. The test was scoring the wrong behaviour.
+- **Test hygiene is part of the test.** Deck files and a memory file left
+  by earlier sessions primed later ones into guessing.

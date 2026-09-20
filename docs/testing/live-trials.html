@@ -197,7 +197,7 @@ section.area > header p { color: var(--muted); }
     <span class="eyebrow">Marvel Champions · agent skill · live testing</span>
     <h1>mc-jarvis Live Trials</h1>
     <p class="lede">38 prompts across nine areas, each aimed at something the tool now does or should honestly decline. You judge the game; the transcript tells me what the agent actually ran.</p>
-    <p class="lede"><b>Left to run:</b> N2 again, now that search results name who each Spider-Man is, and B2, which is new. C1, A5, B1 and N1 are settled; H1 is parked — pi behaved, the loop was a model limit. The <b>Left to run</b> filter shows just those two.</p>
+    <p class="lede"><b>All 38 pass as of 20 September.</b> Nothing is outstanding: N2 and B2 closed the last two, H1 is parked (pi behaved; the loop was a model limit). Keep this page as the regression battery — rerun the <b>Smoke</b> set after any change to assess, the deck pipeline or the skill file, and the whole thing before anything ships to other people.</p>
   </header>
 
   <div class="protocol">
@@ -298,7 +298,7 @@ const TESTS = [
     prompt: "What does the Gamma Overload Protocol card do, and which aspect is it?",
     watch: ["Says no such card is in the data", "Does not invent text, cost or aspect"],
     exercises: "honest not-found" },
-  { id: "N2", area: "C", tier: "new", rerun: "search results now carry the subtitle - Spider-Man (Hobie Brown), Spider-Man (Otto Octavius) - which is what the agent lacked when it wrote collector numbers at you. The skill also says never to write a code in prose, and to name every candidate legal in the deck before choosing.",
+  { id: "N2", area: "C", tier: "depth", settled: "Passed 20 Sep, once search results carried each Spider-Man's subtitle. The first run wrote collector numbers at the player and never named Hobie Brown, because the tool gave the agent nothing else to go on.",
     title: "Naming cards in conversation",
     prompt: "Which Spider-Man ally is best in a Protection deck?",
     watch: ["Names every Spider-Man ally you could legally play in Protection - the Protection one and the Basic ones - by subtitle: Miles Morales, Hobie Brown, Peter Parker, Otto Octavius", "No collector numbers anywhere in its prose", "Picks one and says why, rather than listing them and stopping"],
@@ -413,7 +413,8 @@ const TESTS = [
     prompt: "I only own the Core Set. Build me a legal Iron Man deck using just that.",
     watch: ["Records exactly what you said you own - no more, no less", "Tells you in its reply that it recorded a collection, and what that now narrows", "Builds with --owned, then runs deck check before presenting it", "Stays inside Core Set cards"],
     exercises: "collection, --owned, check before offering" },
-  { id: "B2", area: "B", tier: "new", title: "Building when you have not said what you own",
+  { id: "B2", area: "B", tier: "depth", settled: "Passed 20 Sep.",
+    title: "Building when you have not said what you own",
     where: "Run in a session where you have said nothing about your collection.",
     prompt: "Build me a Rogue deck I can actually put together tonight.",
     watch: ["Reads the recorded collection rather than assuming, and says which packs it is building from", "If nothing is recorded, asks what you own instead of building from everything", "Does not replace a recorded collection to answer the question"],
@@ -445,9 +446,8 @@ const TESTS = [
 ];
 
 const TIERS = [
-  { key: "left", label: "Left to run" },
-  { key: "all", label: "All" },
   { key: "smoke", label: "Smoke" },
+  { key: "all", label: "All" },
   { key: "depth", label: "Depth" },
   { key: "adversarial", label: "Adversarial" },
   { key: "cross", label: "Other agents" },
@@ -460,7 +460,7 @@ try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state
 function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const isLeft = t => t.tier === "new";
+const isLeft = () => false;
 
 function renderAreas() {
   const root = document.getElementById("areas");
@@ -499,7 +499,7 @@ function renderTest(t) {
   </article>`;
 }
 
-let tierFilter = "left";
+let tierFilter = "smoke";
 function renderFilters() {
   document.getElementById("filters").innerHTML = TIERS.map(f =>
     `<button type="button" data-filter="${f.key}" aria-pressed="${tierFilter === f.key}">${f.label}</button>`).join("");
