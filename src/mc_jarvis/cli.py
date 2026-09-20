@@ -159,7 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
                          "or - to read a written decklist from stdin")
 
     col = _leaf(sub, "collection", "packs you own")
-    col.add_argument("collection_cmd", choices=["set", "show"])
+    col.add_argument("collection_cmd", choices=["set", "show", "clear"])
     col.add_argument("packs", nargs="*", help="pack codes, for `set`")
     col.add_argument("--available", action="store_true",
                      help="list every pack code this index knows")

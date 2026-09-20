@@ -146,3 +146,16 @@ def test_a_recorded_collection_is_not_replaced_silently(tmp_path, capsys,
     assert run(["core"]) == 0
     assert run(["sm"], replace=True) == 0
     assert collection.owned_packs(conn) == ["sm"]
+
+
+def test_a_collection_can_be_forgotten(tmp_path):
+    """Owning nothing and having said nothing are different states: with
+    no collection recorded every card is offered again. `set` could only
+    replace one list with another, so there was no way back."""
+    from mc_jarvis import collection
+
+    conn = _mkdb(tmp_path)
+    collection.set_packs(conn, ["core"])
+    assert collection.clear(conn) == ["core"]
+    assert collection.owned_packs(conn) == []
+    assert collection.clear(conn) == []

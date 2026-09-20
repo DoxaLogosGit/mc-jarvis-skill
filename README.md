@@ -59,7 +59,7 @@ reports what is indexed, which Rules Reference version, and how stale it is.
 | import a deck | `mc-jarvis deck fetch <id-url-or-file>` |
 | is it legal | `mc-jarvis deck check <id-url-or-file>` |
 | what the deck is made of | `mc-jarvis deck stats <id-url-or-file>` |
-| what you own | `mc-jarvis collection set <pack>...` / `collection show` |
+| what you own | `mc-jarvis collection set <pack>... [--replace]` / `collection show [--available]` / `collection clear` |
 
 Every command takes `--json`. A deck is a marvelcdb id or URL, a JSON
 export, a written list, a spreadsheet, or `-` to paste one on stdin.

@@ -82,6 +82,16 @@ def filter_codes(conn, codes) -> list[str]:
     return [r["code"] for r in rows]
 
 
+def clear(conn) -> list[str]:
+    """Forget the collection. Owning nothing and having said nothing are
+    different states - with no collection recorded, every card is offered
+    again - and `set` could only ever replace one list with another."""
+    had = owned_packs(conn)
+    conn.execute("DELETE FROM owned_packs")
+    conn.commit()
+    return had
+
+
 def handle(args) -> int:
     from .cards import _open
     from .cli import emit
@@ -109,6 +119,16 @@ def handle(args) -> int:
                   "`mc-jarvis collection set <pack>...` to narrow it.")
             return 0
         print(f"{len(owned)} pack(s): {', '.join(owned)}")
+        return 0
+
+    if args.collection_cmd == "clear":
+        had = clear(conn)
+        if args.json:
+            emit({"cleared": had}, as_json=True)
+            return 0
+        print(f"Collection cleared ({', '.join(had)})." if had
+              else "No collection was set.")
+        print("Every card is offered again until you set one.")
         return 0
 
     if not args.packs:
