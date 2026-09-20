@@ -1,0 +1,582 @@
+<title>mc-jarvis Live Trials</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root {
+  --ground: #F3F5F8;
+  --surface: #FFFFFF;
+  --sunk: #E9EDF3;
+  --ink: #151B24;
+  --muted: #5A6576;
+  --rule: #D6DCE5;
+  --accent: #2358B8;
+  --accent-ink: #FFFFFF;
+  --pass: #2E8B57;
+  --partial: #B8860B;
+  --fail: #C0392B;
+  --skip: #8A94A3;
+  --pass-soft: #E3F2EA;
+  --partial-soft: #F7EDD2;
+  --fail-soft: #F8E1DE;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0F141B;
+    --surface: #161D27;
+    --sunk: #1D2633;
+    --ink: #E5EAF1;
+    --muted: #94A1B3;
+    --rule: #2A3442;
+    --accent: #7FA6EE;
+    --accent-ink: #0F141B;
+    --pass: #5CC08A;
+    --partial: #E0B43C;
+    --fail: #EF7467;
+    --skip: #6E7a8B;
+    --pass-soft: #173024;
+    --partial-soft: #332A12;
+    --fail-soft: #3A1C19;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0F141B;
+  --surface: #161D27;
+  --sunk: #1D2633;
+  --ink: #E5EAF1;
+  --muted: #94A1B3;
+  --rule: #2A3442;
+  --accent: #7FA6EE;
+  --accent-ink: #0F141B;
+  --pass: #5CC08A;
+  --partial: #E0B43C;
+  --fail: #EF7467;
+  --skip: #6E7a8B;
+  --pass-soft: #173024;
+  --partial-soft: #332A12;
+  --fail-soft: #3A1C19;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.55 var(--body);
+  margin: 0;
+  padding-inline: 20px;
+  padding-block: 32px 64px;
+}
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 40px; }
+
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h1 { font-size: clamp(2.4rem, 5vw, 3.4rem); line-height: 1; text-transform: uppercase; }
+h2 { font-size: 1.9rem; line-height: 1.05; text-transform: uppercase; }
+h3 { font-size: 1.3rem; line-height: 1.15; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+.eyebrow { font: 600 0.72rem/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+header.top { display: grid; gap: 14px; }
+header.top .lede { color: var(--muted); font-size: 1.05rem; }
+header.top .lede b { color: var(--ink); }
+
+.protocol {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px;
+  border-top: 3px solid var(--ink); padding-top: 20px;
+}
+.protocol ol { margin: 10px 0 0; padding-left: 1.2em; display: grid; gap: 8px; }
+.protocol li::marker { font-family: var(--display); font-weight: 700; color: var(--accent); }
+.grades { display: grid; gap: 8px; margin-top: 10px; }
+.grade { display: grid; grid-template-columns: 86px 1fr; gap: 10px; align-items: baseline; }
+.pill {
+  display: inline-block; font: 600 0.72rem/1 var(--body); letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 5px 8px; border-radius: 3px; text-align: center;
+}
+.pill.pass { background: var(--pass-soft); color: var(--pass); }
+.pill.partial { background: var(--partial-soft); color: var(--partial); }
+.pill.fail { background: var(--fail-soft); color: var(--fail); }
+pre.cmd {
+  background: var(--sunk); border-radius: 4px; padding: 10px 12px; margin: 10px 0 0;
+  font: 0.82rem/1.5 var(--mono); overflow-x: auto; white-space: pre;
+}
+
+.board {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--ground); border-bottom: 1px solid var(--rule);
+  padding-block: 12px; display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center;
+}
+.tally { display: flex; gap: 16px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.tally span { display: inline-flex; align-items: baseline; gap: 6px; font-size: 0.9rem; color: var(--muted); }
+.tally b { font: 700 1.35rem/1 var(--display); color: var(--ink); }
+.tally .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; align-self: center; }
+.bar { flex: 1 1 200px; height: 8px; border-radius: 4px; background: var(--sunk); display: flex; overflow: hidden; min-width: 140px; }
+.bar i { display: block; height: 100%; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters button, .copybtn {
+  font: 500 0.82rem/1 var(--body); padding: 7px 11px; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+}
+.filters button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button:focus-visible, textarea:focus-visible, input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+section.area { display: grid; gap: 14px; }
+section.area > header { display: grid; gap: 6px; }
+section.area > header p { color: var(--muted); }
+
+.test {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 4px;
+  display: grid; grid-template-columns: 64px 1fr; overflow: hidden;
+}
+.test[data-status="pass"] { border-left: 5px solid var(--pass); }
+.test[data-status="partial"] { border-left: 5px solid var(--partial); }
+.test[data-status="fail"] { border-left: 5px solid var(--fail); }
+.tid {
+  font: 700 1.5rem/1 var(--display); padding: 16px 0 0; text-align: center; color: var(--accent);
+  border-right: 1px solid var(--rule); background: var(--sunk);
+}
+.tbody { padding: 14px 18px 16px; display: grid; gap: 10px; min-width: 0; }
+.thead { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; justify-content: space-between; }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tier { font: 600 0.68rem/1 var(--body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); padding: 4px 7px; border-radius: 3px; white-space: nowrap; }
+.tier.smoke { color: var(--accent); border-color: var(--accent); }
+.tier.tonight { color: var(--partial); border-color: var(--partial); }
+.exercises { color: var(--muted); font-size: 0.88rem; }
+.prompt {
+  background: var(--sunk); border-radius: 4px; padding: 10px 12px; position: relative;
+  font: 0.85rem/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; margin: 0;
+}
+.prompt .copy {
+  float: right; margin: -2px -4px 4px 10px; font: 500 0.72rem/1 var(--body);
+  padding: 5px 8px; border-radius: 3px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.watch { margin: 0; padding-left: 1.1em; display: grid; gap: 3px; font-size: 0.92rem; }
+.watch li::marker { color: var(--muted); }
+.where { font-size: 0.86rem; color: var(--muted); }
+.changed {
+  font-size: 0.9rem; margin: 0; padding: 9px 11px; border-radius: 3px;
+  background: var(--partial-soft); border-left: 3px solid var(--partial);
+}
+.changed b { color: var(--partial); }
+.changed.settled { background: var(--pass-soft); border-left-color: var(--pass); }
+.changed.settled b { color: var(--pass); }
+.grade-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; border-top: 1px dashed var(--rule); padding-top: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { font: 600 0.74rem/1 var(--body); letter-spacing: 0.06em; text-transform: uppercase; padding: 8px 10px; cursor: pointer; color: var(--muted); background: var(--surface); }
+.seg label + input + label, .seg input + label ~ label { border-left: 1px solid var(--rule); }
+.seg input:checked + label.pass { background: var(--pass); color: var(--surface); }
+.seg input:checked + label.partial { background: var(--partial); color: var(--surface); }
+.seg input:checked + label.fail { background: var(--fail); color: var(--surface); }
+.seg input:checked + label.none { background: var(--sunk); color: var(--ink); }
+.grade-row textarea {
+  flex: 1 1 260px; min-height: 36px; resize: vertical; font: 0.88rem/1.4 var(--body);
+  border: 1px solid var(--rule); border-radius: 3px; padding: 7px 9px; background: var(--surface); color: var(--ink);
+}
+
+.results { display: grid; gap: 12px; border-top: 3px solid var(--ink); padding-top: 20px; }
+.results textarea {
+  width: 100%; min-height: 180px; font: 0.82rem/1.5 var(--mono); background: var(--sunk); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 12px;
+}
+.hidden-by-filter { display: none; }
+
+@media (max-width: 560px) {
+  .test { grid-template-columns: 1fr; }
+  .tid { text-align: left; padding: 10px 18px; border-right: 0; border-bottom: 1px solid var(--rule); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar i { transition: width 200ms ease; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">Marvel Champions · agent skill · live testing</span>
+    <h1>mc-jarvis Live Trials</h1>
+    <p class="lede">37 prompts across nine areas, each aimed at something the tool now does or should honestly decline. You judge the game; the transcript tells me what the agent actually ran.</p>
+    <p class="lede"><b>Left to run:</b> N1 and N2, both new. C1, A5 and B1 were re-run on 19 September; every earlier rerun is settled, and H1 is parked — pi behaved, the loop was a model limit. The <b>Left to run</b> filter shows just the two.</p>
+  </header>
+
+  <div class="protocol">
+    <div>
+      <h3>Before each session</h3>
+      <ol>
+        <li>In <code>~/projects/jarvis-test</code>: <code>mc-jarvis install-skill</code>. No <code>update</code> needed — nothing changed the index format.</li>
+        <li>Clear the agent's memory and any deck files earlier tests left behind, so nothing primes it:
+          <pre class="cmd">rm -f ~/.claude/projects/-home-jgatkinsn-projects-jarvis-test/memory/*
+rm -f ~/projects/jarvis-test/*.json ~/projects/jarvis-test/*.txt</pre></li>
+        <li>One test per fresh session (<code>/clear</code> between). Paste the prompt as the first message, word for word.</li>
+        <li>Follow-ups only where a test lists one.</li>
+      </ol>
+    </div>
+    <div>
+      <h3>Grading</h3>
+      <div class="grades">
+        <div class="grade"><span class="pill pass">Pass</span><span>Right, used the tool, cited where it should, nothing a strong player would add.</span></div>
+        <div class="grade"><span class="pill partial">Partial</span><span>Right direction, but missed or blurred something that matters at the table.</span></div>
+        <div class="grade"><span class="pill fail">Fail</span><span>Wrong, invented, a tool error, or it guessed where it should have said it didn't know.</span></div>
+      </div>
+      <p style="margin-top:12px">Leave the note blank when nothing new happened — a blank note beside a pass is unambiguous. Where something did, one sentence on what a good player would have said is the most useful thing on this page.</p>
+    </div>
+    <div>
+      <h3>Getting it back to me</h3>
+      <ol>
+        <li>Grade here as you go; it saves in this browser.</li>
+        <li>Copy the results block at the bottom and paste it into our session.</li>
+        <li>I match each ID to its transcript by the first message and report what the agent ran, where the tool fell short, and what to fix.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="board" role="region" aria-label="Progress">
+    <div class="tally" id="tally"></div>
+    <div class="bar" id="bar" aria-hidden="true"></div>
+    <div class="filters" id="filters" role="group" aria-label="Filter tests"></div>
+  </div>
+
+  <main id="areas" style="display:grid; gap:40px"></main>
+
+  <section class="results">
+    <h2>Results to paste back</h2>
+    <p>Only graded tests are included. Paste this into the mc-jarvis session and say which to review.</p>
+    <textarea id="results-out" readonly aria-label="Results summary"></textarea>
+    <div><button class="copybtn" id="copy-results" type="button">Copy results</button> <span id="copied" class="where" aria-live="polite"></span></div>
+  </section>
+</div>
+
+<script>
+const AREAS = [
+  { key: "S", name: "Setup and scope", blurb: "The skill answers here, stays out of everything else, and knows what it holds." },
+  { key: "C", name: "Cards and errata", blurb: "Ambiguous names, two-sided cards, and the mixed state of errata in the card data." },
+  { key: "R", name: "Rules and hero rules", blurb: "Glossary entries, FAQ answers, trigger timing, and the rulebooks it fetches on demand." },
+  { key: "A", name: "Scenario assessment", blurb: "Thresholds that scale per hero, growing decks, alternate losses, several villains, nemesis pulls." },
+  { key: "D", name: "Decks", blurb: "Every way a deck arrives, legality, side decks, and thwart that is not the printed stat." },
+  { key: "M", name: "Deck against scenario", blurb: "The judgement layer: does the agent turn the facts into advice a player would trust." },
+  { key: "B", name: "Building with a collection", blurb: "The one flow with side effects: it records what you own, then builds from it." },
+  { key: "X", name: "Honest limits", blurb: "Things the tool does not do. The pass is saying so plainly, not improvising." },
+  { key: "H", name: "Other agents", blurb: "The same skill in Codex, opencode or pi should give the same numbers." },
+];
+
+const TESTS = [
+  // S
+  { id: "S1", area: "S", tier: "smoke", title: "Is the data current",
+    prompt: "Is my Marvel Champions data up to date, and which Rules Reference version are you answering from?",
+    watch: ["Runs mc-jarvis status rather than answering from memory", "Names Rules Reference 1.8 and the index age", "Does not run update unasked"],
+    exercises: "status, staleness rule" },
+  { id: "S2", area: "S", tier: "adversarial", title: "Stays out of other projects",
+    where: "Run from any unrelated project folder, not jarvis-test.",
+    prompt: "What does the Patrol keyword do in Marvel Champions?",
+    watch: ["The mc-jarvis skill does not load at all", "Any answer is the agent's own, with no mc-jarvis commands run"],
+    exercises: "workspace-scoped install" },
+  { id: "S3", area: "S", tier: "adversarial", title: "Not every question is the game",
+    prompt: "What's a good weeknight chili recipe?",
+    watch: ["Skill not invoked", "No mc-jarvis commands in the transcript"],
+    exercises: "skill description triggering" },
+
+  // C
+  { id: "C1", area: "C", tier: "smoke", settled: "Re-run 19 Sep. Lists now lead with the name, the alter-ego that separates it, the kind of card and the product — Black Panther (Shuri), hero, Black Panther pack — with the code only inside the command to type.",
+    title: "A name shared by several cards",
+    prompt: "What does Black Panther do?",
+    watch: ["Names all four in your terms, not by collector number", "Asks which you meant rather than picking one silently"],
+    exercises: "identity ambiguity, human naming" },
+  { id: "C2", area: "C", tier: "depth", title: "Both sides of a main scheme",
+    prompt: "Show me the Making Connections main scheme from The Hood.",
+    watch: ["Shows both sides without asking which", "Stage 1B: starts at 1 per hero, +1 per hero each villain phase, completes at 5 per hero"],
+    exercises: "two-faced cards, scheme threat" },
+  { id: "C3", area: "C", tier: "depth", title: "Your printed card predates the erratum",
+    prompt: "My Superhuman Law Division card has a (thwart) label on its Alter-Ego Action, so it counts as a thwart, right?",
+    watch: ["Finds the erratum that removed the (thwart) label, cited to the Rules Reference, p.64", "Explains your printing predates the correction; does not call your reading wrong"],
+    exercises: "errata applied, printed-copy note" },
+  { id: "C4", area: "C", tier: "depth", title: "The card data is the old wording",
+    prompt: "What exactly does Synth-Suit do?",
+    watch: ["Gives the corrected wording (resolve, not trigger), cited to p.65", "Says the card text it holds is the original"],
+    exercises: "errata not applied" },
+  { id: "C5", area: "C", tier: "adversarial", title: "A card that does not exist",
+    prompt: "What does the Gamma Overload Protocol card do, and which aspect is it?",
+    watch: ["Says no such card is in the data", "Does not invent text, cost or aspect"],
+    exercises: "honest not-found" },
+  { id: "N2", area: "C", tier: "new", title: "Naming cards in conversation",
+    prompt: "Which Spider-Man ally is best in a Protection deck?",
+    watch: ["Three cards are called Spider-Man: tells them apart as Peter Parker, Miles Morales and Hobie Brown", "Names each by card kind and product, not by collector number, in its own sentences too", "Picks one and says why, rather than listing all three and stopping"],
+    exercises: "human naming in prose, ambiguity in a real question" },
+
+  // R
+  { id: "R1", area: "R", tier: "smoke", title: "Two keywords people confuse",
+    prompt: "What's the difference between stalwart and steady?",
+    watch: ["Looks both up; stalwart p.40, steady p.41", "Stalwart: cannot be stunned or confused. Steady: needs two of each"],
+    exercises: "rules show, citations" },
+  { id: "R2", area: "R", tier: "depth", title: "Trigger ordering",
+    prompt: "When the villain attacks me, in what order do forced interrupts, interrupts and the boost card happen?",
+    watch: ["Uses mc-jarvis timing and/or rules, and cites them", "Does not state an ordering from memory as fact"],
+    exercises: "timing reference" },
+  { id: "R3", area: "R", tier: "depth", title: "An answer that only lives in the FAQ",
+    prompt: "If Depowered is in Doctor Strange's play area, can he still use his Invocation deck?",
+    watch: ["Finds the FAQ answer, Rules Reference p.59", "Answers from it rather than reasoning it out", "Follow-up worth trying: ask the same about Daredevil's Sense deck. Superhuman Senses PLAYS the card, so the FAQ's exemption does not carry over"],
+    exercises: "FAQ indexing, side-deck verbs" },
+  { id: "R4", area: "R", tier: "depth", title: "A hero pack rulesheet it has to fetch",
+    prompt: "How does Storm's Weather deck work, including setup?",
+    watch: ["Runs mc-jarvis rules fetch for Storm without asking you", "Cites storm-rulesheet, not a guess"],
+    exercises: "rules fetch, hero rulesheet" },
+  { id: "R5", area: "R", tier: "depth", title: "Two side decks at once",
+    prompt: "How do Hercules's Labor deck and Gift deck work?",
+    watch: ["Fetches hercules-rulesheet and cites it", "Keeps the two decks distinct"],
+    exercises: "rules fetch, multiple side decks" },
+  { id: "R6", area: "R", tier: "depth", title: "A hero from a campaign box",
+    prompt: "Does Echo have any special setup rules?",
+    watch: ["Looks in the Fear No Evil rulebook (the box Echo came in)", "If there are none, says so rather than inventing some"],
+    exercises: "box rulebook mapping" },
+  { id: "R7", area: "R", tier: "adversarial", title: "A false premise",
+    prompt: "Since tough status cards also block piercing damage, what's the best way to handle tough minions?",
+    watch: ["Corrects the premise from the rules (piercing p.32)", "Then answers the real question"],
+    exercises: "rules over user premise" },
+  { id: "R8", area: "R", tier: "depth", title: "A scenario's own rulebook",
+    prompt: "What's unusual about how The Wrecking Crew is set up?",
+    watch: ["Fetches the-wrecking-crew-rulebook by name, without being given a slug", "Four separate 15-card decks, no Standard or Expert set, no nemesis cards, no obligations", "Cites the rulebook rather than reasoning from card text"],
+    exercises: "rules fetch for scenarios and campaigns" },
+
+  // A
+  { id: "A1", area: "A", tier: "smoke", title: "The first villain",
+    prompt: "How hard is Rhino for one player on standard?",
+    watch: ["Runs mc-jarvis assess rhino", "Uses stage hit points and threat thresholds from the tool", "No nemesis warning: nothing here makes it more likely than usual", "Follow-up: tell it one of those numbers is different. It should re-check, not agree"],
+    exercises: "assess, pushback" },
+  { id: "A2", area: "A", tier: "smoke", title: "Chosen modular sets, two players",
+    prompt: "The Hood on expert with two players. My seven modular sets are Beasty Boys, Brothers Grimm, Crossfire's Crew, Mister Hyde, Ransacked Armory, State of Emergency and Streets of Mayhem. How rough is it?",
+    watch: ["Passes the seven set names straight through, without hunting for codes", "Thresholds at two players: 10 / 16 / 20, +2 per villain phase", "Opening deck excludes your seven sets, with the note that setup adds one at random", "Stages II and III only"],
+    exercises: "player-chosen pools, difficulty composition, set names" },
+  { id: "A3", area: "A", tier: "depth", title: "Another way to lose",
+    prompt: "What should I watch out for in Project Wideawake?",
+    watch: ["Names the alternate loss condition", "Zero Tolerance is permanent in this scenario specifically"],
+    exercises: "alternate loss, permanence" },
+  { id: "A4", area: "A", tier: "depth", title: "Villains together versus in rotation",
+    prompt: "How is fighting the Wrecking Crew different from fighting the Sinister Six?",
+    watch: ["Wrecking Crew: four villains with four separate encounter decks, no Standard or Expert set, no nemesis or obligations", "Sinister Six: a number in play that scales with players, not all six at once", "Fetches the Wrecking Crew rulebook rather than inferring from cards"],
+    exercises: "multi-villain modes, scenario composition" },
+  { id: "A5", area: "A", tier: "depth", settled: "Re-run 19 Sep. assess describes only the table in front of it, so the skill now says to read the other sets directly — `mc-jarvis encounter standard_iii` shows Pursued by the Past and Evil Alliance.",
+    title: "Nemesis on a schedule",
+    prompt: "How do nemesis sets come into play in the Kang scenario, compared with a normal scenario?",
+    watch: ["Kang's Wrath pulls it on a schedule; that is what makes Kang different", "Says every Standard set can draw one out, so the baseline is not scenario-specific", "Reads the other difficulty sets when comparing them: Standard III's pursuit counters, Expert II's second card", "Your nemesis set is yours, not the scenario's"],
+    exercises: "nemesis frequency, comparing difficulty sets" },
+  { id: "A6", area: "A", tier: "depth", title: "Alternating villains",
+    prompt: "What's different about Kang's stage II villain?",
+    watch: ["One of four is chosen at random; stages I and III are fixed", "Does not add all four together"],
+    exercises: "alternates mode" },
+  { id: "A7", area: "A", tier: "depth", title: "Mixing the difficulty sets",
+    prompt: "How does Rhino change if I play the Standard III set with Expert II?",
+    watch: ["Passes --standard-set standard_iii --expert-set expert_ii rather than refusing the combination", "Header names both sets, and the deck holds both", "Expert stages (II and III)", "Nemesis is raised here: Standard III schedules it and Expert II adds a second card"],
+    exercises: "standard and expert sets chosen independently" },
+
+  // D
+  { id: "D1", area: "D", tier: "smoke", title: "A published decklist link",
+    prompt: "Is this deck legal? https://marvelcdb.com/decklist/view/64331",
+    watch: ["Fetches it and runs deck check", "Gives a verdict rule by rule, not a vibe"],
+    exercises: "decklist URL" },
+  { id: "D2", area: "D", tier: "depth", title: "A written list with a typo",
+    prompt: "Is this Spider-Man deck legal?\n\nhero: Spider-Man\naspect: justice\n3x Swining Web Kick\n2 Backflip\n1x Web-Shooters\nBlack Cat\n2x Get Behind Me!\n3x For Justice!",
+    watch: ["Notices Spider-Man names more than one hero and asks which", "Reports the unresolved names instead of guessing them", "Says it is far short of 40 without padding it for you"],
+    exercises: "written decklists, ambiguity, unknown slots" },
+  { id: "D3", area: "D", tier: "depth", title: "Rules a card name can break",
+    prompt: "Can I run four copies of Tackle in my Justice deck?",
+    watch: ["Two problems: Tackle is a Protection card, and three copies is the cap", "Cites where each comes from"],
+    exercises: "aspect and copy limits" },
+  { id: "D4", area: "D", tier: "depth", title: "A hero with a side deck",
+    where: "Find any public Doctor Strange deck on marvelcdb and paste its link.",
+    prompt: "How good is this Doctor Strange deck at thwarting? <paste link>",
+    watch: ["Names the Invocation deck as outside the 40-50", "Searches and cites his rulesheet for how it is used", "Reads the by-form split, not just his THW"],
+    exercises: "side decks, removal by form" },
+  { id: "D5", area: "D", tier: "depth", title: "A saved file round trip",
+    prompt: "Save this deck to a file and then check it's legal: https://marvelcdb.com/deck/view/1233874",
+    watch: ["deck fetch --json output reads back into deck check with no workaround", "No curl to marvelcdb's API"],
+    exercises: "fetch JSON round trip" },
+
+  // M
+  { id: "M1", area: "M", tier: "smoke", title: "The Daredevil deck against Kang",
+    prompt: "How well would this deck do against Kang on standard? https://marvelcdb.com/deck/view/1233874",
+    watch: ["Sense deck as an extended hand, cited to fear-no-evil-rulebook p.26", "Living Lie Detector: either form, and scales with upgrades on the scheme", "The Best Offense... thwarts with DEF, fed by the deck's DEF upgrades", "Any cut it proposes survives reading the card: Deft Focus pays for Sense cards"],
+    exercises: "the full evaluation path, judgement before cuts" },
+  { id: "M2", area: "M", tier: "depth", title: "A bad matchup it should call bad",
+    where: "Pick a deck you already know struggles against a particular scenario.",
+    prompt: "Be honest: how does this deck do against <scenario>? <paste link>",
+    watch: ["Names the specific problems from assess --deck (tough vs piercing, retaliate vs ranged, guard, threat pace)", "Does not soften a poor matchup into 'it depends'"],
+    exercises: "judgement from scenario-versus-deck facts" },
+  { id: "M3", area: "M", tier: "adversarial", title: "Two players, two decks",
+    prompt: "My friend and I are taking on The Wrecking Crew on standard with these two decks. Who should handle what? <link 1> <link 2>",
+    watch: ["Fetches the Wrecking Crew rulebook", "Assesses at two players", "Divides roles from the decks' actual answers, and says where the tool gives no team numbers", "No trait treated as a stat"],
+    exercises: "multiplayer judgement, limits" },
+
+  // B
+  { id: "B1", area: "B", tier: "depth", settled: "Re-run 19 Sep. `collection set` no longer replaces a recorded collection without --replace, and `collection clear` forgets one. Your collection is cleared, so the agent starts from nothing.",
+    title: "Build from what you own",
+    prompt: "I only own the Core Set. Build me a legal Iron Man deck using just that.",
+    watch: ["Asks before recording your collection", "Builds with --owned, then runs deck check before presenting it", "Stays inside Core Set cards"],
+    exercises: "collection, --owned, check before offering" },
+  { id: "N1", area: "B", tier: "new", title: "Recording a real collection",
+    where: "Run this before B1 if you want your own collection back; edit the list to what you actually own.",
+    prompt: "Set my collection: I own the Core Set, Fear No Evil, The Hood, and the Doctor Strange and Storm hero packs.",
+    watch: ["Finds the pack codes rather than asking you for them", "Says what was recorded, in product names", "If something is already recorded, it says so and does not replace it silently", "A later `card search --owned` is narrowed to those packs"],
+    exercises: "collection set, --replace guard, pack names" },
+
+  // X
+  { id: "X1", area: "X", tier: "adversarial", title: "Campaign mode",
+    prompt: "Plan my upgrades across The Rise of Red Skull campaign.",
+    watch: ["Fetches the Rise of Red Skull rulebook successfully", "Says campaign mode is not something the tool models", "Asks which hero you are taking through rather than guessing from files in the folder"],
+    exercises: "declared gap, campaign rulebook" },
+  { id: "X2", area: "X", tier: "adversarial", title: "Heroic difficulty",
+    prompt: "How much harder is Rhino on heroic 2 than on standard?",
+    watch: ["Says heroic levels are recorded but not applied to the numbers", "Does not produce heroic-adjusted figures"],
+    exercises: "declared gap" },
+
+  // H
+  { id: "H1", area: "H", tier: "cross", settled: "Parked. pi did what it should; the loop was a model limit, not the skill.",
+    title: "Same numbers, different agent",
+    where: "In Codex, opencode or pi, from jarvis-test after install-skill. opencode and pi need the folder trusted first.",
+    prompt: "Run A2, then M1, word for word.",
+    watch: ["The skill loads without you naming it", "The thresholds and deck facts match what Claude Code reported"],
+    exercises: "agent-agnostic skill" },
+];
+
+const TIERS = [
+  { key: "left", label: "Left to run" },
+  { key: "all", label: "All" },
+  { key: "smoke", label: "Smoke" },
+  { key: "depth", label: "Depth" },
+  { key: "adversarial", label: "Adversarial" },
+  { key: "cross", label: "Other agents" },
+];
+const TIER_LABEL = { smoke: "Smoke", depth: "Depth", adversarial: "Adversarial", cross: "Other agents", new: "New" };
+const KEY = "mcj-live-trials-v1";
+
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { state = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const isLeft = t => t.tier === "new";
+
+function renderAreas() {
+  const root = document.getElementById("areas");
+  root.innerHTML = AREAS.map(a => {
+    const tests = TESTS.filter(t => t.area === a.key);
+    return `<section class="area" aria-labelledby="h-${a.key}">
+      <header><span class="eyebrow">${a.key} · ${tests.length} test${tests.length === 1 ? "" : "s"}</span>
+      <h2 id="h-${a.key}">${esc(a.name)}</h2><p>${esc(a.blurb)}</p></header>
+      ${tests.map(renderTest).join("")}
+    </section>`;
+  }).join("");
+}
+
+function renderTest(t) {
+  const s = state[t.id] || {};
+  const opt = (v, label) => `<input type="radio" name="st-${t.id}" id="st-${t.id}-${v}" value="${v}" ${s.status === v || (!s.status && v === "none") ? "checked" : ""}><label for="st-${t.id}-${v}" class="${v}">${label}</label>`;
+  return `<article class="test" data-tier="${t.tier}" data-left="${isLeft(t) ? 1 : 0}" data-id="${t.id}" data-status="${s.status || "none"}">
+    <div class="tid">${t.id}</div>
+    <div class="tbody">
+      <div class="thead"><h3>${esc(t.title)}</h3>
+        <span class="tags">${isLeft(t) ? '<span class="tier tonight">Left to run</span>' : ""}<span class="tier ${t.tier}">${TIER_LABEL[t.tier]}</span></span>
+      </div>
+      ${t.settled ? `<p class="changed settled"><b>Since your last run:</b> ${esc(t.settled)}</p>` : ""}
+      ${t.rerun ? `<p class="changed"><b>Changed since your run:</b> ${esc(t.rerun)}</p>` : ""}
+      ${t.where ? `<p class="where">${esc(t.where)}</p>` : ""}
+      <pre class="prompt"><button class="copy" type="button" data-copy="${t.id}">Copy</button>${esc(t.prompt)}</pre>
+      <ul class="watch">${t.watch.map(w => `<li>${esc(w)}</li>`).join("")}</ul>
+      <p class="exercises">Exercises: ${esc(t.exercises)}</p>
+      <div class="grade-row">
+        <div class="seg" role="radiogroup" aria-label="Grade ${t.id}">
+          ${opt("none", "Not run")}${opt("pass", "Pass")}${opt("partial", "Partial")}${opt("fail", "Fail")}
+        </div>
+        <textarea id="note-${t.id}" data-note="${t.id}" rows="1" placeholder="Blank if nothing new; otherwise what a good player would have said">${esc(s.note || "")}</textarea>
+      </div>
+    </div>
+  </article>`;
+}
+
+let tierFilter = "left";
+function renderFilters() {
+  document.getElementById("filters").innerHTML = TIERS.map(f =>
+    `<button type="button" data-filter="${f.key}" aria-pressed="${tierFilter === f.key}">${f.label}</button>`).join("");
+}
+function applyFilter() {
+  document.querySelectorAll(".test").forEach(el => {
+    const keep = tierFilter === "all"
+      || (tierFilter === "left" ? el.dataset.left === "1"
+                                : el.dataset.tier === tierFilter);
+    el.classList.toggle("hidden-by-filter", !keep);
+  });
+  document.querySelectorAll("section.area").forEach(sec => {
+    const any = sec.querySelector(".test:not(.hidden-by-filter)");
+    sec.style.display = any ? "" : "none";
+  });
+}
+
+function renderTally() {
+  const counts = { pass: 0, partial: 0, fail: 0, none: 0 };
+  TESTS.forEach(t => counts[(state[t.id] || {}).status || "none"]++);
+  const total = TESTS.length;
+  const item = (k, label, color) => `<span><i class="dot" style="background:var(--${color})"></i><b>${counts[k]}</b>${label}</span>`;
+  document.getElementById("tally").innerHTML =
+    item("pass", "pass", "pass") + item("partial", "partial", "partial") + item("fail", "fail", "fail") + item("none", "not run", "skip");
+  document.getElementById("bar").innerHTML = ["pass", "partial", "fail"].map(k =>
+    `<i style="width:${(counts[k] / total) * 100}%;background:var(--${k})"></i>`).join("");
+
+  const lines = TESTS.filter(t => (state[t.id] || {}).status && state[t.id].status !== "none").map(t => {
+    const s = state[t.id];
+    return `${t.id} | ${s.status.toUpperCase()} | ${(s.note || "").replace(/\s+/g, " ").trim()}`;
+  });
+  document.getElementById("results-out").value = lines.length
+    ? `mc-jarvis live trials, ${new Date().toISOString().slice(0, 10)}\n` + lines.join("\n")
+    : "Nothing graded yet.";
+}
+
+async function copyText(text, done) {
+  try { await navigator.clipboard.writeText(text); done("Copied"); }
+  catch (e) {
+    const ta = document.getElementById("results-out");
+    ta.focus(); ta.select();
+    done("Selected - press Ctrl+C / Cmd+C");
+  }
+}
+
+document.addEventListener("change", e => {
+  const r = e.target;
+  if (r.matches('input[type="radio"][name^="st-"]')) {
+    const id = r.name.slice(3);
+    state[id] = Object.assign({}, state[id], { status: r.value });
+    save();
+    r.closest(".test").dataset.status = r.value;
+    renderTally();
+  }
+});
+document.addEventListener("input", e => {
+  const n = e.target;
+  if (n.matches("textarea[data-note]")) {
+    const id = n.dataset.note;
+    state[id] = Object.assign({}, state[id], { note: n.value });
+    save();
+    renderTally();
+  }
+});
+document.addEventListener("click", e => {
+  const f = e.target.closest("[data-filter]");
+  if (f) { tierFilter = f.dataset.filter; renderFilters(); applyFilter(); return; }
+  const c = e.target.closest("[data-copy]");
+  if (c) {
+    const t = TESTS.find(x => x.id === c.dataset.copy);
+    navigator.clipboard?.writeText(t.prompt).then(() => { c.textContent = "Copied"; setTimeout(() => c.textContent = "Copy", 1400); })
+      .catch(() => { c.textContent = "Select text"; });
+    return;
+  }
+  if (e.target.id === "copy-results") {
+    copyText(document.getElementById("results-out").value, msg => {
+      const out = document.getElementById("copied"); out.textContent = msg;
+      setTimeout(() => out.textContent = "", 2200);
+    });
+  }
+});
+
+renderAreas();
+renderFilters();
+applyFilter();
+renderTally();
+</script>
