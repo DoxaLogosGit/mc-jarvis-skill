@@ -132,7 +132,11 @@ def handle_search(args) -> int:
         return 1
     for h in hits:
         cost = "" if h["cost"] is None else f"cost {h['cost']}"
-        print(f"{h['name']:<34} {describe(conn, h):<40} {cost:<7} "
+        # Eight allies are called Spider-Man and the subtitle is the only
+        # thing that tells Miles Morales from Hobie Brown. Without it a
+        # reader is left with collector numbers, which name nobody.
+        shown = h["name"] + (f" ({h['subname']})" if h.get("subname") else "")
+        print(f"{shown:<38} {describe(conn, h):<40} {cost:<7} "
               f"{h['code']}")
     if getattr(hits, "truncated", False):
         print(f"\n(first {len(hits)}; more match - raise --limit or "

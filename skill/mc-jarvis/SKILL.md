@@ -200,11 +200,15 @@ Two things to carry into any answer that quotes one:
 ## Naming cards to a player
 
 A collector number means nothing at the table. Name a card by its **name**,
-what **kind** of card it is, and the **product** it came in — "Black Panther
-(Shuri), the hero from the Black Panther pack", not "51001a". Where several
-cards share a name, the alter-ego or subtitle separates them, which is what
-the commands now print. Quote a code only inside a command the player is
-meant to run.
+its **subtitle** where one exists, what **kind** of card it is and the
+**product** it came in: "Spider-Man (Miles Morales), the Protection ally
+from Sinister Motives". Eight allies are called Spider-Man, and Miles
+Morales, Hobie Brown and Otto Octavius are what a player recognises; the
+commands print those, so carry them into your own sentences.
+
+**Never write a code in prose** — it belongs only inside a command the
+player runs. And when asked which card is best, name every candidate
+legal in that deck, in those terms, before choosing one.
 
 ## Reading the output
 

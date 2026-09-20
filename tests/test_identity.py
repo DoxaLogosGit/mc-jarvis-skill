@@ -213,3 +213,21 @@ def test_a_card_is_described_in_a_players_terms(real_index):
         "encounter minion, Civil War"
     assert cards.describe(real_index, rows["01040a"]) == "hero, Core Set"
     assert cards.describe(real_index, rows["60001b"]).startswith("alter-ego")
+
+
+def test_search_results_carry_the_subtitle(real_index, capsys, monkeypatch):
+    """Eight allies are called Spider-Man. Listed by name alone, an agent
+    had nothing but collector numbers to tell Miles Morales from Hobie
+    Brown - and wrote those numbers at the player."""
+    import argparse
+
+    from mc_jarvis import cards
+
+    monkeypatch.setattr(cards, "_open", lambda: real_index)
+    cards.handle_search(argparse.Namespace(
+        query="Spider-Man", type="ally", aspect=None, cost=None, trait=None,
+        text=None, limit=20, owned=False, json=False))
+    out = capsys.readouterr().out
+    for who in ("Miles Morales", "Hobie Brown", "Peter Parker",
+                "Otto Octavius"):
+        assert who in out, who
