@@ -58,6 +58,24 @@ def _positive(value: str) -> int:
     return n
 
 
+def _heroic(value: str) -> int:
+    """A heroic level: the mode is off at 0 and scales up from there.
+
+    This used `_positive`, which refuses 0 - so the one value a player
+    means by "no heroic" came back as an unusable limit. The rules put no
+    ceiling on the level, so none is invented here.
+    """
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number")
+    if n < 0:
+        raise argparse.ArgumentTypeError(
+            f"{n} is not a heroic level - the mode is off at 0 and adds "
+            f"cards from 1 up")
+    return n
+
+
 def _leaf(sub, name: str, help_: str, *, owned: bool = False,
           **kw) -> argparse.ArgumentParser:
     """A leaf command. `--json` everywhere; `--owned` only where it acts.
@@ -183,8 +201,9 @@ def build_parser() -> argparse.ArgumentParser:
     asr.add_argument("--expert-set", dest="expert_set",
                      choices=list(_expert_sets()) + ["none"],
                      help="the expert set added on top, or none")
-    asr.add_argument("--heroic", type=_positive, default=0,
-                     help="recorded, but does not change the numbers yet")
+    asr.add_argument("--heroic", type=_heroic, default=0,
+                     help="heroic level: every player is dealt this many "
+                          "further encounter cards each villain phase")
     asr.add_argument("--nemesis", action="append")
     asr.add_argument("--deck",
                      help="a marvelcdb deck id or a local decklist JSON; "

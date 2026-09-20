@@ -558,9 +558,6 @@ before it may be modelled.
   frequency of nemesis appearance through a counter-based timer mechanism.
   Verify against the Standard III rules insert. Until verified, `--nemesis`
   folds the set in without modelling its arrival rate.
-- **Heroic levels add boost icons.** Heroic is prose in a rules insert, not a
-  card set. The exact modifier and how it interacts with `boost_star` need
-  reading before either is encoded.
 - **Campaign mode.** Adds persistent upgrades and campaign-specific cards.
   Scope not yet determined; may not belong in this spec at all.
 
@@ -1923,3 +1920,35 @@ Three method notes for the next round:
   player owned. The test was scoring the wrong behaviour.
 - **Test hygiene is part of the test.** Deck files and a memory file left
   by earlier sessions primed later ones into guessing.
+
+### 14.30 Heroic, read rather than guessed
+
+§10 carried "heroic levels add boost icons" as an unverified claim. It is
+wrong, and the Rules Reference settles it in one paragraph: Modes of Play
+(p.28) says heroic level N deals every player N further encounter cards in
+the deal step of each villain phase. Nothing about boost. Had the guess been
+encoded, half the profile would have moved - boost mean, the histogram, the
+star rate - none of which heroic touches.
+
+That shape is why the mode is one block rather than a multiplier threaded
+through `profile()`. Heroic puts no card into the encounter deck, so every
+composition figure is identical at level 3 and level 0, and a test asserts
+exactly that: the two profiles compare equal on sixteen keys.
+
+What heroic does change is the rate the deck empties, and the reshuffle line
+already in `_line` says the scenario gains a permanent acceleration on every
+reshuffle (RR p.17). The comment beside it refused to invent a rate, because
+cards leave the deck for three different reasons. A bound needs no such
+invention: the deal step alone is a floor on cards drawn, so `deck_size //
+dealt_per_phase` is a ceiling on villain phases before the first reshuffle,
+and it is printed as one. The same step deals another card per hazard icon
+in play (RR p.47), which is named beside it - the number moves for a reason
+that is not the mode, and unlike the mode it is not chosen. The bound is the
+loose one deliberately: it divides `deck_size` where the first reshuffle
+comes off the smaller `opening_deck_size`, which keeps it a ceiling and keeps
+it the same number the reshuffle line beside it already prints.
+
+Two smaller repairs came with it. `--heroic` was validated with `_positive`,
+which refused 0 - the one value a player means by "no heroic" - and the
+header line printed nothing about the mode, so `--heroic 3` and `--heroic 0`
+produced identical output, the silent-flag class §13 warns about.

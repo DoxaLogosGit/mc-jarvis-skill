@@ -274,3 +274,12 @@ def test_every_charted_trigger_answers_to_lower_case():
 
 def test_recasing_still_refuses_something_that_is_not_a_trigger():
     assert timing.classify(timing.recase("nonsense here")) is None
+
+
+def test_heroic_zero_is_a_level_not_a_refusal():
+    """`--heroic` validated with `_positive`, which refuses 0 as "not a
+    usable limit" - the one value a player means by "no heroic"."""
+    from mc_jarvis.cli import parse_args
+
+    assert parse_args(["assess", "rhino", "--heroic", "0"]).heroic == 0
+    assert parse_args(["assess", "rhino", "--heroic", "3"]).heroic == 3

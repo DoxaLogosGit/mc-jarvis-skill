@@ -98,7 +98,7 @@ default when you are quoting to the user.
 | one card in full | `mc-jarvis card show <name-or-code> [--explain]` |
 | a hero's kit | `mc-jarvis identity <name>` |
 | an encounter set | `mc-jarvis encounter <villain-or-set>` |
-| what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty]` |
+| what a scenario throws at you | `mc-jarvis assess <scenario> [--modular --players --difficulty --heroic]` |
 | a rules term | `mc-jarvis rules show <term>` |
 | a rules question | `mc-jarvis rules search <text>` |
 | a hero's or product's own rules | `mc-jarvis rules fetch <hero>` |
@@ -385,9 +385,8 @@ names the cards behind it, so cite rather than assert. `--modular`
 
 - **Read the scenario's own rulebook first.** Unusual scenarios are
   defined there, not on the cards: The Wrecking Crew uses no Standard or
-  Expert set, no nemesis and no obligations. Run
-  `mc-jarvis rules fetch <scenario>` (it maps a scenario to its pack's
-  rulebook), then `rules search` it, and cite what you use.
+  Expert set, no nemesis and no obligations. `mc-jarvis rules fetch
+  <scenario>` maps one to its pack's rulebook; `rules search` it and cite.
 - **A scenario is not a villain.** Several choose or compose their
   villain, and some villain sets are components. Ask for the scenario.
   No villain card is ever an encounter-deck member.
@@ -401,6 +400,9 @@ names the cards behind it, so cite rather than assert. `--modular`
   Expert II for Expert, in any combination. `--difficulty` names a common
   pairing, `--standard-set` and `--expert-set` set either half, and
   `assess` shows only the villain stages that table fights.
+- **Heroic is a clock, not more cards to answer.** `--heroic N` deals
+  every player N further encounter cards each villain phase; the deck's
+  contents are unchanged, so it asks for draw and tempo, not more tech.
 - **"Another way to lose" is not a footnote.** The line names the card
   and the kind of thing to watch — a counter, a count of cards, a
   character who must stay alive — and stops, because the threshold is
@@ -410,10 +412,8 @@ names the cards behind it, so cite rather than assert. `--modular`
   side scheme you can defeat is a chore; on a **permanent** card it is a
   clock. Only Project Wideawake makes Operation Zero Tolerance permanent.
 - **To compare difficulties, read the sets themselves.** `assess` reports
-  the table in front of it, so a question about how Standard II or III
-  differ is answered with `mc-jarvis encounter standard_ii`,
-  `encounter standard_iii`, `encounter expert_ii`: each lists its cards,
-  and that is where the nemesis mechanism differs between them.
+  the table in front of it; `mc-jarvis encounter standard_ii` (or
+  `standard_iii`, `expert_ii`) lists the cards, nemesis mechanism and all.
 - **A nemesis set is a player's, not the scenario's.** Pass it with
   `--nemesis`, never `--modular`, and say whose it is. Every Standard set
   can draw one out, so that is not news: `assess` names nemesis pulls

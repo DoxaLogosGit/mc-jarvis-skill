@@ -493,6 +493,41 @@ def caveats(scenario: Scenario, sets: list[str],
     return out
 
 
+def _pace(scenario: Scenario, size: int, cards: list[dict]) -> dict | None:
+    """How fast heroic mode empties the encounter deck.
+
+    Heroic level N hands every player N further encounter cards in the
+    deal step of the villain phase (RR p.28). That is the only thing the
+    mode changes: no card joins the deck, so every composition figure
+    beside this one is the same at heroic 3 as at heroic 0, and scaling
+    any of them here would be a bug.
+
+    The phase count is a ceiling rather than a forecast. The same step
+    deals a further card per hazard icon in play (RR p.47), and boost
+    cards and surge take more off the top, so the deck can only run out
+    sooner than this - never later.
+    """
+    if not scenario.heroic:
+        return None
+    base = scenario.players
+    extra = scenario.players * scenario.heroic
+    per_phase = base + extra
+    return {
+        "level": scenario.heroic,
+        "dealt_per_phase": per_phase,
+        "at_the_base_rate": base,
+        "from_heroic": extra,
+        # Floor division: a partial pass through the deck is not a phase
+        # anyone plays, and rounding up would claim a phase the deck
+        # cannot supply.
+        "phases_to_reshuffle": size // per_phase if per_phase else None,
+        # Named because it moves the same number, from the board rather
+        # than from the mode - and unlike heroic it is not chosen.
+        "hazard_icons": sum((c.get("scheme_hazard") or 0) * c["quantity"]
+                            for c in cards),
+    }
+
+
 def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
     """What a scenario's encounter deck contains, with the cards behind it.
 
@@ -521,6 +556,10 @@ def profile(conn, scenario: Scenario, *, added: int = 0) -> dict:
         "modular_kind": scenario.modular_kind,
         "difficulty": scenario.difficulty,
         "players": scenario.players,
+        "heroic": scenario.heroic,
+        # Null at heroic 0, which is every game that has not chosen the
+        # mode; a block of zeroes would read as a rate that applies.
+        "pace": _pace(scenario, size, cards),
         "deck_size": size,
         "opening_deck_size": size - sum(c["quantity"] for c in cycling),
         # Named, not just subtracted: three cards corpus-wide, and a
@@ -1446,6 +1485,23 @@ def _line(step: dict) -> None:
     print(f"    every time these {step['deck_size']} cards run out and reshuffle, "
           f"the scenario gains another permanent +1 threat per villain "
           f"phase")
+    pace = step.get("pace")
+    if pace:
+        # Printed only when the mode is on. Heroic 0 is the default for
+        # every game, and a line about a mode nobody chose is noise.
+        print(f"    heroic {pace['level']}: {pace['dealt_per_phase']} "
+              f"encounter cards dealt each villain phase "
+              f"({pace['at_the_base_rate']} at the base rate, "
+              f"{pace['from_heroic']} more from the mode) - so at most "
+              f"{pace['phases_to_reshuffle']} villain phases before that "
+              f"reshuffle")
+        print("      a ceiling, not a forecast: boost cards and surge "
+              "take more off the top"
+              + (f", and a hazard icon in play adds another card to the "
+                 f"same step ({pace['hazard_icons']} in this deck)"
+                 if pace["hazard_icons"] else ""))
+        print("      the deck itself is unchanged - heroic adds no cards "
+              "to it, so every figure above holds at any level")
     dem = step.get("demands") or {}
     if dem:
         parts, gifts = [], []
@@ -1548,7 +1604,8 @@ def handle(args) -> int:
              "open": " (you choose these)",
              "random": " (drawn at random)"}.get(scenario.modular_kind, "")
     print(f"{scenario.scenario_set} - {scenario.difficulty}, "
-          f"{scenario.players} player(s)")
+          f"{scenario.players} player(s)"
+          + (f", heroic {scenario.heroic}" if scenario.heroic else ""))
     if scenario.growth == "player_chosen":
         print(f"  modular sets: {len(scenario.pool)} chosen and set aside "
               f"- they arrive one at a time, the first at setup")

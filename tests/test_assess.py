@@ -4,6 +4,8 @@ The fixtures here are shaped from the built index, never from an
 assumption about it: the plan's own worked example was an assumption and
 was wrong in three of its four numbers.
 """
+import json
+
 import pytest
 
 from mc_jarvis import assess, index
@@ -1432,3 +1434,68 @@ def test_modular_sets_may_be_named_as_printed(real_index):
     # An unknown name passes through, to be refused with suggestions.
     assert assess.set_codes(real_index, ["Nope"]) == ["Nope"]
     assert assess.set_codes(real_index, None) is None
+
+
+# --- heroic mode (RR p.28) --------------------------------------------
+
+def test_heroic_changes_the_deal_rate_and_nothing_else(real_index):
+    """Heroic hands every player more encounter cards each villain phase.
+    It puts no card into the encounter deck, so every composition figure
+    has to come out identical - the spec's §10 entry guessed it added
+    boost icons, which would have scaled half this profile."""
+    from mc_jarvis import assess
+
+    plain = assess.profile(real_index, assess.resolve(
+        real_index, "rhino", players=3))
+    heroic = assess.profile(real_index, assess.resolve(
+        real_index, "rhino", players=3, heroic=2))
+
+    for key in ("deck_size", "opening_deck_size", "boost", "surge",
+                "density", "by_type", "by_set", "opposition", "minions",
+                "treacheries", "side_schemes", "main_scheme", "demands",
+                "keywords", "scheme_pressure", "nemesis_pull"):
+        assert heroic[key] == plain[key], key
+
+    assert plain["pace"] is None, "heroic 0 is every game that never chose it"
+    assert heroic["pace"] == {
+        "level": 2,
+        # Three players, two further cards each.
+        "dealt_per_phase": 9,
+        "at_the_base_rate": 3,
+        "from_heroic": 6,
+        # A ceiling: 30 cards at 9 a phase is three whole passes.
+        "phases_to_reshuffle": 30 // 9,
+        # A deck property, not a table one: the same step deals a card
+        # per hazard icon in play (RR p.47), so the ceiling is loose by
+        # however many of these reach the table.
+        "hazard_icons": 1,
+    }
+
+
+def test_the_heroic_level_reaches_the_header_and_the_json(real_index, capsys):
+    """A mode that changes the numbers but leaves the output identical is
+    the silent-flag bug class the spec warns about."""
+    import argparse
+
+    from mc_jarvis import assess
+
+    args = argparse.Namespace(
+        villain="rhino", modular=None, players=2, difficulty="standard",
+        standard_set=None, expert_set=None, heroic=3, nemesis=None,
+        deck=None, json=False)
+    assert assess.handle(args) == 0
+    out = capsys.readouterr().out
+    assert "heroic 3" in out.splitlines()[0]
+    # 2 players at level 3: two base cards and six more.
+    assert "8 encounter cards dealt each villain phase" in out
+
+    args.heroic = 0
+    assert assess.handle(args) == 0
+    plain = capsys.readouterr().out
+    assert "heroic" not in plain
+
+    args.heroic, args.json = 3, True
+    assert assess.handle(args) == 0
+    step = json.loads(capsys.readouterr().out)["steps"][0]
+    assert step["heroic"] == 3
+    assert step["pace"]["dealt_per_phase"] == 8
