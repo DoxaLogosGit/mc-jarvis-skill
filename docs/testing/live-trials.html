@@ -196,8 +196,8 @@ section.area > header p { color: var(--muted); }
   <header class="top">
     <span class="eyebrow">Marvel Champions · agent skill · live testing</span>
     <h1>mc-jarvis Live Trials</h1>
-    <p class="lede">37 prompts across nine areas, each aimed at something the tool now does or should honestly decline. You judge the game; the transcript tells me what the agent actually ran.</p>
-    <p class="lede"><b>Left to run:</b> N1 and N2, both new. C1, A5 and B1 were re-run on 19 September; every earlier rerun is settled, and H1 is parked — pi behaved, the loop was a model limit. The <b>Left to run</b> filter shows just the two.</p>
+    <p class="lede">38 prompts across nine areas, each aimed at something the tool now does or should honestly decline. You judge the game; the transcript tells me what the agent actually ran.</p>
+    <p class="lede"><b>Left to run:</b> N2 again, now that search results name who each Spider-Man is, and B2, which is new. C1, A5, B1 and N1 are settled; H1 is parked — pi behaved, the loop was a model limit. The <b>Left to run</b> filter shows just those two.</p>
   </header>
 
   <div class="protocol">
@@ -298,9 +298,10 @@ const TESTS = [
     prompt: "What does the Gamma Overload Protocol card do, and which aspect is it?",
     watch: ["Says no such card is in the data", "Does not invent text, cost or aspect"],
     exercises: "honest not-found" },
-  { id: "N2", area: "C", tier: "new", title: "Naming cards in conversation",
+  { id: "N2", area: "C", tier: "new", rerun: "search results now carry the subtitle - Spider-Man (Hobie Brown), Spider-Man (Otto Octavius) - which is what the agent lacked when it wrote collector numbers at you. The skill also says never to write a code in prose, and to name every candidate legal in the deck before choosing.",
+    title: "Naming cards in conversation",
     prompt: "Which Spider-Man ally is best in a Protection deck?",
-    watch: ["Three cards are called Spider-Man: tells them apart as Peter Parker, Miles Morales and Hobie Brown", "Names each by card kind and product, not by collector number, in its own sentences too", "Picks one and says why, rather than listing all three and stopping"],
+    watch: ["Names every Spider-Man ally you could legally play in Protection - the Protection one and the Basic ones - by subtitle: Miles Morales, Hobie Brown, Peter Parker, Otto Octavius", "No collector numbers anywhere in its prose", "Picks one and says why, rather than listing them and stopping"],
     exercises: "human naming in prose, ambiguity in a real question" },
 
   // R
@@ -407,12 +408,18 @@ const TESTS = [
     exercises: "multiplayer judgement, limits" },
 
   // B
-  { id: "B1", area: "B", tier: "depth", settled: "Re-run 19 Sep. `collection set` no longer replaces a recorded collection without --replace, and `collection clear` forgets one. Your collection is cleared, so the agent starts from nothing.",
+  { id: "B1", area: "B", tier: "depth", settled: "Criterion corrected 20 Sep: \"asks before recording\" was wrong, because the prompt already says what you own — asking again would be poor behaviour. What was missing is that the tool wrote a lasting change and said nothing useful about it; `collection set` now names the packs and what they narrow.",
     title: "Build from what you own",
     prompt: "I only own the Core Set. Build me a legal Iron Man deck using just that.",
-    watch: ["Asks before recording your collection", "Builds with --owned, then runs deck check before presenting it", "Stays inside Core Set cards"],
+    watch: ["Records exactly what you said you own - no more, no less", "Tells you in its reply that it recorded a collection, and what that now narrows", "Builds with --owned, then runs deck check before presenting it", "Stays inside Core Set cards"],
     exercises: "collection, --owned, check before offering" },
-  { id: "N1", area: "B", tier: "new", title: "Recording a real collection",
+  { id: "B2", area: "B", tier: "new", title: "Building when you have not said what you own",
+    where: "Run in a session where you have said nothing about your collection.",
+    prompt: "Build me a Rogue deck I can actually put together tonight.",
+    watch: ["Reads the recorded collection rather than assuming, and says which packs it is building from", "If nothing is recorded, asks what you own instead of building from everything", "Does not replace a recorded collection to answer the question"],
+    exercises: "the ask, when the player has not said" },
+  { id: "N1", area: "B", tier: "depth", settled: "Passed 20 Sep; your collection is recorded as Core Set, Doctor Strange, Fear No Evil, The Hood and Storm.",
+    title: "Recording a real collection",
     where: "Run this before B1 if you want your own collection back; edit the list to what you actually own.",
     prompt: "Set my collection: I own the Core Set, Fear No Evil, The Hood, and the Doctor Strange and Storm hero packs.",
     watch: ["Finds the pack codes rather than asking you for them", "Says what was recorded, in product names", "If something is already recorded, it says so and does not replace it silently", "A later `card search --owned` is narrowed to those packs"],
