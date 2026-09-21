@@ -45,13 +45,15 @@ jobs:
       - name: Build the wheel and the sdist
         run: uv build
 
-      - name: Archive the skill on its own
-        # The package bundles the skill and `install-skill` places it, but
-        # mc-jarvis is agent-agnostic: somebody on another harness may want
-        # the skill file without installing a Python package to get it.
+      - name: Archive the skill folder, tool included
+        # A skill folder that holds its own scripts, which is how skills
+        # shipping code are normally laid out: unzip it into a skills
+        # directory and `scripts/mc-jarvis` runs from there. The wheel
+        # remains for people who would rather install a package.
         run: |
-          zip -r "../dist/mc-jarvis-skill-${version}.zip" mc-jarvis -x '*/.*'
-        working-directory: skill
+          ./tools/build-skill-bundle.sh bundle
+          ( cd bundle && zip -qr "../dist/mc-jarvis-skill-${version}.zip" mc-jarvis )
+          unzip -l "dist/mc-jarvis-skill-${version}.zip" | tail -3
 
       - name: Checksums
         # Over the artifacts only, and written last, so the file does not

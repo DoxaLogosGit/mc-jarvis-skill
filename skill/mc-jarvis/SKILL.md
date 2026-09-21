@@ -89,8 +89,8 @@ user its output — a missing prerequisite should be diagnosed, not guessed.
 
 ## Commands
 
-Every command takes `--json`. Use it when you need to compute; use the
-default when you are quoting to the user.
+Every command takes `--json` — use it to compute, the default to quote.
+If `mc-jarvis` is not on PATH, it is `scripts/mc-jarvis` in this folder.
 
 | Ask | Command |
 |---|---|

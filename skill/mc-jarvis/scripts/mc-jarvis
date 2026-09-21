@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# Run mc-jarvis from this skill folder.
+#
+# A release bundles the package beside this script, at scripts/mc_jarvis,
+# so the skill folder holds the tool rather than pointing at one installed
+# elsewhere. When the package is not here - a plain `install-skill` copies
+# the skill and nothing else - this falls through to whatever `mc-jarvis`
+# or `python -m mc_jarvis` the environment already provides, so the same
+# script works either way.
+#
+# Dependencies are ordinary Python ones: PyYAML always, pypdf for `init`,
+# `rulings` and `doctor`. `mc-jarvis doctor` names anything missing.
+set -e
+here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+python="${MC_JARVIS_PYTHON:-python3}"
+
+if [ -d "$here/mc_jarvis" ]; then
+    PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "$python" -m mc_jarvis "$@"
+fi
+
+if command -v mc-jarvis >/dev/null 2>&1; then
+    exec mc-jarvis "$@"
+fi
+
+exec "$python" -m mc_jarvis "$@"

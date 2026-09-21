@@ -26,9 +26,11 @@ mc-jarvis init            # fetches card data + rulebooks, builds the index
 mc-jarvis install-skill   # places the skill for every harness
 ```
 
-Every release also attaches the skill on its own, as
-`mc-jarvis-skill-<version>.zip`, for harnesses where you want the skill
-file without the Python package. `SHA256SUMS` covers every attachment.
+Or take the skill folder, which carries the tool with it: every release
+attaches `mc-jarvis-skill-<version>.zip`, holding `SKILL.md` beside the
+package that runs it. Unzip it into your skills directory, install
+PyYAML (and pypdf, for `init`), and `scripts/mc-jarvis` runs from there —
+no wheel, no PATH entry. `SHA256SUMS` covers every attachment.
 
 Then open an agent in that folder and ask a Marvel Champions question
 without naming a command. If the skill is working, it runs one.

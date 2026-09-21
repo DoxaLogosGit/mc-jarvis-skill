@@ -190,3 +190,74 @@ def test_the_readme_install_url_names_the_current_version():
     install line for a version that is no longer the latest."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert f"mc_jarvis-{_pyproject_version()}-py3-none-any.whl" in readme
+
+
+# --- the skill folder a release attaches ------------------------------
+
+@pytest.fixture(scope="module")
+def bundle(tmp_path_factory):
+    """Built by the same script the release runs, so this tests the
+    deliverable rather than a second description of it."""
+    out = tmp_path_factory.mktemp("bundle")
+    subprocess.run([str(ROOT / "tools" / "build-skill-bundle.sh"), str(out)],
+                   check=True, capture_output=True, text=True)
+    return out / "mc-jarvis"
+
+
+def test_the_skill_folder_carries_the_tool(bundle):
+    """A skill that ships code puts the code in the folder. Shipping
+    SKILL.md alone left a skill whose 45 commands all needed a package
+    installed from somewhere else."""
+    assert (bundle / "SKILL.md").is_file()
+    assert (bundle / "references" / "browser-recipes.md").is_file()
+    assert (bundle / "scripts" / "mc-jarvis").is_file()
+    package = bundle / "scripts" / "mc_jarvis"
+    assert (package / "cli.py").is_file()
+    # The entry point `python -m` needs; without it the package imports
+    # and exits 0 having done nothing.
+    assert (package / "__main__.py").is_file()
+    assert len(list(package.glob("*.py"))) > 30
+
+
+def test_the_bundled_config_is_where_paths_looks_for_it(bundle):
+    """`paths.py` prefers `_bundled` beside the package and falls back to
+    the repository's `config/`, which is not in the bundle. Put the files
+    anywhere else and every config loader fails on a clean unzip."""
+    bundled = bundle / "scripts" / "mc_jarvis" / "_bundled"
+    for name in ("legality.yaml", "timing.yaml", "glyphs.yaml",
+                 "keywords.yaml", "encounter_setup.yaml"):
+        assert (bundled / name).is_file(), name
+
+
+def test_the_bundle_carries_files_rather_than_links(bundle):
+    """A checkout keeps SKILL.md as a symlink into the repository. Zipped
+    as a link, it unpacks on someone else's machine pointing at a path
+    that does not exist."""
+    assert not (bundle / "SKILL.md").is_symlink()
+    assert (bundle / "SKILL.md").stat().st_size > 1000
+    assert not any(p.is_symlink() for p in bundle.rglob("*")), "symlink"
+    # Nobody needs the builder's bytecode.
+    assert not list(bundle.rglob("__pycache__"))
+
+
+def test_the_bundle_runs_with_nothing_installed(bundle, tmp_path):
+    """The point of the folder: unzip it, and it works. Run against an
+    interpreter that has PyYAML but has never heard of mc_jarvis."""
+    import venv
+
+    env = tmp_path / "venv"
+    venv.EnvBuilder(with_pip=True).create(env)
+    python = env / "bin" / "python"
+    subprocess.run([str(python), "-m", "pip", "install", "-q", "pyyaml"],
+                   check=True, capture_output=True)
+    absent = subprocess.run([str(python), "-c", "import mc_jarvis"],
+                            capture_output=True, text=True)
+    assert absent.returncode != 0, "the venv already has the package"
+
+    got = subprocess.run(
+        [str(bundle / "scripts" / "mc-jarvis"), "--help"],
+        capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
+             "MC_JARVIS_PYTHON": str(python)})
+    assert got.returncode == 0, got.stderr
+    assert "assess" in got.stdout
