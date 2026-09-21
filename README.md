@@ -18,12 +18,17 @@ per workspace.
 Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv tool install mc-jarvis
+# Latest release; mc-jarvis is not on PyPI, so install the wheel directly.
+uv tool install https://github.com/DoxaLogosGit/mc-jarvis-skill/releases/latest/download/mc_jarvis-0.2.0-py3-none-any.whl
 
 mkdir ~/marvel-champions && cd ~/marvel-champions
 mc-jarvis init            # fetches card data + rulebooks, builds the index
 mc-jarvis install-skill   # places the skill for every harness
 ```
+
+Every release also attaches the skill on its own, as
+`mc-jarvis-skill-<version>.zip`, for harnesses where you want the skill
+file without the Python package. `SHA256SUMS` covers every attachment.
 
 Then open an agent in that folder and ask a Marvel Champions question
 without naming a command. If the skill is working, it runs one.

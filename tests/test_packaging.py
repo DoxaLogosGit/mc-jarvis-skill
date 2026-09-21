@@ -133,3 +133,60 @@ def test_every_repo_config_is_reachable_through_bundled():
 
     for config in (ROOT / "config").glob("*.yaml"):
         assert paths.bundled(config.name).exists(), config.name
+
+
+# --- what the release workflow depends on -----------------------------
+
+def _pyproject_version() -> str:
+    line = [l for l in (ROOT / "pyproject.toml").read_text(
+        encoding="utf-8").splitlines() if l.startswith("version = ")]
+    assert len(line) == 1, line
+    return line[0].split('"')[1]
+
+
+def test_the_release_workflow_can_read_the_version():
+    """The workflow refuses a tag that disagrees with `pyproject.toml`,
+    and it reads the version with a `sed` expression rather than a TOML
+    parser. Reformat that line - single quotes, an inline comment, a
+    move out of the first table - and the check compares the tag against
+    an empty string, failing every release until someone reads the log."""
+    import re
+
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+        encoding="utf-8")
+    pattern = re.search(r"sed -n 's([^']*)' pyproject.toml", workflow)
+    assert pattern, "the version-reading step is not where this test looks"
+    # The same expression the workflow runs, applied to the real file.
+    found = re.findall(r'^version = "(.*)"$',
+                       (ROOT / "pyproject.toml").read_text(encoding="utf-8"),
+                       re.M)
+    assert found[:1] == [_pyproject_version()]
+
+
+def test_the_release_gates_on_the_checks_rather_than_a_copy():
+    """`release.yml` calls `checks.yml`, so the checks have one home. A
+    reusable workflow needs `workflow_call` to be callable at all, and
+    without it the release fails only once a tag is pushed."""
+    checks = (ROOT / ".github" / "workflows" / "checks.yml").read_text(
+        encoding="utf-8")
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+        encoding="utf-8")
+    assert "workflow_call:" in checks
+    assert "uses: ./.github/workflows/checks.yml" in release
+
+
+def test_the_skill_archive_has_something_to_archive():
+    """The release attaches the skill on its own, for harnesses that want
+    the file without the package. It is zipped from a path, so a rename
+    would publish an empty archive."""
+    skill = ROOT / "skill" / "mc-jarvis"
+    assert (skill / "SKILL.md").exists()
+    assert list(skill.rglob("*.md"))
+
+
+def test_the_readme_install_url_names_the_current_version():
+    """The README installs a wheel by URL, and the filename carries the
+    version. Left behind at a release, it hands every new reader an
+    install line for a version that is no longer the latest."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"mc_jarvis-{_pyproject_version()}-py3-none-any.whl" in readme

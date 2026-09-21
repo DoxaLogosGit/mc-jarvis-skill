@@ -1,6 +1,6 @@
 [project]
 name = "mc-jarvis"
-version = "0.1.0"
+version = "0.2.0"
 description = "An agent-agnostic assistant for Marvel Champions: The Card Game"
 requires-python = ">=3.10"
 dependencies = ["pypdf>=4.0", "PyYAML>=6.0"]

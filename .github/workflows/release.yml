@@ -1,0 +1,75 @@
+name: release
+
+# A release is cut by pushing a tag, so the version that ships is the one
+# written down in git rather than one typed into a form at the time.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  # The same checks a push to main runs, called rather than copied: a
+  # second copy would drift from the first, and the release is the one
+  # build where that matters most. `distribution-rule` is the reason -
+  # the repository ships code and configuration only, and a release is
+  # the artifact people keep.
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      # The only write this workflow needs. `gh release create` uses the
+      # built-in token, so there is no third-party action holding a
+      # credential and nothing to rotate.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+
+      - name: The tag and the version must agree
+        # Without this, `git tag v0.3.0` on a tree that still says 0.2.0
+        # publishes a release page headed 0.3.0 whose wheel installs as
+        # 0.2.0. Nothing downstream would notice, and the wheel is the
+        # half that wins.
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          have="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)"
+          if [ "$tag" != "$have" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match pyproject version ${have}."
+            echo "Bump the version and re-tag, or tag v${have}."
+            exit 1
+          fi
+          echo "version=$have" >> "$GITHUB_ENV"
+
+      - name: Build the wheel and the sdist
+        run: uv build
+
+      - name: Archive the skill on its own
+        # The package bundles the skill and `install-skill` places it, but
+        # mc-jarvis is agent-agnostic: somebody on another harness may want
+        # the skill file without installing a Python package to get it.
+        run: |
+          zip -r "../dist/mc-jarvis-skill-${version}.zip" mc-jarvis -x '*/.*'
+        working-directory: skill
+
+      - name: Checksums
+        # Over the artifacts only, and written last, so the file does not
+        # try to cover itself.
+        run: |
+          cd dist
+          sha256sum mc_jarvis-*.whl mc_jarvis-*.tar.gz \
+            "mc-jarvis-skill-${version}.zip" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish to the releases page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist/mc_jarvis-*.whl \
+            dist/mc_jarvis-*.tar.gz \
+            "dist/mc-jarvis-skill-${version}.zip" \
+            dist/SHA256SUMS
