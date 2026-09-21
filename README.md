@@ -19,7 +19,7 @@ Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 # Latest release; mc-jarvis is not on PyPI, so install the wheel directly.
-uv tool install https://github.com/DoxaLogosGit/mc-jarvis-skill/releases/latest/download/mc_jarvis-0.2.0-py3-none-any.whl
+uv tool install https://github.com/DoxaLogosGit/mc-jarvis-skill/releases/latest/download/mc_jarvis-0.2.1-py3-none-any.whl
 
 mkdir ~/marvel-champions && cd ~/marvel-champions
 mc-jarvis init            # fetches card data + rulebooks, builds the index
