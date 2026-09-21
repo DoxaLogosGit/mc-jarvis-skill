@@ -21,6 +21,8 @@ nothing IS one, and says so rather than reading as "no rulings".
 """
 from __future__ import annotations
 
+from . import paths
+
 import datetime as dt
 import html as _html
 import re
@@ -206,7 +208,7 @@ def load(data_root: Path) -> RulingsLookup:
     path = cache_path(data_root)
     if not path.is_file():
         return RulingsLookup("disabled",
-                             detail="no rulings cached; run `mc-jarvis "
+                             detail=f"no rulings cached; run `{paths.invocation()} "
                                     "update` with network access to add them")
     url_file = path.parent / "rulings-source.txt"
     url = url_file.read_text(encoding="utf-8").strip() if url_file.is_file() \
@@ -441,8 +443,10 @@ def handle(args) -> int:
         # absorbed ones are not kept.
         print("No designer rulings outstanding — the Rules Reference you "
               "hold covers everything ruled on so far.\n"
-              "(If you have never run `mc-jarvis update` with network "
-              "access, none have been fetched either; `mc-jarvis status` "
+              f"(If you have never run `{paths.invocation()} update` with "
+          "network "
+              f"access, none have been fetched either; "
+          f"`{paths.invocation()} status` "
               "shows which.)")
         return 1
     if not hits:

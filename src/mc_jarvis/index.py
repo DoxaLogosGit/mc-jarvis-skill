@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import schema
+from . import paths, schema
 
 # Bump whenever SCHEMA changes shape. The index is derived entirely from
 # fetched data, so a mismatch is resolved by rebuilding rather than by
@@ -103,7 +103,8 @@ def _refuse_if_stale(conn: sqlite3.Connection) -> None:
         return
     raise StaleIndex(
         f"this index was built against schema {version}, and this "
-        f"mc-jarvis expects {SCHEMA_VERSION}. Run `mc-jarvis update` to "
+        f"mc-jarvis expects {SCHEMA_VERSION}. Run "
+        f"`{paths.invocation()} update` to "
         f"rebuild it. (Nothing has been changed.)")
 
 

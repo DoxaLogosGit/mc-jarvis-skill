@@ -104,7 +104,9 @@ def search(conn, query=None, *, owned=False, aspect=None, type=None, cost=None,
 def _open():
     db = paths.db_path()
     if not db.exists():
-        raise SystemExit("no index found - run `mc-jarvis init` first")
+        from .paths import invocation
+        raise SystemExit(
+            f"no index found - run `{invocation()} init` first")
     try:
         return index.connect(db)
     except index.StaleIndex as exc:

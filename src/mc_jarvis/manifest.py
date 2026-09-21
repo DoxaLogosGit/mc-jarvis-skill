@@ -25,6 +25,8 @@ available for anyone who needs today's list.
 """
 from __future__ import annotations
 
+from . import paths
+
 import gzip
 import json
 import re
@@ -325,7 +327,8 @@ def currency_warning(result: ManifestResult) -> str | None:
     return (
         f"The rules manifest comes from an archive.org capture taken "
         f"{age} days ago ({result.captured}). FFG may have published or "
-        f"revised rulebooks since, and `mc-jarvis update` cannot see them "
+        f"revised rulebooks since, and `{paths.invocation()} update` "
+        f"cannot see them "
         f"- it re-reads the same capture. To pick up the current list, "
         f"save the product page from a browser and run:\n"
         f"  mc-jarvis init --from-html <file>\n"

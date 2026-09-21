@@ -123,11 +123,13 @@ def run_checks(*, network: bool = True) -> list[Check]:
         checks.append(Check(
             "index", True,
             f"{db} ({age:.0f} days old)"
-            + ("  - stale, run `mc-jarvis update`" if age > STALE_DAYS else ""),
+            + (f"  - stale, run `{paths.invocation()} update`"
+                               if age > STALE_DAYS else ""),
             hard=False))
     else:
         checks.append(Check("index", False,
-                            "not built - run `mc-jarvis init`", hard=False))
+                            f"not built - run `{paths.invocation()} init`",
+                            hard=False))
 
     for name, present in (("git", shutil.which("git") is not None),
                           ("playwright", _playwright_present())):

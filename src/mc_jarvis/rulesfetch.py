@@ -121,7 +121,7 @@ def handle(args) -> int:
     known = _docs(root)
     if not known.docs:
         print("mc-jarvis rules fetch: no list of rulebooks yet - run "
-              "`mc-jarvis init` first.")
+              f"`{paths.invocation()} init` first.")
         return 1
     have = {p.stem for p in (root / "rules" / "pdf").glob("*.pdf")}
 
@@ -165,7 +165,8 @@ def handle(args) -> int:
         print(f"mc-jarvis rules fetch: no rules document for {label!r} in "
               f"FFG's list as captured {captured}. If it is newer than "
               f"that, save FFG's product page from your browser and run "
-              f"`mc-jarvis rules fetch {args.what} --from-html <file>`:\n"
+              f"`{paths.invocation()} rules fetch {args.what} "
+              f"--from-html <file>`:\n"
               f"  {manifest.PRODUCT_PAGE}\n"
               f"Core Set heroes and scenarios are covered by the Learn to "
               f"Play book and the Rules Reference.")

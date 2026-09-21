@@ -306,7 +306,8 @@ def notes(conn, deck) -> list[Finding]:
                    f"In cooperative play - the normal mode for these "
                    f"scenarios - a card referring to your own leader "
                    f"cannot be resolved at all. No rule this tool encodes "
-                   f"forbids them; see `mc-jarvis rules search leader`."))
+                   f"forbids them; see `{paths.invocation()} rules search "
+                   f"leader`."))
 
     if found:
         # `deck_limit` on a campaign card counts the copies the BOX holds

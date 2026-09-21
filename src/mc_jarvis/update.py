@@ -79,7 +79,7 @@ def run(args) -> int:
 def status(args) -> int:
     db = paths.db_path()
     if not db.exists():
-        print("no index — run `mc-jarvis init`")
+        print(f"no index — run `{paths.invocation()} init`")
         return 1
 
     try:
@@ -133,7 +133,8 @@ def status(args) -> int:
         for key, value in payload.items():
             print(f"{key}: {value}")
         if payload["stale"]:
-            print(f"\nIndex is {age:.0f} days old — run `mc-jarvis update`")
+            print(f"\nIndex is {age:.0f} days old — run "
+              f"`{paths.invocation()} update`")
         if payload["unmapped_glyphs"]:
             print(f"\nUnmapped icon codepoints: "
                   f"{payload['unmapped_glyphs']} — add them to glyphs.yaml")
@@ -142,7 +143,8 @@ def status(args) -> int:
                    if d not in payload["rules_docs"]]
         if missing:
             print(f"\nNo rules indexed from: {', '.join(missing)}\n"
-                  f"`update` cannot fetch a rulebook — run `mc-jarvis init`")
+                  f"`update` cannot fetch a rulebook — run "
+                  f"`{paths.invocation()} init`")
         if payload["scenarios_incomplete"]:
             print("\nScenario data is incomplete; `assess` would report "
                   "wrong numbers for these:")

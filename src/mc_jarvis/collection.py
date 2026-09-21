@@ -6,6 +6,8 @@ filter is subtler than it looks and a second copy would get it wrong.
 """
 from __future__ import annotations
 
+from .paths import invocation
+
 # Commands where `--owned` changes the answer. `cli._leaf` used to put the
 # flag on all 14 leaves and dispatch rejected it globally (§10.1); these
 # are the ones that return cards. Offering it elsewhere implies a filter
@@ -43,7 +45,8 @@ def set_packs(conn, packs) -> dict:
     if missing:
         raise UnknownPack(
             f"not pack codes in this index: {', '.join(missing)}. Run "
-            f"`mc-jarvis collection show --available` for the list; a typo "
+            f"`{invocation()} collection show --available` for the list; "
+            f"a typo "
             f"here would silently narrow every later search.")
     conn.execute("DELETE FROM owned_packs")
     conn.executemany("INSERT INTO owned_packs (pack_code) VALUES (?)",
@@ -116,7 +119,7 @@ def handle(args) -> int:
             return 0
         if not owned:
             print("No collection set - every card is offered. "
-                  "`mc-jarvis collection set <pack>...` to narrow it.")
+                  f"`{invocation()} collection set <pack>...` to narrow it.")
             return 0
         print(f"{len(owned)} pack(s): {', '.join(owned)}")
         return 0

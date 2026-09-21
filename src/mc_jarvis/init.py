@@ -387,7 +387,8 @@ def run(args) -> int:
     for key, value in counts.items():
         print(f"  {key}: {value}")
     if counts.get("unmapped_glyphs"):
-        print("\nSome icon codepoints are unmapped; see `mc-jarvis status`.")
+        print(f"\nSome icon codepoints are unmapped; see "
+          f"`{paths.invocation()} status`.")
 
     print("\nNext:  mc-jarvis install-skill      (in your deck workspace)")
     return 0

@@ -2,9 +2,51 @@
 from __future__ import annotations
 
 import os
+import shutil
+import sys
 from pathlib import Path
 
 SUBDIRS = ("marvelsdb", "rules/pdf", "rules/txt", "meta")
+
+
+def invocation() -> str:
+    """How this copy was called, for a message that tells the reader to
+    run something.
+
+    Six messages said `mc-jarvis init`. Run from a skill folder with the
+    package beside it and nothing on PATH - which is how a release is
+    meant to be used - that names a command the reader does not have. A
+    live test ended with the agent relaying exactly that, the user
+    trying it, and it failing before anyone worked out the tool was
+    already there.
+    """
+    # A launcher that execs `python -m mc_jarvis` knows the name the
+    # reader typed; argv[0] by then is this package's `__main__.py`.
+    told = os.environ.get("MC_JARVIS_INVOKED_AS")
+    if told:
+        return told
+    argv0 = sys.argv[0] or ""
+    name = os.path.basename(argv0)
+    if name == "__main__.py":
+        return "python -m mc_jarvis"
+    # argv[0] is only evidence when it IS this tool. Imported as a
+    # library - or under a test runner, which is how this was caught -
+    # it names the host program, and the message told the reader to run
+    # `pytest encounter the_hood`. The documented name is the safe
+    # answer when the entry point is something else entirely.
+    if name not in ("mc-jarvis", "mc_jarvis"):
+        return "mc-jarvis"
+    # An installed console script is on PATH, so its bare name is the
+    # shortest true answer. Compared by real path rather than by name: a
+    # bundle's launcher is also called `mc-jarvis`, and saying the bare
+    # name there would point at whatever else the PATH happens to hold.
+    found = shutil.which(name)
+    try:
+        if found and os.path.samefile(found, argv0):
+            return name
+    except OSError:
+        pass
+    return argv0
 
 
 def data_dir() -> Path:

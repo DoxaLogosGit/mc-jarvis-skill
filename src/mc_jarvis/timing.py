@@ -234,7 +234,8 @@ def verify_chart(conn, config: dict | None = None) -> list[str]:
     if got != expected["text_digest"]:
         problems.append(
             "the chart's wording has changed since this config was "
-            "verified. Run `mc-jarvis rules show Ability` to read it as "
+            f"verified. Run `{paths.invocation()} rules show Ability` to "
+            "read it as "
             "your own rulebook prints it.")
     return problems
 
@@ -407,7 +408,7 @@ def explain(conn, trigger: str) -> dict:
     if t is None:
         return {"query": trigger, "canonical": None,
                 "message": f"{trigger!r} is not a timing trigger this "
-                           f"reference knows. Run `mc-jarvis timing` for "
+                           f"reference knows. Run `{paths.invocation()} timing` for "
                            f"the chart."}
     config = load_config()
     before: list[dict] = []
@@ -612,7 +613,8 @@ def handle(args) -> int:
             emit(steps, as_json=True)
             return 0 if steps else 1
         if not steps:
-            print("round structure not indexed - run `mc-jarvis status`")
+            print(f"round structure not indexed - run "
+              f"`{paths.invocation()} status`")
             return 1
         print(f"The game round {cite(conn, 'Round Overview')}:\n")
         for s in steps:
@@ -682,7 +684,7 @@ def handle(args) -> int:
              as_json=True)
         return 0
     if not rows:
-        print("timing chart not indexed - run `mc-jarvis status`")
+        print(f"timing chart not indexed - run `{paths.invocation()} status`")
         return 1
     print(f"Simultaneous timing priority, for one triggering condition "
           f"{chart_cite}:\n")

@@ -74,15 +74,15 @@ cards read.
 
 ## Setup check
 
-If any command reports "no index", the user has not run `mc-jarvis init`.
-Tell them to run it from the folder they want as their deck workspace:
+If any command reports "no index", nobody has run `init` yet. The tool is
+in this folder, so there is nothing to install first — run it yourself
+rather than handing the user a command:
 
-    uv tool install mc-jarvis && mc-jarvis init
+    scripts/mc-jarvis init
 
-`init` downloads the card data and the rulebooks to their machine; nothing
-copyrighted ships with the tool. It needs network access and takes a few
-minutes. If it asks for the FFG product page, see
-`references/browser-recipes.md`.
+`init` downloads the card data and rulebooks; nothing copyrighted ships
+with the tool. Needs network, takes a few minutes. If it asks for the FFG
+product page, see `references/browser-recipes.md`.
 
 If any command fails unexpectedly, run `mc-jarvis doctor` and show the
 user its output — a missing prerequisite should be diagnosed, not guessed.

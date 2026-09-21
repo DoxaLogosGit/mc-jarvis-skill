@@ -14,8 +14,13 @@ set -e
 here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 python="${MC_JARVIS_PYTHON:-python3}"
 
+# `MC_JARVIS_INVOKED_AS` is how the reader typed it. Without it, every
+# message telling them to run something would name `python -m mc_jarvis`,
+# which is what this script execs rather than anything they typed.
 if [ -d "$here/mc_jarvis" ]; then
-    PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "$python" -m mc_jarvis "$@"
+    MC_JARVIS_INVOKED_AS="$0" \
+    PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" \
+        exec "$python" -m mc_jarvis "$@"
 fi
 
 if command -v mc-jarvis >/dev/null 2>&1; then

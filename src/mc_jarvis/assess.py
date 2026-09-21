@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import paths
 from .encounterdeck import load_config
 
 DIFFICULTIES = ("standard", "expert", "standard_ii", "expert_ii",
@@ -178,7 +179,8 @@ def resolve(conn, villain: str, *, modular=None, add_modular=None,
                 f"{villain!r} names no scenario, though it does name cards "
                 f"in: {', '.join(elsewhere)}. If you are expecting a "
                 f"scenario by this name, marvelcdb has not published its "
-                f"encounter cards - `mc-jarvis update` will pick them up "
+                f"encounter cards - `{paths.invocation()} update` will pick "
+                f"them up "
                 f"once it does.")
         raise UnknownScenario(
             f"{villain!r} is not in the card data. mc-jarvis indexes "
@@ -212,7 +214,7 @@ def resolve(conn, villain: str, *, modular=None, add_modular=None,
             raise UnknownScenario(
                 f"{code!r} is a leader: the opposition the table plays "
                 f"against, but its main scheme comes from the scenario. "
-                f"Assess the pair, e.g. `mc-jarvis assess "
+                f"Assess the pair, e.g. `{paths.invocation()} assess "
                 f"{hosts[0] if hosts else 'registration'} --modular {code}`. "
                 f"Scenarios that choose a leader: " + ", ".join(hosts) + ".")
         if set_kind in ("modular", "nemesis"):
@@ -248,7 +250,7 @@ def resolve(conn, villain: str, *, modular=None, add_modular=None,
             f"--modular to say which seven are on your table; assessing it "
             f"against no pool would report a deck you never face. The "
             f"villain and main scheme stages do not depend on them: "
-            f"`mc-jarvis encounter {code}`.")
+            f"`{paths.invocation()} encounter {code}`.")
 
     mapped = conn.execute(
         "SELECT kind, modular_set FROM scenario_modulars WHERE scenario_set = ?",
