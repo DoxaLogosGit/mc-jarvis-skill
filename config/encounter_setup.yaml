@@ -71,10 +71,11 @@ acknowledged:
   juggernaut:
     reason: >-
       An attachment is attached at setup and leaves the deck. The
-      other named card is an ally, never an encounter-deck card, and
-      is misspelled upstream.
+      other named card is an ally, never an encounter-deck card.
+      Re-read 2026-09-24 after upstream corrected that ally's name,
+      which had been misspelled; the reason held.
     affects_deck: true
-    setup_digest: "e6042e5946f07c93e7c94a0ed34d9ac7"
+    setup_digest: "4ed19699efeab2caf676a55d91733975"
 
   kang:
     reason: >-
