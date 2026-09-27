@@ -508,6 +508,18 @@ def caveats(scenario: Scenario, sets: list[str],
                 f"the {code} set is counted in full, but {over} of its cards "
                 f"are set aside until its own card is revealed - the opening "
                 f"deck is {over} copies smaller than shown")
+    # Acknowledged in config because the set-aside rule cannot read the
+    # Setup wording - so the cards they name are still counted below.
+    # `affects_deck` was recorded for every one of them and read by
+    # nothing, which left a known overstatement invisible to the only
+    # person who needed it.
+    for code, entry in (config.get("acknowledged") or {}).items():
+        entry = entry or {}
+        if entry.get("affects_deck") and code in sets \
+                and entry.get("deck_note"):
+            out.append("setup takes cards out of this deck that the count "
+                       "below still includes: "
+                       + " ".join(entry["deck_note"].split()))
     return out
 
 

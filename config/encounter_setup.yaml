@@ -30,20 +30,31 @@ acknowledged:
       play; the discard pile is shuffled back. One environment leaves
       the deck and which one is not determinable.
     affects_deck: true
+    deck_note: >-
+      One of the four environments - Dense Forest, Snowy Hillside, Rocky
+      Outcrop or Abandoned Facility - starts in play, found by
+      discarding from the deck, so the deck is 1 card smaller than
+      shown. Which one is random.
     setup_digest: "fe5550266a3ce5d3de49fa56cfa1c6bd"
 
   baron_zemo:
     reason: >-
       Every [[Board Member]] environment starts in play. Named by
       trait, which the into-play rule reads only by card name.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "eefdc993b3c141bd9be92b9e6e683707"
 
   brotherhood_of_badoon:
     reason: >-
       Two cards start in play, named in one clause with two different
       type words. The rule reads one type word per clause.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "f244274b62d6d207f68cb61897168c56"
 
   dark_beast:
@@ -58,7 +69,10 @@ acknowledged:
       One Hypnotic Gaze attaches to each identity and the rest are set
       aside, so none remains in the deck. Uses the verb form of 'set
       aside', not the hyphenated adjective the text rule reads.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "22442b9ac5b0a464c610cc0282aeb3b8"
 
   hela:
@@ -66,6 +80,9 @@ acknowledged:
       Two cards are revealed and four more set aside by bare name,
       with no type word for the rule to anchor on.
     affects_deck: true
+    deck_note: >-
+      Gnipahellir and Garm are revealed at setup, so the deck is 2 cards
+      smaller than shown.
     setup_digest: "bb5dc3617df860d7e5b4f9630d763835"
 
   juggernaut:
@@ -75,20 +92,29 @@ acknowledged:
       Re-read 2026-09-24 after upstream corrected that ally's name,
       which had been misspelled; the reason held.
     affects_deck: true
+    deck_note: >-
+      Juggernaut's Helmet starts attached to Juggernaut, so the deck is
+      1 card smaller than shown.
     setup_digest: "4ed19699efeab2caf676a55d91733975"
 
   kang:
     reason: >-
       Villain stages and a side scheme are set aside by bare name, and
       each player's obligations leave the game.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "8a7ec2866e58cca26ae9b6be550c538f"
 
   magog:
     reason: >-
       Two environments start in play, written as 'environment card'
       rather than the bare type word.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "25f742fb85fd2abef34c4a8cc21bcc45"
 
   master_mold:
@@ -110,6 +136,9 @@ acknowledged:
       A minion is put into play per player, so the number leaving the
       deck scales with player count.
     affects_deck: true
+    deck_note: >-
+      A Shifting Apparition starts in play for each player, so the deck
+      is 1 card per player smaller than shown.
     setup_digest: "7be1c9596beef1213b32a00cf2e64f37"
 
   nebula:
@@ -117,6 +146,11 @@ acknowledged:
       Two cards start in play in a two-type clause, and further cards
       are attached from the top of the deck per player.
     affects_deck: true
+    deck_note: >-
+      At setup the top 2 cards per player are discarded and each
+      Technique attachment among them attaches to Nebula, so the deck is
+      up to 2 cards per player smaller than shown - how many depends on
+      what is discarded.
     setup_digest: "c3cb40e6a7ee06b9128b724de6d7dca4"
 
   on_the_run:
@@ -125,6 +159,11 @@ acknowledged:
       its title leaves the game. Which minion depends on the villain
       drawn.
     affects_deck: true
+    deck_note: >-
+      Hope's Captor starts attached to the villain, and the Mutant
+      Slayers minion sharing the random villain's name is removed from
+      the game, so the deck is 2 cards smaller than shown (1 if Mutant
+      Slayers is not on the table).
     setup_digest: "8e4e463b72f401e6995b67b728280f99"
 
   red_skull:
@@ -132,6 +171,11 @@ acknowledged:
       Every side scheme but one moves to a separate side-scheme deck
       beside the encounter deck, and one minion is set aside.
     affects_deck: true
+    deck_note: >-
+      The Red House starts in play and every other side scheme goes to a
+      separate side-scheme deck, so none of the side schemes counted
+      below is in the encounter deck - 7 cards fewer with the
+      recommended modular sets.
     setup_digest: "ac0161d5967234965200197147b1d15e"
 
   ronan:
@@ -139,20 +183,29 @@ acknowledged:
       Two cards start in play in a two-type clause, plus two
       attachments placed at setup.
     affects_deck: true
+    deck_note: >-
+      Universal Weapon starts attached to Ronan the Accuser, so the deck
+      is 1 card smaller than shown.
     setup_digest: "6aa26adc53d020e49fb68e44f1b5eb89"
 
   sandman:
     reason: >-
       An environment is searched out of the deck and put into play,
       phrased as 'search ... and put it into play'.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "f770df6996b216ef97e6ea46afb326c4"
 
   spiral:
     reason: >-
       A side scheme and one random [[SHOW]] environment start in play;
       the remaining [[SHOW]] environments form a separate deck.
-    affects_deck: true
+      Audited 2026-09-26: every card this names is already outside
+      the deck count (set aside or in play by role), so the count
+      is not overstated.
+    affects_deck: false
     setup_digest: "5b4bac098754159f3fa04a78c21b393f"
 
   stryfe:
@@ -160,6 +213,9 @@ acknowledged:
       A side scheme is revealed at setup and leaves the deck. The
       other named card is an ally.
     affects_deck: true
+    deck_note: >-
+      Stryfe's Grasp is revealed at setup, so the deck is 1 card smaller
+      than shown.
     setup_digest: "184f1c77bd5293ad1e1d336ad34b559a"
 
   the_hood:

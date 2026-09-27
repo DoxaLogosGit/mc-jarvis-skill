@@ -1623,3 +1623,43 @@ def test_an_added_set_is_not_swallowed_by_a_set_aside_pool(real_index):
     plain = assess.resolve(real_index, "the hood", modular=seven)
     assert (assess.profile(real_index, sc)["opening_deck_size"]
             > assess.profile(real_index, plain)["opening_deck_size"])
+
+
+# --- acknowledged setup removals (spec §5) ------------------------------
+
+def test_every_deck_affecting_acknowledgment_says_what_it_takes():
+    """`affects_deck: true` was read by nothing, so a known overstatement
+    reached no one. Each such entry must say, in words a player can use,
+    what the count includes that setup removes."""
+    from mc_jarvis.encounterdeck import load_config
+
+    ack = load_config().get("acknowledged") or {}
+    missing = sorted(k for k, v in ack.items()
+                     if (v or {}).get("affects_deck")
+                     and not ((v or {}).get("deck_note") or "").strip())
+    assert not missing, f"no deck_note: {missing}"
+
+
+def test_an_acknowledged_removal_reaches_the_player():
+    from mc_jarvis import assess
+
+    sc = assess.Scenario(scenario_set="juggernaut")
+    note = "Juggernaut's Helmet starts attached, so the deck is 1 card smaller"
+    config = {"acknowledged": {"juggernaut": {
+        "affects_deck": True, "deck_note": note}}}
+    assert any(note in c for c in assess.caveats(sc, ["juggernaut"],
+                                                 config=config))
+    # Only for the scenario on the table.
+    assert not any(note in c for c in assess.caveats(sc, ["rhino"],
+                                                     config=config))
+    # And only when the entry says the deck is affected.
+    config["acknowledged"]["juggernaut"]["affects_deck"] = False
+    assert not any(note in c for c in assess.caveats(sc, ["juggernaut"],
+                                                     config=config))
+
+
+def test_juggernaut_names_its_helmet(real_index):
+    from mc_jarvis import assess
+
+    step = assess.profile(real_index, assess.resolve(real_index, "juggernaut"))
+    assert any("Juggernaut's Helmet" in c for c in step["caveats"])
