@@ -204,12 +204,6 @@ against a real index and assert numbers measured from it. A gate that
 cannot fail is not a gate — thresholds here are measured, and the
 measurement is recorded beside them.
 
-Design docs and implementation plans live in `docs/superpowers/`. They
-carry the reasoning, including the parts that turned out wrong: several
-sections record a conclusion, the data that contradicted it, and the
-correction. That history is deliberate — the same mistake was made more
-than once, and the notes are what stopped it happening a third time.
-
 ## Status
 
 Everything in the table above works: card lookup, identity grouping,
@@ -218,14 +212,8 @@ rulings, the skill installer, collection tracking, the deck pipeline
 (import, legality, statistics) and scenario assessment including the
 cross-reference against a deck.
 
-Not built: heroic-level modifiers (`--heroic` is bounded and recorded, and
-changes no number), campaign mode, and a coverage check that compares a
-pack's declared size against the cards actually published upstream — see
-`docs/superpowers/specs/2026-08-25-card-data-sources.md`.
-
-The plan directory records what was built and when;
-`docs/superpowers/plans/2026-09-09-scenario-depth-and-written-decks.md`
-covers the most recent pass and lists the eight corrections it made.
+Not built: campaign progress tracking, and a coverage check that compares
+a pack's declared size against the cards actually published upstream.
 
 ## Licence
 

@@ -10,3 +10,6 @@ src/mc_jarvis/_bundled/*
 !src/mc_jarvis/_bundled/.gitignore
 dist/
 build/
+
+# Design docs and plans stay local; they are not published.
+docs/superpowers/
