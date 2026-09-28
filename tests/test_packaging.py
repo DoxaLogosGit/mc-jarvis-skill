@@ -256,18 +256,27 @@ def test_the_bundle_runs_with_nothing_installed(bundle, tmp_path):
 
     env = tmp_path / "venv"
     venv.EnvBuilder(with_pip=True).create(env)
-    python = env / "bin" / "python"
+    windows = sys.platform == "win32"
+    python = env / ("Scripts" if windows else "bin") / (
+        "python.exe" if windows else "python")
     subprocess.run([str(python), "-m", "pip", "install", "-q", "pyyaml"],
                    check=True, capture_output=True)
     absent = subprocess.run([str(python), "-c", "import mc_jarvis"],
                             capture_output=True, text=True)
     assert absent.returncode != 0, "the venv already has the package"
 
-    got = subprocess.run(
-        [str(bundle / "scripts" / "mc-jarvis"), "--help"],
-        capture_output=True, text=True,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
-             "MC_JARVIS_PYTHON": str(python)})
+    # The launcher each platform's user runs: the batch file on Windows,
+    # the shell script elsewhere. `MC_JARVIS_PYTHON` pins the interpreter
+    # that has never heard of mc_jarvis, so the bundle has to supply it.
+    if windows:
+        launcher = bundle / "scripts" / "mc-jarvis.cmd"
+        run_env = {**os.environ, "MC_JARVIS_PYTHON": str(python)}
+    else:
+        launcher = bundle / "scripts" / "mc-jarvis"
+        run_env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
+                   "MC_JARVIS_PYTHON": str(python)}
+    got = subprocess.run([str(launcher), "--help"],
+                         capture_output=True, text=True, env=run_env)
     assert got.returncode == 0, got.stderr
     assert "assess" in got.stdout
 

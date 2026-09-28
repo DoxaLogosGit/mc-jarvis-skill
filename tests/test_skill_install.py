@@ -163,6 +163,14 @@ def test_install_copies_by_default(tmp_path):
 
 
 def test_link_mode_symlinks(tmp_path):
+    # `--link` is a developer mode, and Windows allows symlinks only with
+    # admin rights or developer mode switched on. Probe rather than skip
+    # by platform, so a Windows machine that can link still runs this.
+    try:
+        (tmp_path / "probe").symlink_to(tmp_path)
+    except OSError:
+        pytest.skip("this machine cannot create symlinks (Windows without "
+                    "admin rights or developer mode)")
     ws = tmp_path / "marvel"
     ws.mkdir()
     for p in si.install(ws, link=True):
