@@ -12,6 +12,8 @@ half of the same rule, and the half that was open: hatchling's default
 sdist is everything git tracks, so it carried 28 test files.
 """
 import glob
+import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -282,3 +284,63 @@ def test_the_bundle_holds_exactly_one_skill(bundle):
 def test_the_bundle_and_wheel_carry_no_gitignore(bundle, built):
     assert not list(bundle.rglob(".gitignore"))
     assert not [n for n in _wheel_names(built) if n.endswith(".gitignore")]
+
+
+def _fake_python_dir(tmp_path, *, stub_python3: bool):
+    """A PATH holding only what the shell launcher needs: `sh` (its
+    `#!/usr/bin/env sh` looks it up on PATH), `dirname`, `uname`, and a
+    `python` that runs this test's interpreter. With `stub_python3`, also
+    a `python3` that exits the way the Microsoft Store stub does."""
+    bindir = tmp_path / "bin dir"          # a space, on purpose
+    bindir.mkdir()
+    for tool in ("sh", "dirname", "uname"):
+        (bindir / tool).symlink_to(shutil.which(tool))
+    python = bindir / "python"
+    python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    python.chmod(0o755)
+    if stub_python3:
+        stub = bindir / "python3"
+        stub.write_text("#!/bin/sh\nexit 9009\n")
+        stub.chmod(0o755)
+    return bindir
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell launcher")
+def test_the_shell_launcher_skips_a_python_that_does_not_run(bundle, tmp_path):
+    """On Windows `python3` is often the Microsoft Store stub: found on
+    PATH, opens the Store, exits non-zero. A launcher that trusted
+    `command -v` would hand every command to it."""
+    home = tmp_path / "a home with spaces"
+    shutil.copytree(bundle, home / "mc-jarvis", symlinks=False)
+    launcher = home / "mc-jarvis" / "scripts" / "mc-jarvis"
+    bindir = _fake_python_dir(tmp_path, stub_python3=True)
+    got = subprocess.run(
+        [str(launcher), "card", "search", "tackle"],
+        capture_output=True, text=True,
+        env={"PATH": str(bindir), "HOME": str(tmp_path),
+             "MC_JARVIS_DATA": str(tmp_path / "no-index")})
+    # It ran mc_jarvis - which found no index - rather than the stub.
+    assert "no index found" in (got.stdout + got.stderr), got.stderr
+    # And named the launcher the reader typed, space and all.
+    assert str(launcher) in (got.stdout + got.stderr)
+
+
+def test_the_windows_launcher_ships_with_crlf(bundle):
+    """cmd.exe misreads labels and `goto` in a batch file with LF
+    endings. `.gitattributes` fixes the checkout; this pins the bundle."""
+    data = (bundle / "scripts" / "mc-jarvis.cmd").read_bytes()
+    assert b"\r\n" in data and b"\n" not in data.replace(b"\r\n", b"")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows launcher")
+def test_the_windows_launcher_runs_from_a_folder_with_spaces(bundle, tmp_path):
+    home = tmp_path / "a home with spaces"
+    shutil.copytree(bundle, home / "mc-jarvis", symlinks=False)
+    launcher = home / "mc-jarvis" / "scripts" / "mc-jarvis.cmd"
+    got = subprocess.run(
+        [str(launcher), "card", "search", "tackle"],
+        capture_output=True, text=True,
+        env={**os.environ, "MC_JARVIS_PYTHON": sys.executable,
+             "MC_JARVIS_DATA": str(tmp_path / "no-index")})
+    assert "no index found" in (got.stdout + got.stderr), got.stderr
+    assert "mc-jarvis.cmd" in (got.stdout + got.stderr)

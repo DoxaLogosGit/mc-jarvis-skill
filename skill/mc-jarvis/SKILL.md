@@ -75,8 +75,7 @@ cards read.
 ## Setup check
 
 If any command reports "no index", nobody has run `init` yet. The tool is
-in this folder, so there is nothing to install first — run it yourself
-rather than handing the user a command:
+in this folder, so run it yourself rather than handing the user a command:
 
     scripts/mc-jarvis init
 
@@ -90,7 +89,8 @@ user its output — a missing prerequisite should be diagnosed, not guessed.
 ## Commands
 
 Every command takes `--json` — use it to compute, the default to quote.
-If `mc-jarvis` is not on PATH, it is `scripts/mc-jarvis` in this folder.
+If `mc-jarvis` is not on PATH, it is `scripts/mc-jarvis` in this folder
+(`scripts\mc-jarvis.cmd` from cmd or PowerShell).
 
 | Ask | Command |
 |---|---|

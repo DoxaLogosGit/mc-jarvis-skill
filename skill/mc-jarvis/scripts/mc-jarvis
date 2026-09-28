@@ -4,27 +4,62 @@
 # A release bundles the package beside this script, at scripts/mc_jarvis,
 # so the skill folder holds the tool rather than pointing at one installed
 # elsewhere. When the package is not here - a plain `install-skill` copies
-# the skill and nothing else - this falls through to whatever `mc-jarvis`
-# or `python -m mc_jarvis` the environment already provides, so the same
-# script works either way.
+# the skill and nothing else - this falls through to an installed
+# `mc-jarvis`, so the same script works either way.
+#
+# Also the launcher Windows users reach first: Claude Code on Windows runs
+# commands in Git Bash. cmd and PowerShell use mc-jarvis.cmd beside this.
 #
 # Dependencies are ordinary Python ones: PyYAML always, pypdf for `init`,
 # `rulings` and `doctor`. `mc-jarvis doctor` names anything missing.
 set -e
 here="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-python="${MC_JARVIS_PYTHON:-python3}"
 
-# `MC_JARVIS_INVOKED_AS` is how the reader typed it. Without it, every
-# message telling them to run something would name `python -m mc_jarvis`,
-# which is what this script execs rather than anything they typed.
+# The interpreter. `python3` is the POSIX name; a Windows Python usually
+# answers to `python` or to the `py` launcher, and a `python3` found there
+# may be the Microsoft Store stub, which opens the Store instead of
+# running. So a candidate is chosen only once it has actually run.
+python=""
+pyflag=""
+if [ -n "$MC_JARVIS_PYTHON" ]; then
+    python="$MC_JARVIS_PYTHON"
+else
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 \
+                && "$candidate" -c "import sys" >/dev/null 2>&1; then
+            python="$candidate"
+            break
+        fi
+    done
+    if [ -z "$python" ] && command -v py >/dev/null 2>&1 \
+            && py -3 -c "import sys" >/dev/null 2>&1; then
+        python="py"
+        pyflag="-3"
+    fi
+fi
+if [ -z "$python" ]; then
+    echo "mc-jarvis: no working Python 3 found (tried python3, python, py -3)" >&2
+    exit 127
+fi
+
+# Under Git Bash a native Windows Python reads PYTHONPATH as a Windows
+# path list: backslashes, separated by ';'.
+sep=":"
+here_py="$here"
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) sep=";"; here_py="$(cygpath -w "$here")" ;;
+esac
+
+# `MC_JARVIS_INVOKED_AS` is how the reader typed it, so a message telling
+# them what to run next names something that exists.
 if [ -d "$here/mc_jarvis" ]; then
     MC_JARVIS_INVOKED_AS="$0" \
-    PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" \
-        exec "$python" -m mc_jarvis "$@"
+    PYTHONPATH="$here_py${PYTHONPATH:+$sep$PYTHONPATH}" \
+        exec "$python" $pyflag -m mc_jarvis "$@"
 fi
 
 if command -v mc-jarvis >/dev/null 2>&1; then
     exec mc-jarvis "$@"
 fi
 
-exec "$python" -m mc_jarvis "$@"
+exec "$python" $pyflag -m mc_jarvis "$@"

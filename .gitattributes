@@ -1,0 +1,6 @@
+# The shell launcher must keep LF: a Windows checkout with CRLF breaks it
+# under Git Bash. The batch launcher must keep CRLF: cmd.exe misreads
+# labels and goto in a batch file with LF endings.
+skill/mc-jarvis/scripts/mc-jarvis      text eol=lf
+*.sh                                   text eol=lf
+*.cmd                                  text eol=crlf
