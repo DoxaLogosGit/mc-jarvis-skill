@@ -56,6 +56,14 @@ def data_dir() -> Path:
     xdg = os.environ.get("XDG_DATA_HOME")
     if xdg:
         return Path(xdg).expanduser() / "mc-jarvis"
+    # Windows keeps per-user application data under %LOCALAPPDATA%, and
+    # that is where a Windows user - or their backup tool - looks. Read
+    # from `sys.platform` rather than `os.name` so a test can fake it:
+    # faking `os.name` breaks `pathlib`.
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            return Path(local) / "mc-jarvis"
     return Path.home() / ".local" / "share" / "mc-jarvis"
 
 

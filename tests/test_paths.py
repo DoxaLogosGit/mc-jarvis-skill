@@ -108,3 +108,37 @@ def test_a_foreign_entry_point_falls_back_to_the_documented_name(monkeypatch):
     for host in ("pytest", "/usr/bin/pytest", "ipython", "gunicorn"):
         monkeypatch.setattr("sys.argv", [host])
         assert paths.invocation() == "mc-jarvis", host
+
+
+def test_windows_keeps_its_data_under_localappdata(monkeypatch, tmp_path):
+    from mc_jarvis import paths
+
+    for var in ("MC_JARVIS_DATA", "XDG_DATA_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert paths.data_dir() == tmp_path / "mc-jarvis"
+
+
+def test_an_explicit_choice_still_wins_on_windows(monkeypatch, tmp_path):
+    from mc_jarvis import paths
+
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("MC_JARVIS_DATA", str(tmp_path / "mine"))
+    assert paths.data_dir() == tmp_path / "mine"
+
+
+def test_linux_and_macos_indexes_do_not_move(monkeypatch):
+    """Existing indexes live in ~/.local/share. A Windows branch that
+    leaked onto another platform would orphan every one of them."""
+    from pathlib import Path
+
+    from mc_jarvis import paths
+
+    for var in ("MC_JARVIS_DATA", "XDG_DATA_HOME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", "/should/not/be/used")
+    for platform in ("linux", "darwin"):
+        monkeypatch.setattr("sys.platform", platform)
+        assert paths.data_dir() == Path.home() / ".local" / "share" / "mc-jarvis"
