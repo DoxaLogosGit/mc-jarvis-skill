@@ -10,8 +10,14 @@ on:
 
 jobs:
   unit:
-    # Everything that needs neither the network nor a built index.
-    runs-on: ubuntu-latest
+    # Everything that needs neither the network nor a built index - on
+    # each platform a player might use. Windows is where the launchers,
+    # the output encoding and the data directory actually differ.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
