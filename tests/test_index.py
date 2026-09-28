@@ -268,3 +268,24 @@ def test_a_brand_new_file_is_empty_rather_than_stale(tmp_path):
     conn = index.connect(tmp_path / "new.sqlite")
     assert conn.execute("PRAGMA user_version").fetchone()[0] == \
         index.SCHEMA_VERSION
+
+
+def test_a_schema_reset_keeps_the_players_collection(tmp_path):
+    """A reset rebuilds everything derived from sources. The collection
+    is not derived - the player typed it - and every release that bumps
+    the schema used to empty it without a word."""
+    from mc_jarvis import index
+
+    db = tmp_path / "mc.sqlite"
+    conn = index.connect(db)
+    conn.execute("INSERT INTO owned_packs (pack_code) VALUES ('core')")
+    conn.execute("INSERT INTO sets (code, name, card_set_type_code) "
+                 "VALUES ('rhino', 'Rhino', 'villain')")
+    conn.execute(f"PRAGMA user_version = {index.SCHEMA_VERSION - 1}")
+    conn.commit()
+    conn.close()
+
+    conn = index.connect(db, rebuild=True)
+    assert [r[0] for r in conn.execute("SELECT pack_code FROM owned_packs")] == ["core"]
+    # The reset still happened: derived data is gone.
+    assert conn.execute("SELECT COUNT(*) FROM sets").fetchone()[0] == 0

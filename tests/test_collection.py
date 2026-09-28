@@ -177,3 +177,31 @@ def test_setting_a_collection_says_what_it_recorded(tmp_path, capsys,
         replace=False, json=False)) == 0
     out = capsys.readouterr().out
     assert "Core Set" in out and "--owned" in out
+
+
+def test_a_collection_naming_a_vanished_pack_says_so(tmp_path):
+    """After a reset carries the collection across, a pack renamed
+    upstream would narrow every --owned search to nothing, silently."""
+    conn = _mkdb(tmp_path)
+    conn.execute("INSERT INTO owned_packs (pack_code) VALUES ('core')")
+    conn.execute("INSERT INTO owned_packs (pack_code) VALUES ('gone_pack')")
+    assert collection.unknown_owned(conn) == ["gone_pack"]
+
+
+def test_show_names_a_pack_the_index_no_longer_has(tmp_path, capsys,
+                                                    monkeypatch):
+    """The function finding it is not enough: the player reads `show`."""
+    import argparse
+
+    from mc_jarvis import cards
+
+    conn = _mkdb(tmp_path)
+    conn.execute("INSERT INTO owned_packs (pack_code) VALUES ('core')")
+    conn.execute("INSERT INTO owned_packs (pack_code) VALUES ('gone_pack')")
+    monkeypatch.setattr(cards, "_open", lambda: conn)
+    args = argparse.Namespace(collection_cmd="show", packs=[],
+                              available=False, replace=False, json=False)
+    assert collection.handle(args) == 0
+    out = capsys.readouterr().out
+    assert "gone_pack" in out.split("\n", 1)[1], out   # beyond the list itself
+    assert "renamed or removed" in out

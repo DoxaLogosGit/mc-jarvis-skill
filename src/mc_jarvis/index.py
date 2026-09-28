@@ -77,11 +77,11 @@ def connect(db_path: Path, *, rebuild: bool = False) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    if rebuild:
-        _reset_if_stale(conn)
-    else:
+    kept = _reset_if_stale(conn) if rebuild else {}
+    if not rebuild:
         _refuse_if_stale(conn)
     conn.executescript(schema.SCHEMA)
+    _restore(conn, kept)
     return conn
 
 
@@ -108,20 +108,37 @@ def _refuse_if_stale(conn: sqlite3.Connection) -> None:
         f"rebuild it. (Nothing has been changed.)")
 
 
-def _reset_if_stale(conn: sqlite3.Connection) -> bool:
+# Tables holding what the player told us rather than anything derived
+# from sources. A schema reset rebuilds everything derived; these are
+# read before the drop and written back once the new schema exists.
+# A future change to one of these tables' columns must migrate it here,
+# or the restore fails loudly rather than dropping the player's data.
+USER_TABLES: dict[str, tuple[str, ...]] = {
+    "owned_packs": ("pack_code",),
+}
+
+
+def _reset_if_stale(conn: sqlite3.Connection) -> dict[str, list[tuple]]:
     """Drop a index built against an older schema.
 
     Without this, `CREATE TABLE IF NOT EXISTS` silently keeps the old
     table and the first query against a new column fails with a bare
     "no such column" - a confusing error for what is really a stale
     derived artifact.
+
+    Returns the rows of `USER_TABLES`, to be restored once the new schema
+    exists. Dropping them with everything else emptied a player's
+    recorded collection on every release that changed the schema.
     """
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version == SCHEMA_VERSION:
-        return False
+        return {}
     tables = [r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
         " AND name NOT LIKE 'sqlite_%'")]
+    kept = {name: [tuple(r) for r in conn.execute(
+                f'SELECT {", ".join(cols)} FROM "{name}"')]
+            for name, cols in USER_TABLES.items() if name in tables}
     # Drops go in no particular order, so a foreign key between two of
     # these tables would abort the reset half-done - which is the one
     # state this function exists to prevent. Suspend the checks for the
@@ -134,7 +151,17 @@ def _reset_if_stale(conn: sqlite3.Connection) -> bool:
         conn.commit()
     finally:
         conn.execute("PRAGMA foreign_keys = ON")
-    return bool(tables)
+    return kept
+
+
+def _restore(conn: sqlite3.Connection, kept: dict[str, list[tuple]]) -> None:
+    for name, rows in kept.items():
+        cols = USER_TABLES[name]
+        conn.executemany(
+            f'INSERT OR IGNORE INTO "{name}" ({", ".join(cols)}) '
+            f'VALUES ({", ".join("?" * len(cols))})', rows)
+    if kept:
+        conn.commit()
 
 
 def resolve_deck_limit(card: dict) -> int | None:

@@ -26,6 +26,18 @@ def owned_packs(conn) -> list[str]:
         "SELECT pack_code FROM owned_packs ORDER BY pack_code")]
 
 
+def unknown_owned(conn) -> list[str]:
+    """Owned pack codes the index has no pack for.
+
+    A collection outlives rebuilds, and upstream occasionally renames a
+    pack. A code that matches nothing narrows every `--owned` search by
+    that pack's cards, and nothing else would ever say why.
+    """
+    return [r["pack_code"] for r in conn.execute(
+        "SELECT pack_code FROM owned_packs WHERE pack_code NOT IN "
+        "(SELECT code FROM packs) ORDER BY pack_code")]
+
+
 def available_packs(conn) -> list[tuple[str, str]]:
     return [(r["code"], r["name"]) for r in conn.execute(
         "SELECT code, name FROM packs ORDER BY code")]
@@ -115,13 +127,19 @@ def handle(args) -> int:
             return 0
         owned = owned_packs(conn)
         if args.json:
-            emit({"owned": owned, "count": len(owned)}, as_json=True)
+            emit({"owned": owned, "count": len(owned),
+                  "unknown": unknown_owned(conn)}, as_json=True)
             return 0
         if not owned:
             print("No collection set - every card is offered. "
                   f"`{invocation()} collection set <pack>...` to narrow it.")
             return 0
         print(f"{len(owned)} pack(s): {', '.join(owned)}")
+        lost = unknown_owned(conn)
+        if lost:
+            print(f"not in this index - renamed or removed upstream: "
+                  f"{', '.join(lost)}. `{invocation()} collection set "
+                  f"--replace <pack>...` re-records it.")
         return 0
 
     if args.collection_cmd == "clear":
