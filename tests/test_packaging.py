@@ -194,14 +194,21 @@ def test_the_readme_install_url_names_the_current_version():
 
 # --- the skill folder a release attaches ------------------------------
 
+def _builder():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "build_skill_bundle", ROOT / "tools" / "build_skill_bundle.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.fixture(scope="module")
 def bundle(tmp_path_factory):
-    """Built by the same script the release runs, so this tests the
+    """Built by the same code the release runs, so this tests the
     deliverable rather than a second description of it."""
-    out = tmp_path_factory.mktemp("bundle")
-    subprocess.run([str(ROOT / "tools" / "build-skill-bundle.sh"), str(out)],
-                   check=True, capture_output=True, text=True)
-    return out / "mc-jarvis"
+    return _builder().build(tmp_path_factory.mktemp("bundle"))
 
 
 def test_the_skill_folder_carries_the_tool(bundle):
@@ -261,3 +268,17 @@ def test_the_bundle_runs_with_nothing_installed(bundle, tmp_path):
              "MC_JARVIS_PYTHON": str(python)})
     assert got.returncode == 0, got.stderr
     assert "assess" in got.stdout
+
+
+def test_the_bundle_holds_exactly_one_skill(bundle):
+    """A checkout's `_bundled/` links to the whole skill directory for
+    development. Followed during the build, it put a second SKILL.md
+    inside the package, and a harness that scans skills recursively
+    would register the skill twice."""
+    assert [p.relative_to(bundle).as_posix()
+            for p in bundle.rglob("SKILL.md")] == ["SKILL.md"]
+
+
+def test_the_bundle_and_wheel_carry_no_gitignore(bundle, built):
+    assert not list(bundle.rglob(".gitignore"))
+    assert not [n for n in _wheel_names(built) if n.endswith(".gitignore")]

@@ -51,7 +51,7 @@ jobs:
         # directory and `scripts/mc-jarvis` runs from there. The wheel
         # remains for people who would rather install a package.
         run: |
-          ./tools/build-skill-bundle.sh bundle
+          uv run python tools/build_skill_bundle.py bundle
           ( cd bundle && zip -qr "../dist/mc-jarvis-skill-${version}.zip" mc-jarvis )
           unzip -l "dist/mc-jarvis-skill-${version}.zip" | tail -3
 

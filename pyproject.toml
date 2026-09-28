@@ -18,6 +18,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mc_jarvis"]
+# The `_bundled/.gitignore` keeps development symlinks out of git. It is
+# not part of the package.
+exclude = ["src/mc_jarvis/_bundled/.gitignore"]
 
 # The skill and config ship inside the wheel so `uv tool install` users,
 # who have no checkout, can still run `install-skill` (spec §7). In a
