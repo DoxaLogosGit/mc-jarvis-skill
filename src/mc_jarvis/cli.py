@@ -321,7 +321,23 @@ def _dispatch(name: str, args) -> int:
     return 3
 
 
+def _utf8_streams() -> None:
+    """Write UTF-8 whatever the platform chose.
+
+    An agent reads this program through a pipe, and on Windows a pipe
+    defaults to the ANSI code page: a card name outside it raised
+    UnicodeEncodeError halfway through an answer. A stream that cannot be
+    reconfigured - one a test or a host replaced - is left alone.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _utf8_streams()
     args = parse_args(argv)
     if not args.command:
         build_parser().print_help()

@@ -87,3 +87,20 @@ def test_a_result_limit_must_be_at_least_one():
     for bad in ("0", "-5", "x"):
         with pytest.raises(argparse.ArgumentTypeError):
             _positive(bad)
+
+
+def test_output_is_utf8_whatever_the_pipe_defaults_to(monkeypatch):
+    """A Windows pipe defaults to the ANSI code page, which cannot encode
+    a star or an arrow, so a card name could crash the command
+    mid-answer. Output is UTF-8 on every platform."""
+    import io
+    import sys
+
+    from mc_jarvis import cli
+
+    raw = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252"))
+    cli._utf8_streams()
+    print("★ → Coup de Grâce")
+    sys.stdout.flush()
+    assert raw.getvalue().decode("utf-8").startswith("★ →")
