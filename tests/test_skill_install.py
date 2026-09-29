@@ -216,6 +216,10 @@ def test_global_install_never_touches_the_workspace(tmp_path, monkeypatch):
     ws.mkdir()
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setenv("HOME", str(home))
+    # Windows reads the home folder from USERPROFILE, not HOME. Faking only
+    # HOME sent a Windows CI run's global install into the runner's real
+    # home directory.
+    monkeypatch.setenv("USERPROFILE", str(home))
     placements = si.install(ws, global_=True)
     assert placements
     for p in placements:

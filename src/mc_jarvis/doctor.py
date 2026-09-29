@@ -112,7 +112,10 @@ def run_checks(*, network: bool = True) -> list[Check]:
     probe = root
     while not probe.exists() and probe != probe.parent:
         probe = probe.parent
-    checks.append(Check("data-dir", os.access(probe, os.W_OK),
+    # A file answers "writable" too, but nothing can be created beneath
+    # it: the ancestor has to be a directory for `init` to succeed.
+    checks.append(Check("data-dir",
+                        probe.is_dir() and os.access(probe, os.W_OK),
                         str(root) + ("" if root.exists()
                                      else "  - will be created by `init`"),
                         hard=True))

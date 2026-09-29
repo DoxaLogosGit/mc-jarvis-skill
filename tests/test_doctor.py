@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from mc_jarvis import doctor
 
 
@@ -51,8 +55,25 @@ def test_a_data_dir_that_does_not_exist_yet_is_not_a_failure(tmp_path,
     assert "will be created" in got["data-dir"].detail
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="uses /proc as an unwritable directory; on Windows "
+                           "os.access reports directories writable regardless "
+                           "of their ACLs, so no portable permissions probe exists")
 def test_an_unwritable_data_dir_is_still_a_failure(tmp_path, monkeypatch):
     """The relaxation must not swallow a real permissions problem."""
     monkeypatch.setenv("XDG_DATA_HOME", "/proc/nope")
+    got = {c.name: c for c in doctor.run_checks(network=False)}
+    assert not got["data-dir"].ok
+
+
+def test_a_data_dir_under_a_file_is_a_failure(tmp_path, monkeypatch):
+    """The nearest existing ancestor can be a file, and a file answers
+    "writable" - but no directory can ever be created beneath it, so
+    `init` would fail where `doctor` said all was well. Unlike a
+    permissions probe, this holds on every platform."""
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a directory")
+    monkeypatch.delenv("MC_JARVIS_DATA", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(blocker / "below"))
     got = {c.name: c for c in doctor.run_checks(network=False)}
     assert not got["data-dir"].ok

@@ -16,6 +16,9 @@ def test_xdg_used_when_no_explicit_var(monkeypatch, tmp_path):
 
 
 def test_default_when_nothing_set(monkeypatch):
+    # The Linux and macOS default. Windows keeps its data under
+    # %LOCALAPPDATA%, tested on its own.
+    monkeypatch.setattr("sys.platform", "linux")
     monkeypatch.delenv("MC_JARVIS_DATA", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     assert paths.data_dir() == Path.home() / ".local" / "share" / "mc-jarvis"
