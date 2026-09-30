@@ -2,7 +2,7 @@ name: checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, review-fixes]   # TEMPORARY: removed before merge
   pull_request:
   # Called by the release workflow, so a release runs the checks a push
   # runs rather than a second copy of them that can drift from these.
