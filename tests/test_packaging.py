@@ -411,6 +411,10 @@ def test_the_shell_launcher_works_under_git_bash(bundle, bare_python, tmp_path):
     package was found through that rewrite."""
     sh, usr_bin = _git_sh()
     if sh is None:
+        # On CI a skip here would read as a pass: the runners carry Git for
+        # Windows, so not finding it means this test proved nothing.
+        if os.environ.get("GITHUB_ACTIONS"):
+            pytest.fail("Git for Windows not found on the CI runner")
         pytest.skip("Git for Windows not found")
     home = tmp_path / "a home with spaces"
     shutil.copytree(bundle, home / "mc-jarvis", symlinks=False)
