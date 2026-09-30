@@ -137,9 +137,13 @@ def handle(args) -> int:
         print(f"{len(owned)} pack(s): {', '.join(owned)}")
         lost = unknown_owned(conn)
         if lost:
+            # `--replace` replaces the whole list, so the hint has to say
+            # "everything you own": naming one pack invited an agent to
+            # record that one alone and drop the rest of the collection.
             print(f"not in this index - renamed or removed upstream: "
-                  f"{', '.join(lost)}. `{invocation()} collection set "
-                  f"--replace <pack>...` re-records it.")
+                  f"{', '.join(lost)}. To fix it, record the whole collection "
+                  f"again without those codes: `{invocation()} collection "
+                  f"set --replace <every pack you own>`.")
         return 0
 
     if args.collection_cmd == "clear":

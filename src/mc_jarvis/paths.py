@@ -2,11 +2,25 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import sys
 from pathlib import Path
 
 SUBDIRS = ("marvelsdb", "rules/pdf", "rules/txt", "meta")
+
+
+def _for_the_shell(path: str) -> str:
+    """A path the reader can paste back as a command.
+
+    Most Windows user folders hold a space, and an unquoted path stops at
+    it: cmd reported `'C:\\Users\\Jay' is not recognized`. Windows takes
+    double quotes; everywhere else `shlex.quote`, which leaves an ordinary
+    path untouched.
+    """
+    if sys.platform == "win32":
+        return f'"{path}"' if any(c in path for c in " &()^") else path
+    return shlex.quote(path)
 
 
 def invocation() -> str:
@@ -24,7 +38,7 @@ def invocation() -> str:
     # reader typed; argv[0] by then is this package's `__main__.py`.
     told = os.environ.get("MC_JARVIS_INVOKED_AS")
     if told:
-        return told
+        return _for_the_shell(told)
     argv0 = sys.argv[0] or ""
     name = os.path.basename(argv0)
     if name == "__main__.py":
@@ -46,7 +60,7 @@ def invocation() -> str:
             return name
     except OSError:
         pass
-    return argv0
+    return _for_the_shell(argv0)
 
 
 def data_dir() -> Path:

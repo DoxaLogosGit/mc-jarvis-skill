@@ -145,3 +145,21 @@ def test_linux_and_macos_indexes_do_not_move(monkeypatch):
     for platform in ("linux", "darwin"):
         monkeypatch.setattr("sys.platform", platform)
         assert paths.data_dir() == Path.home() / ".local" / "share" / "mc-jarvis"
+
+
+def test_a_path_with_spaces_is_quoted_for_the_shell(monkeypatch):
+    """Most Windows user folders hold a space. Unquoted, the command a
+    message tells the reader to run next fails at the first space - in
+    cmd as "'C:\\Users\\Jay' is not recognized"."""
+    from mc_jarvis import paths
+
+    monkeypatch.setattr("sys.platform", "linux")
+    monkeypatch.setenv("MC_JARVIS_INVOKED_AS", "/home/a b/mc-jarvis/scripts/mc-jarvis")
+    assert paths.invocation() == "'/home/a b/mc-jarvis/scripts/mc-jarvis'"
+    monkeypatch.setenv("MC_JARVIS_INVOKED_AS", "/home/ab/scripts/mc-jarvis")
+    assert paths.invocation() == "/home/ab/scripts/mc-jarvis"   # untouched
+
+    monkeypatch.setattr("sys.platform", "win32")
+    spaced = r"C:\Users\Jay Atkinson\proj\.claude\skills\mc-jarvis\scripts\mc-jarvis.cmd"
+    monkeypatch.setenv("MC_JARVIS_INVOKED_AS", spaced)
+    assert paths.invocation() == f'"{spaced}"'

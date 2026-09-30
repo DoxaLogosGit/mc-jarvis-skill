@@ -205,3 +205,6 @@ def test_show_names_a_pack_the_index_no_longer_has(tmp_path, capsys,
     out = capsys.readouterr().out
     assert "gone_pack" in out.split("\n", 1)[1], out   # beyond the list itself
     assert "renamed or removed" in out
+    # `--replace` replaces the WHOLE list. A hint naming one pack invited
+    # an agent to record just that one and drop the rest of the collection.
+    assert "every pack you own" in out

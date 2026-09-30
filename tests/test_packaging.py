@@ -249,12 +249,13 @@ def test_the_bundle_carries_files_rather_than_links(bundle):
     assert not list(bundle.rglob("__pycache__"))
 
 
-def test_the_bundle_runs_with_nothing_installed(bundle, tmp_path):
-    """The point of the folder: unzip it, and it works. Run against an
-    interpreter that has PyYAML but has never heard of mc_jarvis."""
+@pytest.fixture(scope="module")
+def bare_python(tmp_path_factory):
+    """An interpreter with PyYAML that has never heard of mc_jarvis, so a
+    launcher can only succeed by supplying the bundled package itself."""
     import venv
 
-    env = tmp_path / "venv"
+    env = tmp_path_factory.mktemp("venv")
     venv.EnvBuilder(with_pip=True).create(env)
     windows = sys.platform == "win32"
     python = env / ("Scripts" if windows else "bin") / (
@@ -264,6 +265,14 @@ def test_the_bundle_runs_with_nothing_installed(bundle, tmp_path):
     absent = subprocess.run([str(python), "-c", "import mc_jarvis"],
                             capture_output=True, text=True)
     assert absent.returncode != 0, "the venv already has the package"
+    return python
+
+
+def test_the_bundle_runs_with_nothing_installed(bundle, bare_python, tmp_path):
+    """The point of the folder: unzip it, and it works. Run against an
+    interpreter that has PyYAML but has never heard of mc_jarvis."""
+    windows = sys.platform == "win32"
+    python = bare_python
 
     # The launcher each platform's user runs: the batch file on Windows,
     # the shell script elsewhere. `MC_JARVIS_PYTHON` pins the interpreter
@@ -330,8 +339,10 @@ def test_the_shell_launcher_skips_a_python_that_does_not_run(bundle, tmp_path):
              "MC_JARVIS_DATA": str(tmp_path / "no-index")})
     # It ran mc_jarvis - which found no index - rather than the stub.
     assert "no index found" in (got.stdout + got.stderr), got.stderr
-    # And named the launcher the reader typed, space and all.
-    assert str(launcher) in (got.stdout + got.stderr)
+    # And named the launcher the reader typed, quoted so the space in its
+    # path survives being pasted back into a shell.
+    import shlex
+    assert shlex.quote(str(launcher)) in (got.stdout + got.stderr)
 
 
 def test_the_windows_launcher_ships_with_crlf(bundle):
@@ -352,7 +363,11 @@ def test_the_windows_launcher_runs_from_a_folder_with_spaces(bundle, tmp_path):
         env={**os.environ, "MC_JARVIS_PYTHON": sys.executable,
              "MC_JARVIS_DATA": str(tmp_path / "no-index")})
     assert "no index found" in (got.stdout + got.stderr), got.stderr
-    assert "mc-jarvis.cmd" in (got.stdout + got.stderr)
+    # Quoted, so `C:\Users\Jay Atkinson\...` survives being pasted back.
+    assert f'"{launcher}"' in (got.stdout + got.stderr)
+    # A failure has to reach the caller as a failure: an agent reads the
+    # exit code, and "no index" is exit 1.
+    assert got.returncode == 1
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="runs the workflow's sh")
@@ -375,3 +390,54 @@ def test_a_release_candidate_is_published_as_a_prerelease(tag, expected):
         capture_output=True, text=True, env={"GITHUB_REF_NAME": tag,
                                              "PATH": os.environ["PATH"]})
     assert got.stdout == expected
+
+
+def _git_sh():
+    """Git for Windows' own sh, which is what Claude Code runs commands
+    in on Windows. Not a bare `bash`: that can resolve to the WSL stub."""
+    git = shutil.which("git")
+    if not git:
+        return None, None
+    root = Path(git).resolve().parents[1]
+    sh, usr_bin = root / "bin" / "sh.exe", root / "usr" / "bin"
+    return (sh, usr_bin) if sh.exists() else (None, None)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Git Bash on Windows")
+def test_the_shell_launcher_works_under_git_bash(bundle, bare_python, tmp_path):
+    """The route most Windows users take first, and the only one that
+    rewrites PYTHONPATH into Windows form for a native Python. Run with
+    an interpreter that lacks mc_jarvis, so success means the bundled
+    package was found through that rewrite."""
+    sh, usr_bin = _git_sh()
+    if sh is None:
+        pytest.skip("Git for Windows not found")
+    home = tmp_path / "a home with spaces"
+    shutil.copytree(bundle, home / "mc-jarvis", symlinks=False)
+    launcher = home / "mc-jarvis" / "scripts" / "mc-jarvis"
+    got = subprocess.run(
+        [str(sh), launcher.as_posix(), "card", "search", "tackle"],
+        capture_output=True, text=True, timeout=180,
+        env={**os.environ,
+             "PATH": f"{usr_bin};{os.environ['PATH']}",
+             "MC_JARVIS_PYTHON": str(bare_python),
+             "MC_JARVIS_DATA": str(tmp_path / "no-index")})
+    assert "no index found" in (got.stdout + got.stderr), got.stderr
+    assert got.returncode == 1
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows launcher")
+def test_the_windows_launcher_does_not_call_itself(tmp_path):
+    """An `install-skill` copy has the launchers but no bundled package,
+    so the .cmd looks for an installed mc-jarvis. Run from `scripts\\`,
+    `where mc-jarvis` found the extensionless shell script there and
+    `mc-jarvis %*` then resolved to the .cmd itself - forever."""
+    skill = tmp_path / "skill"
+    shutil.copytree(ROOT / "skill" / "mc-jarvis", skill, symlinks=False)
+    scripts = skill / "scripts"
+    got = subprocess.run(
+        [str(scripts / "mc-jarvis.cmd"), "--help"],
+        cwd=str(scripts), capture_output=True, text=True, timeout=120,
+        env={**os.environ, "MC_JARVIS_PYTHON": sys.executable})
+    assert got.returncode == 0, got.stderr
+    assert "assess" in got.stdout
