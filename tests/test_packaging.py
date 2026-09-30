@@ -353,3 +353,25 @@ def test_the_windows_launcher_runs_from_a_folder_with_spaces(bundle, tmp_path):
              "MC_JARVIS_DATA": str(tmp_path / "no-index")})
     assert "no index found" in (got.stdout + got.stderr), got.stderr
     assert "mc-jarvis.cmd" in (got.stdout + got.stderr)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="runs the workflow's sh")
+@pytest.mark.parametrize("tag,expected", [
+    ("v0.3.0rc1", "--prerelease"), ("v0.3.0a1", "--prerelease"),
+    ("v0.3.0b2", "--prerelease"), ("v0.3.0", ""), ("v1.0.0", ""),
+])
+def test_a_release_candidate_is_published_as_a_prerelease(tag, expected):
+    """The README sends readers to /releases/latest. A release candidate
+    published as an ordinary release would become "latest", and every
+    new reader would install it. The workflow's own shell decides."""
+    import re
+
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+        encoding="utf-8")
+    snippet = re.search(r'^\s*(pre="".*?esac)\s*$', workflow, re.S | re.M)
+    assert snippet, "the prerelease decision is not in the publish step"
+    got = subprocess.run(
+        ["sh", "-c", snippet.group(1) + '\nprintf %s "$pre"'],
+        capture_output=True, text=True, env={"GITHUB_REF_NAME": tag,
+                                             "PATH": os.environ["PATH"]})
+    assert got.stdout == expected

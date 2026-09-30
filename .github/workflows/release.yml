@@ -67,8 +67,12 @@ jobs:
       - name: Publish to the releases page
         env:
           GH_TOKEN: ${{ github.token }}
+        # A release candidate is marked a prerelease, so it never becomes
+        # the "latest" release the README sends new readers to.
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          pre=""
+          case "${GITHUB_REF_NAME}" in *rc*|*a[0-9]*|*b[0-9]*) pre="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" $pre \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes \
             dist/mc_jarvis-*.whl \
