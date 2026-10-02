@@ -1,0 +1,48 @@
+name: security
+
+# Checks aimed at what a contribution could bring in, rather than at
+# whether the code works. `checks.yml` covers the second; this the first.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, so a newly published advisory against an action or a
+    # dependency is found without waiting for the next push.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  workflows:
+    # The workflow files themselves: injection, over-broad tokens, unpinned
+    # actions, cache poisoning. The release workflow can write to this
+    # repository, so these files are worth an audit of their own.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: false
+      - name: Audit the workflows with zizmor
+        env:
+          # Read-only; lets zizmor check pinned commits against advisories.
+          GH_TOKEN: ${{ github.token }}
+        run: uvx zizmor@1.30.1 --format github .github/workflows
+
+  dependencies:
+    # Fails a pull request that adds a dependency with a known advisory.
+    # Dependabot covers the dependencies already here; this covers the
+    # ones a contribution would introduce.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: moderate

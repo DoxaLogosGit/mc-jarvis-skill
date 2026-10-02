@@ -6,6 +6,10 @@ on:
   push:
     tags: ["v*"]
 
+# Read-only by default; only the publish job below may write.
+permissions:
+  contents: read
+
 jobs:
   # The same checks a push to main runs, called rather than copied: a
   # second copy would drift from the first, and the release is the one
@@ -13,7 +17,10 @@ jobs:
   # the repository ships code and configuration only, and a release is
   # the artifact people keep.
   checks:
-    uses: ./.github/workflows/checks.yml
+    # zizmor suggests a newer self-repository syntax for this line. Kept as
+    # is: the release workflow is the last place to adopt syntax nobody
+    # here has seen work.
+    uses: ./.github/workflows/checks.yml # zizmor: ignore[self-repository]
 
   publish:
     needs: checks
@@ -24,8 +31,17 @@ jobs:
       # credential and nothing to rotate.
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Nothing after checkout pushes, so the token is not left on
+          # disk for a later step - or a test - to find.
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          # A release builds from nothing. uv's cache is shared with the
+          # pull-request runs, and an artifact people install must not
+          # depend on anything one of those could have left in it.
+          enable-cache: false
 
       - name: The tag and the version must agree
         # Without this, `git tag v0.3.0` on a tree that still says 0.2.0

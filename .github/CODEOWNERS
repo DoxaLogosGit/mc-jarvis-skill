@@ -1,0 +1,11 @@
+# Changes to these paths need the owner's review once branch protection
+# requires code-owner approval.
+#
+# The skill above all. SKILL.md is instructions an agent follows on a
+# user's machine: a pull request needs no code to do harm there - an
+# edited instruction is enough - and no scanner reads it that way.
+*            @DoxaLogosGit
+/skill/      @DoxaLogosGit
+/.github/    @DoxaLogosGit
+/config/     @DoxaLogosGit
+/tools/      @DoxaLogosGit
