@@ -4,7 +4,7 @@ name: security
 # whether the code works. `checks.yml` covers the second; this the first.
 on:
   push:
-    branches: [main, security-scans]   # TEMPORARY: removed before merge
+    branches: [main]
   pull_request:
   schedule:
     # Weekly, so a newly published advisory against an action or a
